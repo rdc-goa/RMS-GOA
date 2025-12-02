@@ -62,14 +62,14 @@ const SUPER_ADMIN_ROLE: User['role'] = 'Super-admin';
 const PRIMARY_SUPER_ADMIN_EMAIL = 'rathipranav07@gmail.com';
 type SortableKeys = keyof Pick<User, 'name' | 'email' | 'role' | 'faculty'> | 'claimsCount';
 
-const faculties = [
-    "Faculty of Engineering & Technology", "Faculty of Diploma Studies", "Faculty of Applied Sciences",
-    "Faculty of IT & Computer Science", "Faculty of Agriculture", "Faculty of Architecture & Planning",
-    "Faculty of Design", "Faculty of Fine Arts", "Faculty of Arts", "Faculty of Commerce",
-    "Faculty of Social Work", "Faculty of Management Studies", "Faculty of Hotel Management & Catering Technology",
-    "Faculty of Law", "Faculty of Medicine", "Faculty of Homoeopathy", "Faculty of Ayurved",
-    "Faculty of Nursing", "Faculty of Pharmacy", "Faculty of Physiotherapy", "Faculty of Public Health", 
-    "Parul Sevashram Hospital", "RDC", "University Office", "Parul Aarogya Seva Mandal"
+const goaFaculties = [
+    "Faculty of Engineering, IT & CS",
+    "Faculty of Management Studies",
+    "Faculty of Pharmacy",
+    "Faculty of Applied and Health Sciences",
+    "Faculty of Nursing",
+    "Faculty of Physiotherapy",
+    "University Office"
 ];
 
 const notificationTypes = [
@@ -677,7 +677,7 @@ export default function ManageUsersPage() {
                                           <DropdownMenuSubContent className="max-h-80 overflow-y-auto">
                                               <DropdownMenuLabel>Faculties</DropdownMenuLabel>
                                               <DropdownMenuSeparator />
-                                              {faculties.map(faculty => (
+                                              {goaFaculties.map(faculty => (
                                                   <DropdownMenuCheckboxItem
                                                       key={faculty}
                                                       checked={user.faculties?.includes(faculty)}
@@ -775,7 +775,7 @@ export default function ManageUsersPage() {
                                         <DropdownMenuSubContent className="max-h-80 overflow-y-auto">
                                             <DropdownMenuLabel>Faculties</DropdownMenuLabel>
                                             <DropdownMenuSeparator />
-                                            {faculties.map(faculty => (
+                                            {goaFaculties.map(faculty => (
                                                 <DropdownMenuCheckboxItem
                                                     key={faculty}
                                                     checked={user.faculties?.includes(faculty)}
