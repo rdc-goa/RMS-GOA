@@ -1,4 +1,5 @@
 
+
 "use client"
 
 import { useRouter } from "next/navigation"
@@ -22,7 +23,7 @@ import {
   onAuthStateChanged,
 } from "firebase/auth"
 import { doc, getDoc, setDoc } from "firebase/firestore"
-import type { User } from "@/types"
+import type { User, SystemSettings } from "@/types"
 import { useState, useEffect } from "react"
 import { getDefaultModulesForRole } from "@/lib/modules"
 import {
@@ -32,6 +33,7 @@ import {
   linkEmrInterestsToNewUser,
   isEmailDomainAllowed,
   linkEmrCoPiInterestsToNewUser,
+  getSystemSettings,
 } from "@/app/actions"
 import { Eye, EyeOff, Loader2 } from "lucide-react"
 
@@ -55,6 +57,7 @@ export default function SignupPage() {
   const [showPassword, setShowPassword] = useState(false)
   const [showConfirmPassword, setShowConfirmPassword] = useState(false)
   const [loading, setLoading] = useState(true);
+  const [authSettings, setAuthSettings] = useState<SystemSettings['authMethods']>({ email: true, google: true });
 
   const form = useForm<SignupFormValues>({
     resolver: zodResolver(signupSchema),
@@ -66,15 +69,20 @@ export default function SignupPage() {
   });
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
-      if (user) {
-        router.replace('/dashboard');
-      } else {
-        setLoading(false);
-      }
-    });
+    const checkAuthAndSettings = async () => {
+        const settings = await getSystemSettings();
+        setAuthSettings({ email: true, google: true, ...settings.authMethods });
 
-    return () => unsubscribe();
+        const unsubscribe = onAuthStateChanged(auth, (user) => {
+          if (user) {
+            router.replace('/dashboard');
+          } else {
+            setLoading(false);
+          }
+        });
+        return () => unsubscribe();
+    };
+    checkAuthAndSettings();
   }, [router]);
 
   const validateEmailDomain = async (email: string): Promise<boolean> => {
@@ -113,15 +121,7 @@ export default function SignupPage() {
     let designation: User["designation"] = "faculty"
     let profileComplete = false
     let notifyRole: string | null = null
-    let campus: User['campus'] = 'Vadodara';
-
-    if (firebaseUser.email?.endsWith('@goa.paruluniversity.ac.in')) {
-        campus = 'Goa';
-    } else if (firebaseUser.email?.endsWith('@rajkot.paruluniversity.ac.in')) {
-        campus = 'Rajkot';
-    } else if (firebaseUser.email?.endsWith('@ahmedabad.paruluniversity.ac.in')) {
-        campus = 'Ahmedabad';
-    }
+    let campus: User['campus'] = 'Goa';
 
 
     if (firebaseUser.email === "vicepresident_86@paruluniversity.ac.in") {
@@ -296,6 +296,11 @@ export default function SignupPage() {
         </div>
     )
   }
+  
+  const showEmailForm = authSettings.email !== false;
+  const showGoogleButton = authSettings.google !== false;
+  const showSeparator = showEmailForm && showGoogleButton;
+
 
   return (
     <div className="flex flex-col min-h-screen bg-background dark:bg-transparent">
@@ -310,104 +315,115 @@ export default function SignupPage() {
               <CardDescription>Join the Parul University Research Projects Portal.</CardDescription>
             </CardHeader>
             <CardContent>
-              <Form {...form}>
-                <form onSubmit={form.handleSubmit(onEmailSubmit)} className="space-y-4">
-                  <FormField
-                    control={form.control}
-                    name="email"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>University Email</FormLabel>
-                        <FormControl>
-                          <Input placeholder="your.name@paruluniversity.ac.in" {...field} disabled={isSubmitting} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  <FormField
-                    control={form.control}
-                    name="password"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Password</FormLabel>
-                        <FormControl>
-                          <div className="relative">
-                            <Input
-                              type={showPassword ? "text" : "password"}
-                              placeholder="••••••••"
-                              {...field}
-                              disabled={isSubmitting}
-                            />
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="icon"
-                              className="absolute right-1 top-1/2 h-7 w-7 -translate-y-1/2 text-muted-foreground"
-                              onClick={() => setShowPassword(!showPassword)}
-                            >
-                              {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                            </Button>
-                          </div>
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  <FormField
-                    control={form.control}
-                    name="confirmPassword"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Confirm Password</FormLabel>
-                        <FormControl>
-                          <div className="relative">
-                            <Input
-                              type={showConfirmPassword ? "text" : "password"}
-                              placeholder="••••••••"
-                              {...field}
-                              disabled={isSubmitting}
-                            />
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="icon"
-                              className="absolute right-1 top-1/2 h-7 w-7 -translate-y-1/2 text-muted-foreground"
-                              onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                            >
-                              {showConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                            </Button>
-                          </div>
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  <Button type="submit" className="w-full" disabled={isSubmitting}>
-                    {isSubmitting ? "Creating Account..." : "Sign Up with Email"}
-                  </Button>
-                </form>
-              </Form>
-              <div className="relative my-6">
-                <div className="absolute inset-0 flex items-center">
-                  <span className="w-full border-t" />
+              {showEmailForm && (
+                <Form {...form}>
+                  <form onSubmit={form.handleSubmit(onEmailSubmit)} className="space-y-4">
+                    <FormField
+                      control={form.control}
+                      name="email"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>University Email</FormLabel>
+                          <FormControl>
+                            <Input placeholder="your.name@paruluniversity.ac.in" {...field} disabled={isSubmitting} />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={form.control}
+                      name="password"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Password</FormLabel>
+                          <FormControl>
+                            <div className="relative">
+                              <Input
+                                type={showPassword ? "text" : "password"}
+                                placeholder="••••••••"
+                                {...field}
+                                disabled={isSubmitting}
+                              />
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                className="absolute right-1 top-1/2 h-7 w-7 -translate-y-1/2 text-muted-foreground"
+                                onClick={() => setShowPassword(!showPassword)}
+                              >
+                                {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                              </Button>
+                            </div>
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={form.control}
+                      name="confirmPassword"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Confirm Password</FormLabel>
+                          <FormControl>
+                            <div className="relative">
+                              <Input
+                                type={showConfirmPassword ? "text" : "password"}
+                                placeholder="••••••••"
+                                {...field}
+                                disabled={isSubmitting}
+                              />
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                className="absolute right-1 top-1/2 h-7 w-7 -translate-y-1/2 text-muted-foreground"
+                                onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                              >
+                                {showConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                              </Button>
+                            </div>
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <Button type="submit" className="w-full" disabled={isSubmitting}>
+                      {isSubmitting ? "Creating Account..." : "Sign Up with Email"}
+                    </Button>
+                  </form>
+                </Form>
+              )}
+              {showSeparator && (
+                <div className="relative my-6">
+                  <div className="absolute inset-0 flex items-center">
+                    <span className="w-full border-t" />
+                  </div>
+                  <div className="relative flex justify-center text-xs uppercase">
+                    <span className="bg-card px-2 text-muted-foreground">Or continue with</span>
+                  </div>
                 </div>
-                <div className="relative flex justify-center text-xs uppercase">
-                  <span className="bg-card px-2 text-muted-foreground">Or continue with</span>
-                </div>
-              </div>
-              <Button
-                variant="outline"
-                className="w-full bg-transparent"
-                onClick={handleGoogleSignUp}
-                disabled={isSubmitting}
-              >
-                <svg role="img" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" className="mr-2 h-4 w-4">
-                  <title>Google</title>
-                  <path d="M12.48 10.92v3.28h7.84c-.24 1.84-.85 3.18-1.73 4.1-1.02 1.02-2.62 1.9-4.63 1.9-3.87 0-7-3.13-7-7s3.13-7 7-7c2.18 0 3.66.87 4.53 1.73l2.43-2.38C18.04 2.33 15.47 1 12.48 1 7.01 1 3 5.02 3 9.98s4.01 8.98 9.48 8.98c2.96 0 5.42-1 7.15-2.68 1.78-1.74 2.37-4.24 2.37-6.52 0-.6-.05-1.18-.15-1.72H12.48z" />
-                </svg>
-                Sign up with Google
-              </Button>
+              )}
+              {showGoogleButton && (
+                <Button
+                  variant="outline"
+                  className="w-full bg-transparent"
+                  onClick={handleGoogleSignUp}
+                  disabled={isSubmitting}
+                >
+                  <svg role="img" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" className="mr-2 h-4 w-4">
+                    <title>Google</title>
+                    <path d="M12.48 10.92v3.28h7.84c-.24 1.84-.85 3.18-1.73 4.1-1.02 1.02-2.62 1.9-4.63 1.9-3.87 0-7-3.13-7-7s3.13-7 7-7c2.18 0 3.66.87 4.53 1.73l2.43-2.38C18.04 2.33 15.47 1 12.48 1 7.01 1 3 5.02 3 9.98s4.01 8.98 9.48 8.98c2.96 0 5.42-1 7.15-2.68 1.78-1.74 2.37-4.24 2.37-6.52 0-.6-.05-1.18-.15-1.72H12.48z" />
+                  </svg>
+                  Sign up with Google
+                </Button>
+              )}
+               {!showEmailForm && !showGoogleButton && (
+                  <div className="text-center text-muted-foreground p-4 border rounded-md">
+                      Sign-up is temporarily disabled. Please contact an administrator.
+                  </div>
+              )}
             </CardContent>
             <CardFooter className="justify-center text-sm">
               <p className="text-muted-foreground">Already have an account?&nbsp;</p>

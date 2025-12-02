@@ -30,7 +30,7 @@ export type User = {
   email: string
   role: "admin" | "faculty" | "CRO" | "Super-admin" | "Evaluator" | "IQAC"
   designation?: "Principal" | "HOD" | "Super-admin" | "faculty" | string
-  campus?: 'Vadodara' | 'Ahmedabad' | 'Rajkot' | 'Goa';
+  campus?: 'Goa';
   faculties?: string[] // A user can be associated with multiple faculties, especially CROs
   faculty?: string // Primary faculty
   institute?: string
@@ -526,8 +526,14 @@ export type ApiIntegrations = {
     sci?: boolean;
 };
 
+export type AuthMethods = {
+    email?: boolean;
+    google?: boolean;
+};
+
 export type SystemSettings = {
   is2faEnabled: boolean
+  authMethods?: AuthMethods;
   allowedDomains?: string[]
   croAssignments?: CroAssignment[]
   incentiveApprovers?: ApproverSetting[];
