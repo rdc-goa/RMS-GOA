@@ -1,5 +1,4 @@
 
-
 "use client"
 
 import type React from "react"
@@ -632,7 +631,8 @@ export default function SettingsPage() {
   ];
 
 
-  const isAcademicInfoLocked = isCro || isPrincipal
+  const isAcademicInfoLocked = isCro || isPrincipal;
+
 
   if (loading) {
     return (
