@@ -30,7 +30,6 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 
 const profileSetupSchema = z.object({
   name: z.string().min(2, 'A full name is required.'),
-  campus: z.string().min(1, 'Please select a campus.'),
   faculty: z.string().min(1, 'Please select a faculty.'),
   institute: z.string().min(1, 'Please select an institute.'),
   department: z.string().optional(),
@@ -56,7 +55,7 @@ const faculties = [
     "Parul Sevashram Hospital", "RDC", "University Office", "Parul Aarogya Seva Mandal"
 ];
 
-const campuses = ["Rajkot", "Ahmedabad", "Vadodara", "Goa"];
+const campuses = ["Goa"];
 
 const goaFaculties = [
     "Faculty of Engineering, IT & CS",
@@ -123,7 +122,6 @@ export default function ProfileSetupPage() {
     resolver: zodResolver(profileSetupSchema),
     defaultValues: {
       name: '',
-      campus: '',
       faculty: '',
       institute: '',
       department: '',
@@ -136,9 +134,6 @@ export default function ProfileSetupPage() {
       phoneNumber: '',
     },
   });
-
-  const selectedCampus = form.watch('campus');
-  const isGoaCampusUser = user?.email?.endsWith('@goa.paruluniversity.ac.in');
 
   const prefillData = useCallback(async () => {
       if (!misIdToFetch || !user?.email) return;
@@ -192,10 +187,6 @@ export default function ProfileSetupPage() {
           setPreviewUrl(appUser.photoURL || null);
           form.setValue('name', appUser.name);
           
-          if (appUser.email?.endsWith('@goa.paruluniversity.ac.in')) {
-            form.setValue('campus', 'Goa');
-          }
-
           // Pre-fetch user type based on email to determine if MIS ID is needed.
           const staffRes = await fetch(`/api/get-staff-data?email=${appUser.email!}`);
           const staffResult = await staffRes.json();
@@ -220,13 +211,12 @@ export default function ProfileSetupPage() {
 
   useEffect(() => {
     async function fetchDepartments() {
-      const endpoint = selectedCampus === 'Goa' ? '/api/get-goa-departments' : '/api/get-departments';
+      const endpoint = '/api/get-goa-departments';
       try {
         const res = await fetch(endpoint);
         const result = await res.json();
         if (result.success) {
           setDepartments(result.data);
-          // If current department is not in the new list, reset it
           const currentDepartment = form.getValues('department');
           if (currentDepartment && !result.data.includes(currentDepartment)) {
               form.setValue('department', '');
@@ -237,8 +227,7 @@ export default function ProfileSetupPage() {
       }
     }
     fetchDepartments();
-  }, [selectedCampus, form]);
-
+  }, [form]);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
@@ -252,8 +241,8 @@ export default function ProfileSetupPage() {
   if (!user) return;
   setIsSubmitting(true);
   try {
-    if (data.misId && data.campus) {
-      const misIdCheck = await checkMisIdExists(data.misId, user.uid, data.campus);
+    if (data.misId) {
+      const misIdCheck = await checkMisIdExists(data.misId, user.uid, 'Goa');
       if (misIdCheck.exists) {
         form.setError("misId", {
           type: "manual",
@@ -284,6 +273,7 @@ export default function ProfileSetupPage() {
 
     const updateData: Partial<User> = {
       ...data,
+      campus: 'Goa',
       photoURL: photoURL,
       profileComplete: true,
     };
@@ -293,7 +283,6 @@ export default function ProfileSetupPage() {
     const updatedUser = { ...user, ...updateData };
     localStorage.setItem('user', JSON.stringify(updatedUser));
     
-    // After profile is saved, link historical data
     if (updatedUser.misId) {
         const linkResult = await linkEmrInterestsByMisId(updatedUser.uid, updatedUser.misId);
         if (linkResult.success && linkResult.count > 0) {
@@ -398,73 +387,28 @@ export default function ProfileSetupPage() {
                       <Input value={user.email} disabled />
                   </div>
 
-                   <FormField name="campus" control={form.control} render={({ field }) => (
+                  <FormField name="faculty" control={form.control} render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Campus</FormLabel>
-                      <Select
-                        onValueChange={(value) => {
-                          field.onChange(value);
-                          if (value === "Goa") {
-                            if (!goaFaculties.includes(form.getValues("faculty"))) {
-                              form.setValue("faculty", "");
-                            }
-                          }
-                        }}
-                        value={field.value}
-                        disabled={isGoaCampusUser}
-                      >
-                        <FormControl><SelectTrigger><SelectValue placeholder="Select your campus" /></SelectTrigger></FormControl>
-                        <SelectContent>{campuses.map(campus => (<SelectItem key={campus} value={campus}>{campus}</SelectItem>))}</SelectContent>
+                      <FormLabel>Faculty</FormLabel>
+                      <Select onValueChange={field.onChange} value={field.value}>
+                        <FormControl><SelectTrigger><SelectValue placeholder="Select your faculty" /></SelectTrigger></FormControl>
+                        <SelectContent>{goaFaculties.map(f => (<SelectItem key={f} value={f}>{f}</SelectItem>))}</SelectContent>
                       </Select>
                       <FormMessage />
                     </FormItem>
                   )} />
-
-                  <FormField name="faculty" control={form.control} render={({ field }) => {
-                    const facultyOptions = form.getValues("campus") === "Goa" ? goaFaculties : faculties;
-                    return (
-                      <FormItem>
-                        <FormLabel>Faculty</FormLabel>
-                        <Select onValueChange={field.onChange} value={field.value}>
-                          <FormControl>
-                            <SelectTrigger>
-                              <SelectValue placeholder="Select your faculty" />
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent>
-                            {facultyOptions.map(f => (
-                              <SelectItem key={f} value={f}>{f}</SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        <FormMessage />
-                      </FormItem>
-                    );
-                  }} />
-                 <FormField name="institute" control={form.control} render={({ field }) => {
-                    const instituteOptions = form.getValues("campus") === "Goa" ? goaInstitutes : institutes;
-                    return (
-                      <FormItem>
-                        <FormLabel>Institute</FormLabel>
-                        <Select onValueChange={field.onChange} value={field.value}>
-                          <FormControl>
-                            <SelectTrigger>
-                              <SelectValue placeholder="Select your institute" />
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent>
-                            {instituteOptions.map(i => (
-                              <SelectItem key={i} value={i}>{i}</SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        <FormMessage />
-                      </FormItem>
-                    );
-                  }} />
+                 <FormField name="institute" control={form.control} render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Institute</FormLabel>
+                      <Select onValueChange={field.onChange} value={field.value}>
+                        <FormControl><SelectTrigger><SelectValue placeholder="Select your institute" /></SelectTrigger></FormControl>
+                        <SelectContent>{[...new Set(goaInstitutes)].map((i, index) => (<SelectItem key={`${i}-${index}`} value={i}>{i}</SelectItem>))}</SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )} />
                   <h3 className="text-lg font-semibold border-t pt-4">Academic & Contact Details</h3>
-                   {/* Removed duplicate faculty field here since it's rendered conditionally above */}
-                  {userType !== 'Institutional' && (
+                   {userType !== 'Institutional' && (
                      <FormField
                       control={form.control}
                       name="department"
