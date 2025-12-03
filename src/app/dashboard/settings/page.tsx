@@ -47,7 +47,6 @@ import { Checkbox } from "@/components/ui/checkbox"
 const profileSchema = z.object({
   name: z.string().min(2, "Name must be at least 2 characters."),
   email: z.string().email(),
-  campus: z.string().optional(),
   faculty: z.string().min(1, "Please select a faculty."),
   institute: z.string().min(1, "Please select an institute."),
   department: z.string().optional(),
@@ -158,7 +157,6 @@ export default function SettingsPage() {
     defaultValues: {
       name: "",
       email: "",
-      campus: "Goa",
       faculty: "",
       institute: "",
       department: "",
@@ -233,7 +231,6 @@ export default function SettingsPage() {
           profileForm.reset({
             name: appUser.name || "",
             email: appUser.email || "",
-            campus: "Goa",
             faculty: appUser.faculty || "",
             institute: appUser.institute || "",
             department: appUser.department || "",
@@ -256,8 +253,6 @@ export default function SettingsPage() {
     return () => unsubscribe()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
-  
-  const selectedCampus = profileForm.watch('campus');
 
   useEffect(() => {
     async function fetchDepartments() {
@@ -305,8 +300,8 @@ export default function SettingsPage() {
           return
         }
       }
-      if (data.misId && data.campus) {
-        const misIdCheck = await checkMisIdExists(data.misId, user.uid, data.campus);
+      if (data.misId && user.campus) {
+        const misIdCheck = await checkMisIdExists(data.misId, user.uid, user.campus);
         if (misIdCheck.exists) {
             profileForm.setError("misId", {
                 type: "manual",
@@ -810,16 +805,6 @@ export default function SettingsPage() {
                     )}
                   />
                 </div>
-                 <FormField name="campus" control={profileForm.control} render={({ field }) => (
-                    <FormItem>
-                        <FormLabel>Campus</FormLabel>
-                        <Select onValueChange={field.onChange} value={field.value} disabled={true}>
-                            <FormControl><SelectTrigger><SelectValue placeholder="Select your campus" /></SelectTrigger></FormControl>
-                            <SelectContent>{campuses.map(campus => (<SelectItem key={campus} value={campus}>{campus}</SelectItem>))}</SelectContent>
-                        </Select>
-                        <FormMessage />
-                    </FormItem>
-                 )} />
                 <FormField
                   name="faculty"
                   control={profileForm.control}
