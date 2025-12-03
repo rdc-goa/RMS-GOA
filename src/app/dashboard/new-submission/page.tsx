@@ -14,7 +14,7 @@ export default function NewSubmissionPage() {
         description="Please fill out the form below to submit your research project. You can save your progress as a draft at any time."
       >
         <Button asChild variant="outline">
-            <a href="https://pinxoxpbufq92wb4.public.blob.vercel-storage.com/Sample%20Template%20IMR%20PPT.pptx" download>
+            <a href="https://atkqjlzikx23ms5d.public.blob.vercel-storage.com/Sample%20Template%20IMR%20PPT.pptx" download>
                 <Download className="mr-2 h-4 w-4" />
                 Download Template
             </a>
