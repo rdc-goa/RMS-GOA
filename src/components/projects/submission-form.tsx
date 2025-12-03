@@ -607,7 +607,7 @@ export function SubmissionForm({ project }: SubmissionFormProps) {
                       <div className="flex items-center justify-between">
                         <FormLabel>Project Proposal (PDF)<span className="text-destructive"> *</span></FormLabel>
                         <Button asChild variant="outline" size="sm">
-                          <a href="https://pinxoxpbufq92wb4.public.blob.vercel-storage.com/Sample%20Template%20IMR%20PPT.pptx" download>
+                          <a href="https://atkqjlzikx23ms5d.public.blob.vercel-storage.com/Sample%20Template%20IMR%20PPT.pptx" download>
                               <Download className="mr-2 h-4 w-4" />
                               Download Template
                           </a>
