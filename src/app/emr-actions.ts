@@ -396,7 +396,7 @@ export async function scheduleEmrMeeting(
                        ${mode === 'Online' ? `<a href="${venue}" style="color: #64b5f6; text-decoration: underline;">${venue}</a>` : venue}
                     </p>
                     ${mode === 'Online' ? `<a href="${calendarLink}" target="_blank" style="display: inline-block; background-color: #4285F4; color: white; padding: 8px 12px; text-decoration: none; border-radius: 4px; margin-top: 10px;">Save to Google Calendar</a>` : ''}
-                    <p style="color: #cccccc; margin-top: 15px;">Please review the assigned presentations on the PU Research Projects Portal.</p>
+                    <p style="color: #cccccc; margin-top: 15px;">Please review the assigned presentations on the  PU Goa Research Projects Portal.</p>
                     ${EMAIL_STYLES.footer}
                 </div>
               `,
@@ -776,7 +776,7 @@ export async function announceEmrCall(callId: string): Promise<{ success: boolea
       <div ${EMAIL_STYLES.background}>
         ${EMAIL_STYLES.logo}
         <h2 style="color: #ffffff; text-align: center;">New Funding Opportunity: ${call.title}</h2>
-        <p style="color:#e0e0e0;">A new funding call from <strong style="color:#ffffff;">${call.agency}</strong> has been posted on the PU Research Projects Portal.</p>
+        <p style="color:#e0e0e0;">A new funding call from <strong style="color:#ffffff;">${call.agency}</strong> has been posted on the  PU Goa Research Projects Portal.</p>
         <div style="padding: 15px; border: 1px solid #4f5b62; border-radius: 8px; margin-top: 20px; background-color:#2c3e50;">
           <div style="color:#e0e0e0;" class="prose prose-sm">${call.description || "No description provided."}</div>
           <p style="color:#e0e0e0;"><strong>Register Interest By:</strong> ${formatInTimeZone(call.interestDeadline, timeZone, "PPpp (z)")}</p>

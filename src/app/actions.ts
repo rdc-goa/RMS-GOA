@@ -626,7 +626,7 @@ export async function updateProjectStatus(projectId: string, newStatus: Project[
       <p style="color:#e0e0e_0;">
         You can view your project details on the 
         <a href="${process.env.NEXT_PUBLIC_BASE_URL}/dashboard/project/${projectId}" style="color:#64b5f6; text-decoration:underline;">
-          PU Research Projects Portal
+          PU Goa Research Projects Portal
         </a>.
       </p>
       ${EMAIL_STYLES.footer}
@@ -704,7 +704,7 @@ export async function updateIncentiveClaimStatus(claimId: string, newStatus: Inc
                 <p style="color:#e0e0e0;">
                   You can view your claims on the 
                   <a href="${process.env.NEXT_PUBLIC_BASE_URL}/dashboard/incentive-claim" style="color:#64b5f6; text-decoration:underline;">
-                 PU Research Projects Portal             
+                  PU Goa Research Projects Portal           
                   </a>.
                 </p>
                 ${EMAIL_STYLES.footer}
@@ -800,7 +800,7 @@ export async function scheduleMeeting(
               <p style="color: #cccccc; margin-top: 15px;">
                 Please prepare for your presentation. You can view more details on the 
                 <a href="${process.env.NEXT_PUBLIC_BASE_URL}/dashboard/project/${projectData.id}" style="color: #64b5f6; text-decoration: underline;">
-                  PU Research Projects Portal
+                  PU Goa Research Projects Portal
                 </a>.
               </p>
               ${EMAIL_STYLES.footer}
@@ -861,7 +861,7 @@ export async function scheduleMeeting(
                       <p style="color: #cccccc; margin-top: 15px;">
                           You can access your evaluation queue on the
                           <a href="${process.env.NEXT_PUBLIC_BASE_URL}/dashboard/evaluator-dashboard" style="color: #64b5f6; text-decoration: underline;">
-                           PU Research Projects Portal
+                         PU Goa Research Projects Portal
                           </a>.
                       </p>
                       ${EMAIL_STYLES.footer}
@@ -1628,7 +1628,7 @@ export async function updateCoInvestigators(
               ${EMAIL_STYLES.logo}
               <p style="color:#ffffff;">Dear ${coPi.name},</p>
               <p style="color:#e0e0e0;">You have been added as a Co-PI to the IMR project titled "<strong style="color:#ffffff;">${project.title}</strong>" by ${project.pi}.</p>
-              <p style="color:#e0e0e0;">You can view the project details on the PU Research Projects Portal</p>
+              <p style="color:#e0e0e0;">You can view the project details on the PU Goa Research Projects Portal</p>
               ${EMAIL_STYLES.footer}
             </div>`
           await sendEmailUtility({

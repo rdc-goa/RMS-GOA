@@ -88,7 +88,7 @@ const allPossibleResearchPaperFields: { id: keyof IncentiveClaim | 'name' | 'des
     { id: 'totalPuAuthors', label: 'No. of Authors from PU' },
     { id: 'printIssn', label: 'ISSN' }, // Simplified for display
     { id: 'publicationProofUrls', label: 'PROOF OF PUBLICATION ATTACHED' },
-    { id: 'isPuNameInPublication', label: 'Whether “PU” name exists' },
+    { id: 'isPuNameInPublication', label: 'Whether “PU Goa” name exists' },
     { id: 'publicationMonth', label: 'Published Month & Year' }, // Simplified for display
 ];
 

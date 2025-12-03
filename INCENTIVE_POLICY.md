@@ -62,8 +62,8 @@ Incentives are based on a broader range of indexing criteria:
     - **Review Articles (Q3/Q4):** 80% of base amount. (Q1/Q2 review articles get 100%).
     - **Letter to the Editor/Editorial:** Flat total of ₹2,500 to be distributed among authors.
 
-2.  **PU Affiliation & APC Payment:**
-    - If "Parul University" is **not** mentioned in the publication affiliation, the final incentive is **reduced by 50%**.
+2.  **PU Goa Affiliation & APC Payment:**
+    - If "Parul University Goa" is **not** mentioned in the publication affiliation, the final incentive is **reduced by 50%**.
     - If the Article Processing Charge (APC) was paid by the University, the final incentive is **reduced by 50%**.
 
 ### Author Distribution Rules
@@ -159,15 +159,15 @@ The incentive for patents is based on the patent's current status and whether PU
 
 ### Adjustments
 
-- **PU as Sole Applicant:** 100% of the base amount is used for distribution.
-- **PU as Joint Applicant:** 80% of the base amount is used for distribution.
-- **PU Not an Applicant:** 0% incentive.
+- **PU Goa as Sole Applicant:** 100% of the base amount is used for distribution.
+- **PU Goa as Joint Applicant:** 80% of the base amount is used for distribution.
+- **PU Goa Not an Applicant:** 0% incentive.
 
 ---
 
 ## 5. Seed Money for APC
 
-Reimbursement for Article Processing Charges (APC) is calculated as the *lesser of* the actual APC paid and the maximum policy limit, distributed equally among all PU authors.
+Reimbursement for Article Processing Charges (APC) is calculated as the *lesser of* the actual APC paid and the maximum policy limit, distributed equally among all PU Goa authors.
 
 **Maximum Reimbursement Limit:**
 - **Q1 Journal:** ₹40,000

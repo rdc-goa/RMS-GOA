@@ -173,7 +173,7 @@ function ReviewDetails({ data, onEdit }: { data: ApcFormValues; onEdit: () => vo
                 {renderDetail("Journal Website", data.apcJournalWebsite)}
                 {renderDetail("ISSN", data.apcIssnNo)}
                 {renderDetail("SCI Impact Factor", data.apcSciImpactFactor)}
-                {renderDetail("PU Name in Publication", data.apcPuNameInPublication)}
+                {renderDetail("PU Goa Name in Publication", data.apcPuNameInPublication)}
                 {renderDetail("Total Amount of APC (INR)", `₹${data.apcTotalAmount.toLocaleString('en-IN')}`)}
                 {renderDetail("Amount Claimed (INR)", `₹${data.apcAmountClaimed.toLocaleString('en-IN')}`)}
                 {renderDetail("Proof of APC Waiver Request", apcWaiverProofFile?.name)}
@@ -736,7 +736,7 @@ useEffect(() => {
                 <FormField name="apcJournalWebsite" control={form.control} render={({ field }) => ( <FormItem><FormLabel>Journal Website</FormLabel><FormControl><Input type="url" {...field} /></FormControl><FormMessage /></FormItem> )} />
                 <FormField name="apcIssnNo" control={form.control} render={({ field }) => ( <FormItem><FormLabel>ISSN No.</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem> )} />
                 <FormField name="apcSciImpactFactor" control={form.control} render={({ field }) => ( <FormItem><FormLabel>SCI Impact Factor</FormLabel><FormControl><Input type="number" step="any" {...field} min="0" /></FormControl><FormMessage /></FormItem> )} />
-                <FormField name="apcPuNameInPublication" control={form.control} render={({ field }) => ( <FormItem><div className="flex items-center justify-between"><FormLabel>Is "PU" name present in the publication?</FormLabel><FormControl><Checkbox checked={field.value} onCheckedChange={field.onChange} /></FormControl></div><FormMessage /></FormItem> )} />
+                <FormField name="apcPuNameInPublication" control={form.control} render={({ field }) => ( <FormItem><div className="flex items-center justify-between"><FormLabel>Is "PU Goa" name present in the publication?</FormLabel><FormControl><Checkbox checked={field.value} onCheckedChange={field.onChange} /></FormControl></div><FormMessage /></FormItem> )} />
                 <FormField name="apcPublicationProof" control={form.control} render={({ field: { value, onChange, ...fieldProps } }) => ( <FormItem><FormLabel>Attachment Proof of publication (PDF)</FormLabel><FormControl><Input {...fieldProps} type="file" onChange={(e) => onChange(e.target.files)} accept="application/pdf" /></FormControl><FormMessage /></FormItem> )} />
             </div>
 

@@ -501,7 +501,7 @@ export async function manageCoAuthorRequest(
                     <p style="color:#e0e0e0;">
                         You can view your updated publication list on the 
                         <a href="${process.env.NEXT_PUBLIC_BASE_URL}/dashboard/my-projects" style="color:#64b5f6; text-decoration:underline;">
-                          PU Research Projects Portal
+                          PU Goa Research Projects Portal
                         </a>.
                     </p>
                     ${EMAIL_STYLES.footer}

@@ -28,7 +28,7 @@ export function Logo({ variant = 'public' }: LogoProps) {
         />
         {/* Collapsed Logo Icon */}
         <div className="hidden h-7 w-7 items-center justify-center rounded-sm bg-primary text-primary-foreground group-data-[collapsible=icon]:flex">
-          <span className="text-sm font-bold">PU</span>
+          <span className="text-sm font-bold">PU Goa</span>
         </div>
       </div>
     );
