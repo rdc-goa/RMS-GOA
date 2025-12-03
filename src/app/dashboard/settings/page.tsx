@@ -492,7 +492,7 @@ export default function SettingsPage() {
     const newAssignment: CroAssignment = {
         email: values.email.toLowerCase(),
         faculty: values.faculty,
-        campus: values.campus,
+        campus: Goa,
     };
 
     const currentAssignments = systemSettings.croAssignments || [];
@@ -700,10 +700,7 @@ export default function SettingsPage() {
                 <Separator />
                 <div className="space-y-4"><div className="flex items-center gap-2"><Mail className="h-5 w-5" /><Label className="text-base">Do Not Disturb (DND) Email</Label></div><p className="text-sm text-muted-foreground">The email address entered here will be excluded from all automated system email notifications.</p><Input placeholder="dnd.user@paruluniversity.ac.in" defaultValue={systemSettings.dndEmail || ''} onBlur={(e) => handleSystemSettingsSave({ ...systemSettings, dndEmail: e.target.value })} disabled={isSavingSettings} /></div>
                 <Separator />
-                <div className="space-y-4"><Label className="text-base">Allowed Email Domains</Label><p className="text-sm text-muted-foreground">Users with these email domains can register and access the portal.</p><div className="flex gap-2"><Input placeholder="@newcampus.paruluniversity.ac.in" value={newAllowedDomain} onChange={(e) => setNewAllowedDomain(e.target.value)} /><Button onClick={addAllowedDomain} disabled={isSavingSettings || !newAllowedDomain.trim()}><Plus className="h-4 w-4" /></Button></div><div className="flex flex-wrap gap-2">{(systemSettings.allowedDomains || []).map((domain) => (<Badge key={domain} variant="secondary" className="flex items-center gap-1">{domain}<Button variant="ghost" size="icon" className="h-4 w-4 hover:bg-destructive hover:text-destructive-foreground" onClick={() => removeAllowedDomain(domain)} disabled={isSavingSettings}><X className="h-3 w-3" /></Button></Badge>))}</div></div>
-                <Separator />
-                <div className="space-y-4"><Label className="text-base">CRO Pre-assignment</Label><p className="text-sm text-muted-foreground">Pre-assign the CRO role and their primary faculty/campus to a specific email. This will be automatically applied upon sign-up.</p><Form {...croAssignmentForm}><form onSubmit={croAssignmentForm.handleSubmit(addCroAssignment)} className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end p-4 border rounded-lg"><FormField control={croAssignmentForm.control} name="email" render={({ field }) => ( <FormItem><FormLabel>CRO Email</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem> )} /><FormField control={croAssignmentForm.control} name="campus" render={({ field }) => ( <FormItem><FormLabel>Campus</FormLabel><Select onValueChange={field.onChange} value={field.value}><FormControl><SelectTrigger><SelectValue placeholder="Select campus" /></SelectTrigger></FormControl><SelectContent>{campuses.map(c => (<SelectItem key={c} value={c}>{c}</SelectItem>))}</SelectContent></Select><FormMessage /></FormItem> )} /><FormField control={croAssignmentForm.control} name="faculty" render={({ field }) => ( <FormItem><FormLabel>Faculty</FormLabel><Select onValueChange={field.onChange} value={field.value}><FormControl><SelectTrigger><SelectValue placeholder="Select faculty" /></SelectTrigger></FormControl><SelectContent>{facultyOptionsForCro.map(f => (<SelectItem key={f} value={f}>{f}</SelectItem>))}</SelectContent></Select><FormMessage /></FormItem> )} /><Button type="submit" disabled={isSavingSettings}><Plus className="h-4 w-4 mr-2" /> Add CRO</Button></form></Form>{(systemSettings.croAssignments || []).length > 0 && (<Table><TableHeader><TableRow><TableHead>Email</TableHead><TableHead>Faculty</TableHead><TableHead>Campus</TableHead><TableHead className="text-right">Action</TableHead></TableRow></TableHeader><TableBody>{systemSettings.croAssignments?.map((assignment) => (<TableRow key={assignment.email}><TableCell>{assignment.email}</TableCell><TableCell>{assignment.faculty}</TableCell><TableCell>{assignment.campus}</TableCell><TableCell className="text-right"><Button variant="ghost" size="icon" onClick={() => removeCroAssignment(assignment.email)} disabled={isSavingSettings}><X className="h-4 w-4" /></Button></TableCell></TableRow>))}</TableBody></Table>)}</div>
-                <Separator />
+               
                 <div className="space-y-4"><div className="flex items-center gap-2"><Mail className="h-5 w-5" /><Label className="text-base">Utilization Report Email Recipient</Label></div><p className="text-sm text-muted-foreground">The email address that will receive a notification when a PI submits a utilization report and requests the next grant phase.</p><Input placeholder="finance.rdc@paruluniversity.ac.in" defaultValue={systemSettings.utilizationNotificationEmail || ''} onBlur={(e) => handleSystemSettingsSave({ ...systemSettings, utilizationNotificationEmail: e.target.value })} disabled={isSavingSettings} /></div>
                 <Separator />
                 <div className="space-y-4"><Label className="text-base">IQAC Email Address</Label><p className="text-sm text-muted-foreground">The user who signs up with this email will be automatically assigned the IQAC role.</p><Input placeholder="iqac@paruluniversity.ac.in" defaultValue={systemSettings.iqacEmail || ''} onBlur={(e) => handleSystemSettingsSave({ ...systemSettings, iqacEmail: e.target.value })} disabled={isSavingSettings} /></div>
@@ -810,12 +807,12 @@ export default function SettingsPage() {
                           </SelectTrigger>
                         </FormControl>
                         <SelectContent>
-                          {(selectedCampus === 'Goa' ? goaFaculties : faculties).map((f) => (
-                            <SelectItem key={f} value={f}>
-                              {f}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
+                            {goaFaculties.map((f) => (
+                              <SelectItem key={f} value={f}>
+                                {f}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
                       </Select>
                       <FormMessage />
                     </FormItem>
