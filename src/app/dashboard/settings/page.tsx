@@ -1,4 +1,5 @@
 
+
 "use client"
 
 import type React from "react"
@@ -35,7 +36,7 @@ import {
   updatePassword,
 } from "firebase/auth"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { Banknote, Bot, Loader2, ShieldCheck, Plus, X, Award, Upload, Image as ImageIcon, Calendar as CalendarIcon, Clock, Mail, BellOff, FileText, FileSpreadsheet, Lock } from "lucide-react"
+import { Banknote, Bot, Loader2, ShieldCheck, Plus, X, Award, Upload, Image as ImageIcon, Calendar as CalendarIcon, Clock, Mail, BellOff, FileText, FileSpreadsheet } from "lucide-react"
 import { Combobox } from "@/components/ui/combobox"
 import { Switch } from "@/components/ui/switch"
 import { Label } from "@/components/ui/label"
@@ -47,6 +48,7 @@ import { Checkbox } from "@/components/ui/checkbox"
 const profileSchema = z.object({
   name: z.string().min(2, "Name must be at least 2 characters."),
   email: z.string().email(),
+  campus: z.string().optional(),
   faculty: z.string().min(1, "Please select a faculty."),
   institute: z.string().min(1, "Please select an institute."),
   department: z.string().optional(),
@@ -99,7 +101,7 @@ const goaFaculties = [
     "University Office"
 ];
 
-const campuses: User['campus'][] = ["Goa"];
+const campuses = ["Goa"];
 
 const goaInstitutes = [
     "Parul College of Applied and Health Sciences",
@@ -111,7 +113,6 @@ const goaInstitutes = [
     "Parul College of Physiotherapy",
     "University Office"
 ];
-
 
 const salaryBanks = ["AU Bank", "HDFC Bank", "Central Bank of India"]
 
@@ -157,6 +158,7 @@ export default function SettingsPage() {
     defaultValues: {
       name: "",
       email: "",
+      campus: "",
       faculty: "",
       institute: "",
       department: "",
@@ -231,6 +233,7 @@ export default function SettingsPage() {
           profileForm.reset({
             name: appUser.name || "",
             email: appUser.email || "",
+            campus: "Goa",
             faculty: appUser.faculty || "",
             institute: appUser.institute || "",
             department: appUser.department || "",
@@ -253,15 +256,18 @@ export default function SettingsPage() {
     return () => unsubscribe()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+  
+  const selectedCampus = profileForm.watch('campus');
 
   useEffect(() => {
     async function fetchDepartments() {
-      const endpoint = '/api/get-goa-departments';
+      const endpoint = selectedCampus === 'Goa' ? '/api/get-goa-departments' : '/api/get-departments';
       try {
         const res = await fetch(endpoint);
         const result = await res.json();
         if (result.success) {
           setDepartments(result.data);
+          // If current department is not in the new list, reset it
           const currentDepartment = profileForm.getValues('department');
           if (currentDepartment && !result.data.includes(currentDepartment)) {
               profileForm.setValue('department', '');
@@ -272,13 +278,12 @@ export default function SettingsPage() {
       }
     }
     fetchDepartments();
-  }, [profileForm]);
+  }, [selectedCampus, profileForm]);
 
   useEffect(() => {
     const currentInstitute = profileForm.getValues('institute');
-    const appropriateInstitutes = goaInstitutes;
-    if (currentInstitute && !appropriateInstitutes.includes(currentInstitute)) {
-        profileForm.setValue('institute', '');
+    if (currentInstitute && !goaInstitutes.includes(currentInstitute)) {
+      profileForm.setValue('institute', '');
     }
   }, [profileForm]);
 
@@ -300,8 +305,8 @@ export default function SettingsPage() {
           return
         }
       }
-      if (data.misId && user.campus) {
-        const misIdCheck = await checkMisIdExists(data.misId, user.uid, user.campus);
+      if (data.misId && data.campus) {
+        const misIdCheck = await checkMisIdExists(data.misId, user.uid, data.campus);
         if (misIdCheck.exists) {
             profileForm.setError("misId", {
                 type: "manual",
@@ -319,8 +324,8 @@ export default function SettingsPage() {
           ;(updateData as any)[key] = ""
         }
       }
-      await updateDoc(userDocRef, { ...updateData, campus: 'Goa' } as any)
-      const updatedUser = { ...user, ...updateData, campus: 'Goa' }
+      await updateDoc(userDocRef, updateData as any)
+      const updatedUser = { ...user, ...updateData }
       localStorage.setItem("user", JSON.stringify(updatedUser))
       setUser(updatedUser)
       toast({ title: "Profile updated successfully!" })
@@ -444,25 +449,6 @@ export default function SettingsPage() {
     }
     setIsSavingSettings(false);
   };
-  
-  const handleAuthMethodToggle = async (method: 'email' | 'google', enabled: boolean) => {
-    if (!systemSettings) return;
-    const currentAuth = { email: true, google: true, ...systemSettings.authMethods };
-    
-    // Prevent disabling the last method
-    if (!enabled && ((method === 'email' && !currentAuth.google) || (method === 'google' && !currentAuth.email))) {
-        toast({
-            variant: 'destructive',
-            title: 'Action Prevented',
-            description: 'At least one authentication method must be enabled.',
-        });
-        return;
-    }
-
-    const newAuthMethods = { ...currentAuth, [method]: enabled };
-    await handleSystemSettingsSave({ ...systemSettings, authMethods: newAuthMethods });
-  };
-
 
   const handleApiIntegrationToggle = async (api: keyof ApiIntegrations, enabled: boolean) => {
     if (!systemSettings) return;
@@ -506,7 +492,7 @@ export default function SettingsPage() {
     const newAssignment: CroAssignment = {
         email: values.email.toLowerCase(),
         faculty: values.faculty,
-        campus: 'Goa',
+        campus: values.campus,
     };
 
     const currentAssignments = systemSettings.croAssignments || [];
@@ -626,8 +612,7 @@ export default function SettingsPage() {
   ];
 
 
-  const isAcademicInfoLocked = isCro || isPrincipal;
-
+  const isAcademicInfoLocked = isCro || isPrincipal
 
   if (loading) {
     return (
@@ -683,21 +668,20 @@ export default function SettingsPage() {
             </CardHeader>
             <CardContent className="space-y-6">
                 <div className="space-y-4">
-                  <div className="flex items-center gap-2"><Lock className="h-5 w-5" /><Label className="text-base">Authentication Methods</Label></div>
-                  <p className="text-sm text-muted-foreground">Enable or disable specific login methods for all users.</p>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div className="flex items-center justify-between rounded-lg border p-3"><Label htmlFor="email-auth-toggle">Email & Password</Label><Switch id="email-auth-toggle" checked={systemSettings.authMethods?.email !== false} onCheckedChange={(c) => handleAuthMethodToggle('email', c)} disabled={isSavingSettings} /></div>
-                      <div className="flex items-center justify-between rounded-lg border p-3"><Label htmlFor="google-auth-toggle">Google Sign-In</Label><Switch id="google-auth-toggle" checked={systemSettings.authMethods?.google !== false} onCheckedChange={(c) => handleAuthMethodToggle('google', c)} disabled={isSavingSettings} /></div>
-                  </div>
-                </div>
-                <Separator />
-                <div className="space-y-4">
                     <div className="flex items-center gap-2"><Bot className="h-5 w-5" /><Label className="text-base">API Integrations</Label></div>
                     <p className="text-sm text-muted-foreground">Enable or disable external data fetching services.</p>
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                         <div className="flex items-center justify-between rounded-lg border p-3"><Label htmlFor="scopus-toggle">Scopus</Label><Switch id="scopus-toggle" checked={systemSettings.apiIntegrations?.scopus !== false} onCheckedChange={(c) => handleApiIntegrationToggle('scopus', c)} disabled={isSavingSettings} /></div>
                         <div className="flex items-center justify-between rounded-lg border p-3"><Label htmlFor="wos-toggle">Web of Science</Label><Switch id="wos-toggle" checked={systemSettings.apiIntegrations?.wos !== false} onCheckedChange={(c) => handleApiIntegrationToggle('wos', c)} disabled={isSavingSettings} /></div>
                         <div className="flex items-center justify-between rounded-lg border p-3"><Label htmlFor="sci-toggle">ScienceDirect</Label><Switch id="sci-toggle" checked={systemSettings.apiIntegrations?.sci !== false} onCheckedChange={(c) => handleApiIntegrationToggle('sci', c)} disabled={isSavingSettings} /></div>
+                    </div>
+                </div>
+                <Separator />
+                <div className="space-y-4">
+                    <div className="flex items-center gap-2"><FileText className="h-5 w-5" /><Label className="text-base">Template Management</Label></div>
+                    <p className="text-sm text-muted-foreground">Provide the direct download URLs for the DOCX templates used to generate office notings and other documents.</p>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4">
+                        {templateFields.map(({ key, label }) => (<div key={key} className="space-y-1"><Label htmlFor={`template-${key}`} className="text-sm">{label}</Label><Input id={`template-${key}`} placeholder="https://..." defaultValue={systemSettings.templateUrls?.[key] || ''} onBlur={(e) => handleTemplateUrlChange(key, e.target.value)} disabled={isSavingSettings} /></div>))}
                     </div>
                 </div>
                 <Separator />
@@ -736,8 +720,6 @@ export default function SettingsPage() {
                     </div>
                   </Form>
                 </div>
-                 <Separator />
-                <div className="space-y-4"><div className="flex items-center gap-2"><FileText className="h-5 w-5" /><Label className="text-base">Template Management</Label></div><p className="text-sm text-muted-foreground">Provide the direct download URLs for the DOCX templates used to generate office notings and other documents.</p><div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4">{templateFields.map(({ key, label }) => (<div key={key} className="space-y-1"><Label htmlFor={`template-${key}`} className="text-sm">{label}</Label><Input id={`template-${key}`} placeholder="https://..." defaultValue={systemSettings.templateUrls?.[key] || ''} onBlur={(e) => handleTemplateUrlChange(key, e.target.value)} disabled={isSavingSettings} /></div>))}</div>
             </CardContent>
           </Card>
         )}
@@ -805,6 +787,16 @@ export default function SettingsPage() {
                     )}
                   />
                 </div>
+                 <FormField name="campus" control={profileForm.control} render={({ field }) => (
+                    <FormItem>
+                        <FormLabel>Campus</FormLabel>
+                        <Select onValueChange={field.onChange} value={field.value} disabled={user?.email?.endsWith('@goa.paruluniversity.ac.in')}>
+                            <FormControl><SelectTrigger><SelectValue placeholder="Select your campus" /></SelectTrigger></FormControl>
+                            <SelectContent>{campuses.map(campus => (<SelectItem key={campus} value={campus}>{campus}</SelectItem>))}</SelectContent>
+                        </Select>
+                        <FormMessage />
+                    </FormItem>
+                 )} />
                 <FormField
                   name="faculty"
                   control={profileForm.control}
@@ -818,7 +810,7 @@ export default function SettingsPage() {
                           </SelectTrigger>
                         </FormControl>
                         <SelectContent>
-                          {goaFaculties.map((f) => (
+                          {(selectedCampus === 'Goa' ? goaFaculties : faculties).map((f) => (
                             <SelectItem key={f} value={f}>
                               {f}
                             </SelectItem>
@@ -842,12 +834,12 @@ export default function SettingsPage() {
                           </SelectTrigger>
                         </FormControl>
                         <SelectContent>
-                          {[...new Set(goaInstitutes)].map((i, index) => (
-                            <SelectItem key={`${i}-${index}`} value={i}>
-                              {i}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
+                            {goaInstitutes.map((i, index) => (
+                              <SelectItem key={`${i}-${index}`} value={i}>
+                                {i}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
                       </Select>
                       <FormMessage />
                     </FormItem>
