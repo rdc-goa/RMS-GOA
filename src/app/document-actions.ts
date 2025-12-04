@@ -1,4 +1,5 @@
 
+
 'use server';
 
 import fs from 'fs';
@@ -11,13 +12,28 @@ import { FieldValue } from 'firebase-admin/firestore';
 import { format, parseISO, differenceInDays } from 'date-fns';
 import ExcelJS from 'exceljs';
 import JSZip from 'jszip';
-import { getTemplateContentFromUrl } from '@/lib/template-manager';
 import { getSystemSettings } from '@/app/actions';
 import { generateBookIncentiveForm } from '@/app/incentive-actions';
 import { generateMembershipIncentiveForm } from '@/app/membership-actions';
 import { generatePatentIncentiveForm } from '@/app/patent-actions';
 import { generateConferenceIncentiveForm } from '@/app/conference-actions';
 import { generateResearchPaperIncentiveForm } from '@/app/research-paper-actions';
+
+// Moved from template-manager.ts to ensure it's always server-side.
+async function getTemplateContentFromUrl(url: string): Promise<Buffer | null> {
+    try {
+        const response = await fetch(url, { cache: 'no-store' });
+        if (!response.ok) {
+            console.error(`Failed to fetch template from ${url}, status: ${response.status}`);
+            return null;
+        }
+        const arrayBuffer = await response.arrayBuffer();
+        return Buffer.from(arrayBuffer);
+    } catch (error) {
+        console.error(`Error fetching template from ${url}:`, error);
+        return null;
+    }
+}
 
 
 async function logActivity(level: 'INFO' | 'WARNING' | 'ERROR', message: string, context: Record<string, any> = {}) {

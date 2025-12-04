@@ -1,4 +1,5 @@
 
+
 'use client';
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useForm, useFieldArray } from 'react-hook-form';
@@ -446,8 +447,8 @@ useEffect(() => {
         } else {
             toast({ variant: 'destructive', title: 'User Not Found', description: result.error });
         }
-    } catch (error) {
-        toast({ variant: 'destructive', title: 'Search Failed', description: 'An error occurred while searching.' });
+    } catch (error: any) {
+        toast({ variant: 'destructive', title: 'Search Failed', description: error.message || 'An error occurred while searching.' });
     } finally {
         setIsSearching(false);
     }
@@ -705,6 +706,8 @@ useEffect(() => {
                         ))}
                     </div>
                     
+                    <Separator className="my-4" />
+
                     <div className="space-y-2 p-3 border rounded-md">
                         <FormLabel>Add Internal Co-Author</FormLabel>
                         <div className="flex items-center gap-2">
