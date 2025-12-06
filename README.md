@@ -95,7 +95,6 @@ This is the most critical step. The application will not run without the correct
 
 ```env
 # .env.local
-NEXT_PUBLIC_FIREBASE_API_KEY="[API_KEY]"
 NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN="[AUTH_DOMAIN]"
 NEXT_PUBLIC_FIREBASE_PROJECT_ID="[PROJECT_ID]"
 NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET="[STORAGE_BUCKET]"
