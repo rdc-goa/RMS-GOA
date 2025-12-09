@@ -1,4 +1,5 @@
 
+
 // src/components/emr/emr-management-client.tsx
 'use client';
 
@@ -10,14 +11,14 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import Link from 'next/link';
-import { Download, Trash2, CalendarClock, Eye, MoreHorizontal, MessageSquare, Loader2, FileUp, FileText as ViewIcon, Edit, Upload, UserCheck } from 'lucide-react';
+import { Download, Trash2, CalendarClock, Eye, MoreHorizontal, MessageSquare, Loader2, FileUp, FileText as ViewIcon, Edit, Upload, UserCheck, PlusCircle } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { Textarea } from '../ui/textarea';
 import { Form, FormControl, FormField, FormItem, FormMessage } from '../ui/form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { useForm } from 'react-hook-form';
-import { deleteEmrInterest, updateEmrInterestDetails, updateEmrStatus, signAndUploadEndorsement, markEmrAttendance } from '@/app/emr-actions';
+import { deleteEmrInterest, updateEmrInterestDetails, updateEmrStatus, signAndUploadEndorsement, markEmrAttendance, registerEmrInterestByAdmin } from '@/app/emr-actions';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -54,6 +55,8 @@ import { Label } from '../ui/label';
 import { Switch } from '../ui/switch';
 import { UploadPptDialog } from './upload-ppt-dialog';
 import { Checkbox } from '../ui/checkbox';
+import { findUserByMisId } from '@/app/userfinding';
+import { RadioGroup, RadioGroupItem } from '../ui/radio-group';
 
 
 interface EmrManagementClientProps {
@@ -90,6 +93,90 @@ const attendanceSchema = z.object({
   absentApplicantIds: z.array(z.string()),
   absentEvaluatorUids: z.array(z.string()),
 });
+
+function ManualRegistrationDialog({ call, isOpen, onOpenChange, onActionComplete, currentUser }: { call: FundingCall; isOpen: boolean; onOpenChange: (open: boolean) => void; onActionComplete: () => void; currentUser: User; }) {
+    const { toast } = useToast();
+    const [searchTerm, setSearchTerm] = useState('');
+    const [isSearching, setIsSearching] = useState(false);
+    const [isRegistering, setIsRegistering] = useState(false);
+    const [foundUser, setFoundUser] = useState<User | null>(null);
+
+    const handleSearch = async () => {
+        if (!searchTerm) return;
+        setIsSearching(true);
+        setFoundUser(null);
+        try {
+            const result = await findUserByMisId(searchTerm);
+            if (result.success && result.users && result.users.length > 0) {
+                // To simplify, we'll take the first result.
+                // A more robust implementation might handle multiple matches.
+                const userToRegister = allUsers.find(u => u.uid === result.users![0].uid);
+                if (userToRegister) {
+                    setFoundUser(userToRegister);
+                } else {
+                    toast({ variant: 'destructive', title: 'User Not Fully Registered', description: "This user was found but hasn't completed their portal profile." });
+                }
+            } else {
+                toast({ variant: 'destructive', title: 'User Not Found', description: result.error || "No user found with this MIS ID." });
+            }
+        } catch (error: any) {
+            toast({ variant: 'destructive', title: 'Search Failed', description: error.message });
+        } finally {
+            setIsSearching(false);
+        }
+    };
+    
+    const handleRegister = async () => {
+        if (!foundUser) return;
+        setIsRegistering(true);
+        try {
+            const result = await registerEmrInterestByAdmin(call.id, foundUser, currentUser);
+            if(result.success) {
+                toast({title: 'Success', description: `${foundUser.name} has been registered.`});
+                onActionComplete();
+                onOpenChange(false);
+            } else {
+                throw new Error(result.error);
+            }
+        } catch (error: any) {
+            toast({ variant: 'destructive', title: 'Registration Failed', description: error.message });
+        } finally {
+            setIsRegistering(false);
+        }
+    };
+
+    return (
+        <Dialog open={isOpen} onOpenChange={onOpenChange}>
+            <DialogContent>
+                <DialogHeader>
+                    <DialogTitle>Add Applicant Manually</DialogTitle>
+                    <DialogDescription>Register a faculty member for this call by entering their MIS ID.</DialogDescription>
+                </DialogHeader>
+                <div className="py-4 space-y-4">
+                    <div className="flex items-center gap-2">
+                        <Input placeholder="Enter MIS ID..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
+                        <Button onClick={handleSearch} disabled={isSearching || !searchTerm}>
+                            {isSearching ? <Loader2 className="h-4 w-4 animate-spin"/> : "Search"}
+                        </Button>
+                    </div>
+                    {foundUser && (
+                        <div className="p-4 border rounded-md bg-muted/50">
+                            <p><strong>Name:</strong> {foundUser.name}</p>
+                            <p><strong>Email:</strong> {foundUser.email}</p>
+                            <p><strong>Institute:</strong> {foundUser.institute}</p>
+                        </div>
+                    )}
+                </div>
+                <DialogFooter>
+                    <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
+                    <Button onClick={handleRegister} disabled={!foundUser || isRegistering}>
+                         {isRegistering ? 'Registering...' : 'Confirm Registration'}
+                    </Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
+    );
+}
 
 function AttendanceDialog({ call, interests, allUsers, isOpen, onOpenChange, onUpdate }: { call: FundingCall; interests: EmrInterest[]; allUsers: User[]; isOpen: boolean; onOpenChange: (open: boolean) => void; onUpdate: () => void; }) {
     const { toast } = useToast();
@@ -351,6 +438,8 @@ export function EmrManagementClient({ call, interests, allUsers, currentUser, on
     const [isSignEndorsementDialogOpen, setIsSignEndorsementDialogOpen] = useState(false);
     const [isRevisionUploadOpen, setIsRevisionUploadOpen] = useState(false);
     const [isAttendanceDialogOpen, setIsAttendanceDialogOpen] = useState(false);
+    const [isManualRegisterOpen, setIsManualRegisterOpen] = useState(false);
+    const [interestForPptUpload, setInterestForPptUpload] = useState<EmrInterest | null>(null);
 
 
     const deleteForm = useForm<z.infer<typeof deleteRegistrationSchema>>({
@@ -467,6 +556,9 @@ export function EmrManagementClient({ call, interests, allUsers, currentUser, on
                                 <UserCheck className="mr-2 h-4 w-4" /> Attendance
                             </Button>
                          )}
+                        <Button variant="secondary" onClick={() => setIsManualRegisterOpen(true)}>
+                            <PlusCircle className="mr-2 h-4 w-4" /> Add Applicant Manually
+                        </Button>
                         <Button variant="outline" onClick={handleExport} disabled={interests.length === 0}>
                             <Download className="mr-2 h-4 w-4" /> Export XLSX
                         </Button>
@@ -547,6 +639,9 @@ export function EmrManagementClient({ call, interests, allUsers, currentUser, on
                                                             <Edit className="mr-2 h-4 w-4" /> Edit Bulk Data
                                                         </DropdownMenuItem>
                                                     )}
+                                                     <DropdownMenuItem onSelect={() => setInterestForPptUpload(interest)}>
+                                                        <Upload className="mr-2 h-4 w-4" /> Upload PPT
+                                                    </DropdownMenuItem>
                                                     <DropdownMenuItem onSelect={() => handleOpenRevisionUpload(interest)}>
                                                         <Upload className="mr-2 h-4 w-4" /> Upload Revised PPT
                                                     </DropdownMenuItem>
@@ -670,17 +765,26 @@ export function EmrManagementClient({ call, interests, allUsers, currentUser, on
                         onOpenChange={setIsSignEndorsementDialogOpen}
                         onUpdate={onActionComplete}
                     />
-                    <UploadPptDialog
-                        isOpen={isRevisionUploadOpen}
-                        onOpenChange={setIsRevisionUploadOpen}
-                        interest={interestToUpdate}
-                        call={call}
-                        user={userMap.get(interestToUpdate.userId)!} // Pass the applicant's user object
-                        onUploadSuccess={onActionComplete}
-                        isRevision={true}
-                    />
                  </>
              )}
+             {interestForPptUpload && (
+                <UploadPptDialog
+                    isOpen={!!interestForPptUpload}
+                    onOpenChange={() => setInterestForPptUpload(null)}
+                    interest={interestForPptUpload}
+                    call={call}
+                    user={currentUser}
+                    onUploadSuccess={onActionComplete}
+                    isAdminUpload={true}
+                />
+             )}
+             <ManualRegistrationDialog 
+                call={call}
+                isOpen={isManualRegisterOpen}
+                onOpenChange={setIsManualRegisterOpen}
+                onActionComplete={onActionComplete}
+                currentUser={currentUser}
+             />
         </Card>
     );
 }

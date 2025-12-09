@@ -136,6 +136,69 @@ export async function uploadFileToServer(
   }
 }
 
+export async function registerEmrInterestByAdmin(callId: string, user: User, adminUser: User): Promise<{ success: boolean; error?: string }> {
+  try {
+    if (!user || !user.uid || !user.faculty || !user.department) {
+      return {
+        success: false,
+        error: "Target user profile is incomplete. Cannot register interest.",
+      }
+    }
+
+    const interestsRef = adminDb.collection("emrInterests")
+    const q = interestsRef.where("callId", "==", callId).where("userId", "==", user.uid)
+    const docSnap = await q.get()
+    if (!docSnap.empty) {
+      return { success: false, error: "This user has already registered for this call." }
+    }
+
+    const newInterest = await adminDb.runTransaction(async (transaction) => {
+      const counterRef = adminDb.collection("counters").doc("emrInterest")
+      const counterDoc = await transaction.get(counterRef)
+
+      let newCount = 1
+      if (counterDoc.exists && counterDoc.data()?.current) {
+        newCount = counterDoc.data()!.current + 1
+      }
+      transaction.set(counterRef, { current: newCount }, { merge: true })
+
+      const interestId = `RDC/EMR/INTEREST/${String(newCount).padStart(5, "0")}`
+
+      const newInterestDoc: Omit<EmrInterest, "id"> = {
+        interestId: interestId,
+        callId: callId,
+        userId: user.uid,
+        userName: user.name,
+        userEmail: user.email,
+        faculty: user.faculty!,
+        department: user.department!,
+        registeredAt: new Date().toISOString(),
+        status: "Registered",
+        coPiDetails: [],
+        coPiUids: [],
+        coPiNames: [],
+        coPiEmails: [],
+      }
+
+      const interestRef = adminDb.collection("emrInterests").doc()
+      transaction.set(interestRef, newInterestDoc)
+      return { id: interestRef.id, ...newInterestDoc }
+    });
+
+    await logActivity("INFO", "EMR interest registered by admin", { callId, targetUserId: user.uid, adminUserId: adminUser.uid });
+
+    return { success: true };
+  } catch (error: any) {
+    console.error("Error registering EMR interest by admin:", error)
+    await logActivity("ERROR", "Failed to register EMR interest by admin", {
+      callId,
+      targetUserId: user.uid,
+      adminUserId: adminUser.uid,
+      error: error.message,
+    });
+    return { success: false, error: error.message || "Failed to register interest." };
+  }
+}
 
 export async function registerEmrInterest(
   callId: string,
@@ -417,6 +480,68 @@ export async function scheduleEmrMeeting(
     console.error("Error scheduling EMR meeting:", error)
     await logActivity("ERROR", "Failed to schedule EMR meeting", { callId, error: error.message, stack: error.stack })
     return { success: false, error: error.message || "Failed to schedule EMR meeting." }
+  }
+}
+
+export async function uploadEmrPptByAdmin(
+  interestId: string,
+  pptDataUrl: string,
+  originalFileName: string,
+  adminUser: User
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const interestRef = adminDb.collection("emrInterests").doc(interestId);
+    const interestSnap = await interestRef.get();
+    if (!interestSnap.exists) {
+      return { success: false, error: "Interest registration not found." };
+    }
+    const interest = interestSnap.data() as EmrInterest;
+    
+    const fileExtension = path.extname(originalFileName);
+    const standardizedName = `emr_admin-upload_${interest.userName.replace(/\s+/g, "_")}${fileExtension}`;
+
+    const filePath = `emr-presentations/${interest.callId}/${interest.userId}/${standardizedName}`;
+    const result = await uploadFileToServer(pptDataUrl, filePath);
+
+    if (!result.success || !result.url) {
+      throw new Error(result.error || "PPT upload failed.");
+    }
+    
+    await interestRef.update({
+      pptUrl: result.url,
+      pptSubmissionDate: new Date().toISOString(),
+      status: "PPT Submitted",
+    });
+
+    await logActivity("INFO", "EMR presentation uploaded by admin", { interestId, userId: interest.userId, adminId: adminUser.uid });
+    
+    // Notify the user that their PPT was uploaded
+    if (interest.userEmail) {
+        await sendEmailUtility({
+            to: interest.userEmail,
+            subject: `Presentation Uploaded for EMR Call: ${interest.callTitle}`,
+            html: `
+                <div ${EMAIL_STYLES.background}>
+                    ${EMAIL_STYLES.logo}
+                    <p style="color:#ffffff;">Dear ${interest.userName},</p>
+                    <p style="color:#e0e0e0;">This is to inform you that an administrator (${adminUser.name}) has uploaded a presentation on your behalf for the EMR call, "<strong style="color:#ffffff;">${interest.callTitle}</strong>".</p>
+                    <p style="color:#e0e0e0;">You can view the uploaded file on the portal.</p>
+                    ${EMAIL_STYLES.footer}
+                </div>
+            `,
+            from: "default",
+        });
+    }
+
+    return { success: true };
+  } catch (error: any) {
+    console.error("Error uploading EMR presentation by admin:", error);
+    await logActivity("ERROR", "Failed to upload EMR presentation by admin", {
+      interestId,
+      error: error.message,
+      stack: error.stack,
+    });
+    return { success: false, error: error.message || "Failed to upload presentation." };
   }
 }
 
