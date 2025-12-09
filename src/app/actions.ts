@@ -2,11 +2,6 @@
 
 "use server"
 
-import { getResearchDomainSuggestion, type ResearchDomainInput } from "@/ai/flows/research-domain-suggestion"
-import { summarizeProject, type SummarizeProjectInput } from "@/ai/flows/project-summarization"
-import { generateEvaluationPrompts, type EvaluationPromptsInput } from "@/ai/flows/evaluation-prompts"
-import { findJournalWebsite, type JournalWebsiteInput } from "@/ai/flows/journal-website-finder"
-import { chat as chatAgent, type ChatInput } from "@/ai/flows/chat-agent"
 import { adminDb, adminStorage } from "@/lib/admin"
 import { FieldValue } from "firebase-admin/firestore"
 import admin from "firebase-admin"
@@ -437,21 +432,6 @@ export async function saveProjectSubmission(
   }
 }
 
-export async function runChatAgent(input: ChatInput): Promise<{ success: boolean; response?: string; error?: string }> {
-  try {
-    const result = await chatAgent(input)
-    return { success: true, response: result }
-  } catch (error: any) {
-    console.error("Error running chat agent:", error)
-    await logActivity("ERROR", "Error in runChatAgent", {
-      userId: input.user.uid,
-      error: error.message,
-      stack: error.stack,
-    })
-    return { success: false, error: error.message || "Failed to get response from AI agent." }
-  }
-}
-
 export async function linkPapersToNewUser(
   uid: string,
   email: string,
@@ -515,56 +495,6 @@ export async function linkPapersToNewUser(
       stack: error.stack,
     })
     return { success: false, count: 0, error: error.message || "Failed to link papers." }
-  }
-}
-
-export async function getProjectSummary(input: SummarizeProjectInput) {
-  try {
-    const result = await summarizeProject(input)
-    return { success: true, summary: result.summary }
-  } catch (error) {
-    console.error("Error summarizing project:", error)
-    await logActivity("ERROR", "Failed to summarize project", { title: input.title, error: (error as Error).message })
-    return { success: false, error: "Failed to generate summary." }
-  }
-}
-
-export async function getEvaluationPrompts(input: EvaluationPromptsInput) {
-  try {
-    const result = await generateEvaluationPrompts(input)
-    return { success: true, prompts: result }
-  } catch (error) {
-    console.error("Error generating evaluation prompts:", error)
-    await logActivity("ERROR", "Failed to generate evaluation prompts", {
-      title: input.title,
-      error: (error as Error).message,
-    })
-    return { success: false, error: "Failed to generate prompts." }
-  }
-}
-
-export async function getResearchDomain(input: ResearchDomainInput) {
-  try {
-    const result = await getResearchDomainSuggestion(input)
-    return { success: true, domain: result.domain }
-  } catch (error) {
-    console.error("Error getting research domain:", error)
-    await logActivity("ERROR", "Failed to get research domain suggestion", { error: (error as Error).message })
-    return { success: false, error: "Failed to get research domain." }
-  }
-}
-
-export async function getJournalWebsite(input: JournalWebsiteInput) {
-  try {
-    const result = await findJournalWebsite(input)
-    return { success: true, url: result.websiteUrl }
-  } catch (error) {
-    console.error("Error finding journal website:", error)
-    await logActivity("ERROR", "Failed to find journal website", {
-      journalName: input.journalName,
-      error: (error as Error).message,
-    })
-    return { success: false, error: "Failed to find journal website." }
   }
 }
 
@@ -851,7 +781,7 @@ export async function scheduleMeeting(
                       <p><strong style="color: #ffffff;">
                         ${meetingDetails.mode === 'Online' ? 'Meeting Link:' : 'Venue:'}
                       </strong> 
-                        ${meetingDetails.mode === 'Online' ? `<a href="${meetingDetails.venue}" style="color: #64b5f6; text-decoration: underline;">${meetingDetails.venue}</a>` : meetingDetails.venue}
+                        ${meetingDetails.mode === 'Online' ? `<a href="${meetingDetails.venue}" style="color: #64b5f6; text-decoration: underline;">${venue}</a>` : meetingDetails.venue}
                       </p>
                       <p style="color: #e0e0e0;">The following projects are scheduled for your review:</p>
                       <ul style="list-style-type: none; padding-left: 0;">
