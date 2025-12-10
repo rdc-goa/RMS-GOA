@@ -15,7 +15,6 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Eye, ArrowUpDown, Edit } from 'lucide-react';
 import { type Project, type User } from '@/types';
-import { ProjectSummary } from './project-summary';
 import Link from 'next/link';
 import {
   Tooltip,
@@ -243,7 +242,6 @@ export function ProjectList({ projects, currentUser, allUsers = [] }: ProjectLis
                     <TableCell className="text-right">
                       <div className="flex items-center justify-end gap-2">
                         {actionButton}
-                        {isAdmin && project.status !== 'Draft' && <ProjectSummary project={project} />}
                       </div>
                     </TableCell>
                   </TableRow>
