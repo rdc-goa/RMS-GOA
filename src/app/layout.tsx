@@ -7,7 +7,6 @@ import './globals.css';
 import { ThemeProvider } from '@/components/providers/theme-provider';
 import { Toaster } from '@/components/ui/toaster';
 import { isFirebaseInitialized, app, auth, db } from '@/lib/config';
-import { FirebaseNotConfigured } from '@/components/firebase-not-configured';
 import { AuthInitializer } from '@/components/AuthInitializer';
 import { Analytics } from '@vercel/analytics/react';
 import { FirebaseProvider } from '@/components/providers/FirebaseProvider';
@@ -63,7 +62,6 @@ export default function RootLayout({
             enableSystem
             disableTransitionOnChange
           >
-            <FirebaseNotConfigured />
           </ThemeProvider>
         </body>
       </html>

@@ -1362,26 +1362,6 @@ export async function updateEmrInterestCoPis(
   }
 }
 
-export async function updateEmrInterestDetails(
-    interestId: string,
-    updates: Partial<EmrInterest>
-): Promise<{ success: boolean; error?: string }> {
-    try {
-        const interestRef = adminDb.collection('emrInterests').doc(interestId);
-        await interestRef.update(updates);
-        await logActivity('INFO', 'EMR interest details updated', { interestId, updates });
-        return { success: true };
-    } catch (error: any) {
-        console.error("Error updating EMR interest details:", error);
-        await logActivity('ERROR', 'Failed to update EMR interest details', {
-            interestId,
-            error: error.message,
-            stack: error.stack
-        });
-        return { success: false, error: 'Failed to update details.' };
-    }
-}
-
 export async function signAndUploadEndorsement(interestId: string, signedEndorsementDataUrl: string, fileName: string): Promise<{ success: boolean; error?: string }> {
     try {
         if (!interestId || !signedEndorsementDataUrl) {
