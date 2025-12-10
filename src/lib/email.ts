@@ -2,7 +2,7 @@
 'use server';
 
 import nodemailer from 'nodemailer';
-import { getSystemSettings } from '@/app/actions';
+import { getSystemSettings } from '@/app/server-actions';
 
 const GMAIL_USER = process.env.GMAIL_USER;
 const GMAIL_APP_PASSWORD = process.env.GMAIL_APP_PASSWORD;
