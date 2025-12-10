@@ -82,7 +82,7 @@ export async function findUserByMisId(
       });
   
       // 2. Search staff data files via API by MIS ID
-      const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:9002';
+      const baseUrl = process.env.BASE_URL || 'http://localhost:9002';
       const staffResponse = await fetch(`${baseUrl}/api/get-staff-data?misId=${encodeURIComponent(searchTerm)}&fetchAll=true`);
       
       if (staffResponse.ok) {

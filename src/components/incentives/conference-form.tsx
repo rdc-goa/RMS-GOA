@@ -21,7 +21,7 @@ import { useToast } from '@/hooks/use-toast';
 import { db } from '@/lib/config';
 import { collection, addDoc, doc, setDoc, getDocs, query, where, orderBy, getDoc } from 'firebase/firestore';
 import type { User, IncentiveClaim } from '@/types';
-import { uploadFileToServer } from '@/app/actions';
+import { uploadFileToServer } from '@/app/server-actions';
 import { Loader2, AlertCircle, Info, Calculator, Search, Edit } from 'lucide-react';
 import { submitIncentiveClaim } from '@/app/incentive-approval-actions';
 import { differenceInDays, parseISO, addYears, format } from 'date-fns';

@@ -23,7 +23,7 @@ import {
   getSystemSettings,
   updateSystemSettings,
   checkMisIdExists,
-} from "@/app/actions"
+} from "@/app/server-actions"
 import type { User, SystemSettings, CroAssignment, ApproverSetting, ApiIntegrations } from "@/types"
 import { Skeleton } from "@/components/ui/skeleton"
 import {

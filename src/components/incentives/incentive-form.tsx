@@ -41,7 +41,7 @@ import { useToast } from '@/hooks/use-toast';
 import { db } from '@/lib/config';
 import { collection, addDoc } from 'firebase/firestore';
 import type { User, IncentiveClaim } from '@/types';
-import { fetchScopusDataByUrl, getJournalWebsite, uploadFileToServer, fetchWosDataByUrl } from '@/app/actions';
+import { fetchScopusDataByUrl, getJournalWebsite, uploadFileToServer, fetchWosDataByUrl } from '@/app/server-actions';
 import { Loader2, AlertCircle, Bot } from 'lucide-react';
 
 const SPECIAL_POLICY_FACULTIES = [

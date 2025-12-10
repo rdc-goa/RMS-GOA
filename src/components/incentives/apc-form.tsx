@@ -20,7 +20,7 @@ import { useToast } from '@/hooks/use-toast';
 import { db } from '@/lib/config';
 import { collection, addDoc, doc, setDoc, getDoc } from 'firebase/firestore';
 import type { User, IncentiveClaim, Author } from '@/types';
-import { uploadFileToServer, checkPatentUniqueness } from '@/app/actions';
+import { uploadFileToServer, checkPatentUniqueness } from '@/app/server-actions';
 import { findUserByMisId } from '@/app/userfinding';
 import { Loader2, AlertCircle, Info, Plus, Trash2, Search, Bot, Edit } from 'lucide-react';
 import { submitIncentiveClaim } from '@/app/incentive-approval-actions';

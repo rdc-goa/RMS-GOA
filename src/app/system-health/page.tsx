@@ -159,10 +159,10 @@ export default function SystemHealthPage() {
             <CardContent>
               <div className="space-y-3">
                 <div className="grid grid-cols-1 gap-2 text-sm">
-                  {renderEnvVarStatus("NEXT_PUBLIC_FIREBASE_PROJECT_ID", healthData.debug.environment.hasProjectId)}
+                  {renderEnvVarStatus("FIREBASE_PROJECT_ID", healthData.debug.environment.hasProjectId)}
                   {renderEnvVarStatus("FIREBASE_CLIENT_EMAIL", healthData.debug.environment.hasClientEmail)}
                   {renderEnvVarStatus("FIREBASE_PRIVATE_KEY", healthData.debug.environment.hasPrivateKey)}
-                  {renderEnvVarStatus("NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET", healthData.debug.environment.hasStorageBucket)}
+                  {renderEnvVarStatus("FIREBASE_STORAGE_BUCKET", healthData.debug.environment.hasStorageBucket)}
                 </div>
               </div>
             </CardContent>

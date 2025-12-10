@@ -14,7 +14,7 @@ import { Logo } from '@/components/logo';
 import { useToast } from '@/hooks/use-toast';
 import { auth, db } from '@/lib/config';
 import { doc, getDoc, updateDoc } from 'firebase/firestore';
-import { uploadFileToServer, checkMisIdExists, linkEmrInterestsByMisId } from '@/app/actions';
+import { uploadFileToServer, checkMisIdExists, linkEmrInterestsByMisId } from '@/app/server-actions';
 import type { User } from '@/types';
 import { useState, useEffect, useCallback } from 'react';
 import { onAuthStateChanged, type User as FirebaseUser } from 'firebase/auth';

@@ -132,7 +132,7 @@ export async function submitIncentiveClaim(claimData: Omit<IncentiveClaim, 'id' 
                                     If you wish to claim your share of the incentive, please log in to the portal and visit the "Co-Author Claims" tab on the Incentive Claim page to submit your application.
                                 </p>
                                 <p style="text-align:center; margin-top:25px;">
-                                    <a href="${process.env.NEXT_PUBLIC_BASE_URL}/dashboard/incentive-claim?tab=co-author" style="background-color: #64B5F6; color: white; padding: 12px 20px; text-decoration: none; border-radius: 5px; font-weight: bold;">
+                                    <a href="${process.env.BASE_URL}/dashboard/incentive-claim?tab=co-author" style="background-color: #64B5F6; color: white; padding: 12px 20px; text-decoration: none; border-radius: 5px; font-weight: bold;">
                                         Apply for Claim
                                     </a>
                                 </p>`

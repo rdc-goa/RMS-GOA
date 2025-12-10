@@ -17,10 +17,10 @@ function ensureAdminInitialized() {
     return
   }
 
-  const projectId = process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID
+  const projectId = process.env.FIREBASE_PROJECT_ID
   const clientEmail = process.env.FIREBASE_CLIENT_EMAIL
   const privateKeyRaw = process.env.FIREBASE_PRIVATE_KEY
-  const storageBucket = process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET
+  const storageBucket = process.env.FIREBASE_STORAGE_BUCKET
 
   // Check if all required environment variables are present.
   if (!projectId || !clientEmail || !privateKeyRaw || !storageBucket) {
@@ -28,7 +28,7 @@ function ensureAdminInitialized() {
     // This prevents the entire server from crashing on startup if env vars are missing.
     console.error(
       "Firebase Admin SDK initialization skipped. This is expected during client-side rendering, but if you see this error on your server during a server-side action, it means required environment variables are missing. \n" +
-        "Please ensure NEXT_PUBLIC_FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL, FIREBASE_PRIVATE_KEY, and NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET are set. \n" +
+        "Please ensure FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL, FIREBASE_PRIVATE_KEY, and FIREBASE_STORAGE_BUCKET are set. \n" +
         "For local development, use a .env.local file. For production, set these in your hosting provider's environment variable settings.",
     )
     return // Exit without initializing, app remains null

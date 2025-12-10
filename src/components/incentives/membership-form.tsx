@@ -18,7 +18,7 @@ import { useToast } from '@/hooks/use-toast';
 import { db } from '@/lib/config';
 import { collection, doc, setDoc, getDoc } from 'firebase/firestore';
 import type { User, IncentiveClaim } from '@/types';
-import { uploadFileToServer } from '@/app/actions';
+import { uploadFileToServer } from '@/app/server-actions';
 import { Loader2, AlertCircle, Edit } from 'lucide-react';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { submitIncentiveClaim } from '@/app/incentive-approval-actions';

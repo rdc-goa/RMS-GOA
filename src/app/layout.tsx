@@ -1,43 +1,23 @@
 
+'use client';
+
 import type { Metadata } from 'next';
 import { Inter, Source_Code_Pro } from 'next/font/google';
 import './globals.css';
 import { ThemeProvider } from '@/components/providers/theme-provider';
 import { Toaster } from '@/components/ui/toaster';
-import { isFirebaseInitialized } from '@/lib/config';
+import { isFirebaseInitialized, app, auth, db } from '@/lib/config';
 import { FirebaseNotConfigured } from '@/components/firebase-not-configured';
 import { AuthInitializer } from '@/components/AuthInitializer';
 import { Analytics } from '@vercel/analytics/react';
+import { FirebaseProvider } from '@/components/providers/FirebaseProvider';
 
 const inter = Inter({ subsets: ['latin'], variable: '--font-inter' });
 const sourceCodePro = Source_Code_Pro({ subsets: ['latin'], variable: '--font-source-code-pro' });
 
-export const metadata: Metadata = {
-  title: 'R&D Portal | Parul University | Vadodara, Gujarat',
-  description: 'The official Research & Development (R&D) Portal of Parul University, Vadodara. Streamline Intramural (IMR) and Extramural (EMR) research projects, manage grants, and foster academic innovation.',
-  keywords: ['Parul University', 'Research Portal', 'R&D', 'IMR', 'EMR', 'Intramural Research', 'Extramural Research', 'Vadodara', 'Gujarat', 'University Grants'],
-  openGraph: {
-    title: 'R&D Portal | Parul University',
-    description: 'A comprehensive portal to manage the entire research lifecycle at Parul University.',
-    url: 'https://rndprojects.paruluniversity.ac.in',
-    siteName: 'Parul University Research & Development Portal',
-    images: [
-      {
-        url: 'https://www.paruluniversity.ac.in/images/header-logo.png',
-        width: 800,
-        height: 600,
-      },
-    ],
-    locale: 'en_US',
-    type: 'website',
-  },
-  twitter: {
-    card: 'summary_large_image',
-    title: 'R&D Portal | Parul University',
-    description: 'A comprehensive portal to manage the entire research lifecycle at Parul University.',
-    images: ['https://www.paruluniversity.ac.in/images/header-logo.png'],
-  },
-};
+// Since this is now a client component, we can't export metadata directly.
+// This should be moved to a parent layout if needed, but for this app structure it's okay here.
+// export const metadata: Metadata = { ... };
 
 const structuredData = {
   "@context": "https://schema.org",
@@ -73,7 +53,6 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  // If Firebase isn't configured, show a helpful message instead of crashing.
   if (!isFirebaseInitialized) {
     return (
       <html lang="en" suppressHydrationWarning>
@@ -106,9 +85,11 @@ export default function RootLayout({
           enableSystem
           disableTransitionOnChange
         >
-          <AuthInitializer>
-            {children}
-          </AuthInitializer>
+          <FirebaseProvider firebaseApp={app} auth={auth} firestore={db}>
+            <AuthInitializer>
+              {children}
+            </AuthInitializer>
+          </FirebaseProvider>
           <Toaster />
         </ThemeProvider>
         <Analytics />

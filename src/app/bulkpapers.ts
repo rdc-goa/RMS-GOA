@@ -6,7 +6,7 @@ import type { ResearchPaper, Author, User, Notification, IncentiveClaim } from '
 import { FieldValue } from 'firebase-admin/firestore';
 import { getResearchDomainSuggestion } from '@/ai/flows/research-domain-suggestion';
 import admin from 'firebase-admin';
-import { sendEmail } from '@/app/actions';
+import { sendEmail } from '@/app/server-server-actions';
 
 type PaperUploadData = {
     PublicationTitle: string;
@@ -48,7 +48,7 @@ export async function checkUserOrStaff(email: string): Promise<{ success: boolea
     }
 
     // 2. Check staffdata via API route
-    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:9002';
+    const baseUrl = process.env.BASE_URL || 'http://localhost:9002';
     const response = await fetch(`${baseUrl}/api/get-staff-data?email=${encodeURIComponent(lowercasedEmail)}`);
     const staffResult = await response.json();
     
@@ -500,7 +500,7 @@ export async function manageCoAuthorRequest(
                     <p style="color:#e0e0e0;">You have been successfully added to the list of authors.</p>
                     <p style="color:#e0e0e0;">
                         You can view your updated publication list on the 
-                        <a href="${process.env.NEXT_PUBLIC_BASE_URL}/dashboard/my-projects" style="color:#64b5f6; text-decoration:underline;">
+                        <a href="${process.env.BASE_URL}/dashboard/my-projects" style="color:#64b5f6; text-decoration:underline;">
                           PU Goa Research Projects Portal
                         </a>.
                     </p>

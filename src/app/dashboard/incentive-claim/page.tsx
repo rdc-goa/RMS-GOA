@@ -32,7 +32,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { ClaimDetailsDialog } from '@/components/incentives/claim-details-dialog';
-import { getSystemSettings } from '@/app/actions';
+import { getSystemSettings } from '@/app/server-actions';
 import { submitIncentiveClaim, deleteIncentiveClaim } from '@/app/incentive-approval-actions';
 import { differenceInDays, parseISO, addYears, format } from 'date-fns';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';

@@ -20,7 +20,7 @@ import { collection, getDocs, doc, orderBy, query } from 'firebase/firestore';
 import type { IncentiveClaim } from '@/types';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
-import { updateIncentiveClaimStatus } from '@/app/actions';
+import { updateIncentiveClaimStatus } from '@/app/server-actions';
 
 const STATUSES: IncentiveClaim['status'][] = ['Pending', 'Accepted', 'Rejected'];
 

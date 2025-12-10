@@ -54,7 +54,7 @@ import { Alert, AlertDescription, AlertTitle } from "../ui/alert"
 import Link from "next/link"
 import { Badge } from "../ui/badge"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "../ui/dropdown-menu"
-import { uploadFileToServer } from "@/app/actions"
+import { uploadFileToServer } from "@/app/server-actions"
 import { format, parseISO } from "date-fns"
 
 

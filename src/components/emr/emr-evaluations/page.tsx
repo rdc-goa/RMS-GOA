@@ -30,7 +30,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { EMR_EVALUATION_RECOMMENDATIONS, EmrEvaluationForm } from '@/components/emr/emr-evaluation-form';
-import { updateEmrStatus, uploadRevisedEmrPpt } from '@/app/actions';
+import { updateEmrStatus, uploadRevisedEmrPpt } from '@/app/server-actions';
 import { Textarea } from '@/components/ui/textarea';
 
 function EvaluationDetailsDialog({ interest, call }: { interest: EmrInterestWithDetails, call: FundingCall }) {

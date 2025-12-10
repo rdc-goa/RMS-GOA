@@ -555,7 +555,7 @@ export async function updateProjectStatus(projectId: string, newStatus: Project[
     emailHtml += `
       <p style="color:#e0e0e_0;">
         You can view your project details on the 
-        <a href="${process.env.NEXT_PUBLIC_BASE_URL}/dashboard/project/${projectId}" style="color:#64b5f6; text-decoration:underline;">
+        <a href="${process.env.BASE_URL}/dashboard/project/${projectId}" style="color:#64b5f6; text-decoration:underline;">
           PU Goa Research Projects Portal
         </a>.
       </p>
@@ -633,7 +633,7 @@ export async function updateIncentiveClaimStatus(claimId: string, newStatus: Inc
                 </p>
                 <p style="color:#e0e0e0;">
                   You can view your claims on the 
-                  <a href="${process.env.NEXT_PUBLIC_BASE_URL}/dashboard/incentive-claim" style="color:#64b5f6; text-decoration:underline;">
+                  <a href="${process.env.BASE_URL}/dashboard/incentive-claim" style="color:#64b5f6; text-decoration:underline;">
                   PU Goa Research Projects Portal           
                   </a>.
                 </p>
@@ -729,7 +729,7 @@ export async function scheduleMeeting(
               ${meetingDetails.mode === 'Online' ? `<a href="${calendarLink}" target="_blank" style="display: inline-block; background-color: #4285F4; color: white; padding: 8px 12px; text-decoration: none; border-radius: 4px; margin-top: 10px;">Save to Google Calendar</a>` : ''}
               <p style="color: #cccccc; margin-top: 15px;">
                 Please prepare for your presentation. You can view more details on the 
-                <a href="${process.env.NEXT_PUBLIC_BASE_URL}/dashboard/project/${projectData.id}" style="color: #64b5f6; text-decoration: underline;">
+                <a href="${process.env.BASE_URL}/dashboard/project/${projectData.id}" style="color: #64b5f6; text-decoration: underline;">
                   PU Goa Research Projects Portal
                 </a>.
               </p>
@@ -790,7 +790,7 @@ export async function scheduleMeeting(
                        ${meetingDetails.mode === 'Online' ? `<a href="${calendarLink}" target="_blank" style="display: inline-block; background-color: #4285F4; color: white; padding: 8px 12px; text-decoration: none; border-radius: 4px; margin-top: 10px;">Save to Google Calendar</a>` : ''}
                       <p style="color: #cccccc; margin-top: 15px;">
                           You can access your evaluation queue on the
-                          <a href="${process.env.NEXT_PUBLIC_BASE_URL}/dashboard/evaluator-dashboard" style="color: #64b5f6; text-decoration: underline;">
+                          <a href="${process.env.BASE_URL}/dashboard/evaluator-dashboard" style="color: #64b5f6; text-decoration: underline;">
                          PU Goa Research Projects Portal
                           </a>.
                       </p>

@@ -3,7 +3,7 @@
 
 import { useState, useEffect } from 'react';
 import type { User, Project, EmrInterest, FundingCall, ResearchPaper, Author, CoPiDetails, IncentiveClaim } from '@/types';
-import { getResearchDomain, uploadFileToServer } from '@/app/actions';
+import { getResearchDomain, uploadFileToServer } from '@/app/server-actions';
 import { updateEmrInterestDetails } from '@/app/emr-actions';
 import { findUserByMisId } from '@/app/userfinding';
 import { addResearchPaper, checkUserOrStaff, updateResearchPaper, deleteResearchPaper, manageCoAuthorRequest } from '@/app/bulkpapers';

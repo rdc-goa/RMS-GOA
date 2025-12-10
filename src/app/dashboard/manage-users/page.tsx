@@ -53,7 +53,7 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
-import { bulkGrantModuleAccess, bulkRevokeModuleAccess } from '@/app/actions';
+import { bulkGrantModuleAccess, bulkRevokeModuleAccess } from '@/app/server-actions';
 import { Switch } from '@/components/ui/switch';
 
 

@@ -27,7 +27,7 @@ import {
   markImrAttendance,
   getSystemSettings,
   generateSanctionOrder,
-} from "@/app/actions"
+} from "@/app/server-actions"
 import { generateRecommendationForm } from "@/app/document-actions"
 import { findUserByMisId } from '@/app/userfinding';
 import { useToast } from "@/hooks/use-toast"
