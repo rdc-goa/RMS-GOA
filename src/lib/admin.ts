@@ -14,10 +14,20 @@ function ensureAdminInitialized() {
     return;
   }
 
-  const projectId = process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID;
+  // Accept either NEXT_PUBLIC_ prefixed vars (used by the client) or the plain server-side names.
+  const projectId = process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || process.env.FIREBASE_PROJECT_ID;
   const clientEmail = process.env.FIREBASE_CLIENT_EMAIL;
-  const privateKey = process.env.FIREBASE_PRIVATE_KEY;
-  const storageBucket = process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET;
+  let privateKey = process.env.FIREBASE_PRIVATE_KEY;
+  const storageBucket = process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET || process.env.FIREBASE_STORAGE_BUCKET;
+
+  // Normalize the private key: some .env files include surrounding quotes or \n sequences.
+  if (privateKey && typeof privateKey === 'string') {
+    // Remove surrounding single/double-quotes if present
+    privateKey = privateKey.replace(/^\s*"|"\s*$|^\s*'|'\s*$/g, '');
+    // Replace escaped newline sequences with real newlines
+    privateKey = privateKey.replace(/\\n/g, '\n');
+    privateKey = privateKey.trim();
+  }
 
   // Check if all required environment variables are present.
   if (!projectId || !clientEmail || !privateKey || !storageBucket) {
@@ -25,7 +35,7 @@ function ensureAdminInitialized() {
     // This prevents the entire server from crashing on startup if env vars are missing.
     console.error(
       "Firebase Admin SDK initialization skipped. This is expected during client-side rendering, but if you see this error on your server during a server-side action, it means required environment variables are missing. \n" +
-        "Please ensure NEXT_PUBLIC_FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL, FIREBASE_PRIVATE_KEY, and NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET are set. \n" +
+        "Please ensure the following environment variables are set: NEXT_PUBLIC_FIREBASE_PROJECT_ID or FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL, FIREBASE_PRIVATE_KEY, and NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET or FIREBASE_STORAGE_BUCKET. \n" +
         "For local development, use a .env.local file. For production, set these in your hosting provider's environment variable settings."
     );
     return; // Exit without initializing, app remains null

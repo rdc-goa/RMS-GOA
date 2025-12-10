@@ -18,7 +18,8 @@ import { Form, FormControl, FormField, FormItem, FormMessage } from '../ui/form'
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { useForm } from 'react-hook-form';
-import { deleteEmrInterest, updateEmrInterestDetails, updateEmrStatus, signAndUploadEndorsement, markEmrAttendance, registerEmrInterestByAdmin } from '@/app/emr-actions';
+import { deleteEmrInterest, updateEmrStatus, signAndUploadEndorsement, markEmrAttendance, registerEmrInterestByAdmin } from '@/app/emr-actions';
+import { updateEmrInterestDetails } from '@/app/server-actions';
 import {
   AlertDialog,
   AlertDialogAction,

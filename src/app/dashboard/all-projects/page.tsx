@@ -35,7 +35,8 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
-import { updateEmrFinalStatus, updateEmrInterestCoPis, updateEmrInterestDetails } from '@/app/emr-actions';
+import { updateEmrFinalStatus, updateEmrInterestCoPis } from '@/app/emr-actions';
+import { updateEmrInterestDetails } from '@/app/server-actions';
 import { findUserByMisId } from '@/app/userfinding';
 import { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 

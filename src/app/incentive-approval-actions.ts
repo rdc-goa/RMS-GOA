@@ -4,7 +4,7 @@
 
 import { adminDb } from '@/lib/admin';
 import type { IncentiveClaim, SystemSettings, ApprovalStage, User, ResearchPaper, Author } from '@/types';
-import { getSystemSettings } from './actions';
+import { getSystemSettings } from './server-actions';
 import { sendEmail } from '@/lib/email';
 import { FieldValue } from 'firebase-admin/firestore';
 

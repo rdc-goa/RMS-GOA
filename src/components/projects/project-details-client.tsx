@@ -22,13 +22,12 @@ import {
   notifyAdminsOnCompletionRequest,
   updateCoInvestigators,
   sendEmail,
-  generateOfficeNotingForm,
   deleteImrProject,
   markImrAttendance,
   getSystemSettings,
   generateSanctionOrder,
 } from "@/app/server-actions"
-import { generateRecommendationForm } from "@/app/document-actions"
+import { generateRecommendationForm, generateOfficeNotingForm } from "@/app/document-actions"
 import { findUserByMisId } from '@/app/userfinding';
 import { useToast } from "@/hooks/use-toast"
 import { cn } from "@/lib/utils"

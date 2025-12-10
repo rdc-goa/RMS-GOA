@@ -6,7 +6,7 @@ import { adminDb } from '@/lib/admin';
 import type { IncentiveClaim, User } from '@/types';
 import { sendEmail as sendEmailUtility } from "@/lib/email";
 import ExcelJS from 'exceljs';
-import { getSystemSettings } from './actions';
+import { getSystemSettings } from './server-actions';
 import { format } from 'date-fns';
 import { FieldPath } from 'firebase-admin/firestore';
 
