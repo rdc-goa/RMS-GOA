@@ -1,5 +1,4 @@
 
-
 "use client"
 
 import type React from "react"
@@ -61,7 +60,7 @@ import { signOut, onAuthStateChanged, type User as FirebaseUser } from "firebase
 import { useToast } from "@/hooks/use-toast"
 import { collection, onSnapshot, query, where, doc, getDoc } from "firebase/firestore"
 import { getDefaultModulesForRole } from "@/lib/modules"
-import { saveSidebarOrder, getSystemSettings } from "@/app/actions"
+import { saveSidebarOrder, getSystemSettings } from "@/app/server-actions"
 import { TutorialDialog } from "@/components/tutorial-dialog"
 import { HelpDialog } from "@/components/help-dialog"
 import {
