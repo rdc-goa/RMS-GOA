@@ -12,7 +12,7 @@ import { FieldValue } from 'firebase-admin/firestore';
 import { format, parseISO, differenceInDays } from 'date-fns';
 import ExcelJS from 'exceljs';
 import JSZip from 'jszip';
-import { getSystemSettings } from '@/app/actions';
+import { getSystemSettings } from '@/app/server-actions';
 import { generateBookIncentiveForm } from '@/app/incentive-actions';
 import { generateMembershipIncentiveForm } from '@/app/membership-actions';
 import { generatePatentIncentiveForm } from '@/app/patent-actions';

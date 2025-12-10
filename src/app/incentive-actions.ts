@@ -8,7 +8,7 @@ import PizZip from 'pizzip';
 import Docxtemplater from 'docxtemplater';
 import { getTemplateContentFromUrl } from '@/lib/template-manager';
 import { format } from 'date-fns';
-import { getSystemSettings } from './actions';
+import { getSystemSettings } from './server-actions';
 
 export async function generateBookIncentiveForm(claimId: string): Promise<{ success: boolean; fileData?: string; error?: string }> {
   try {
