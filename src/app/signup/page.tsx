@@ -34,7 +34,7 @@ import {
   isEmailDomainAllowed,
   linkEmrCoPiInterestsToNewUser,
   getSystemSettings,
-} from "@/app/actions"
+} from "@/app/server-actions"
 import { Eye, EyeOff, Loader2 } from "lucide-react"
 
 const signupSchema = z

@@ -8,7 +8,7 @@ import PizZip from 'pizzip';
 import Docxtemplater from 'docxtemplater';
 import { getTemplateContentFromUrl } from '@/lib/template-manager';
 import { format, differenceInDays, parseISO } from 'date-fns';
-import { getSystemSettings } from '@/app/actions';
+import { getSystemSettings } from '@/app/server-actions';
 
 
 function getInstituteAcronym(name?: string): string {

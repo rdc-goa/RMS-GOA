@@ -6,7 +6,7 @@ import type { IncentiveClaim, User } from '@/types';
 import PizZip from 'pizzip';
 import Docxtemplater from 'docxtemplater';
 import { format } from 'date-fns';
-import { getSystemSettings } from './actions';
+import { getSystemSettings } from './server-actions';
 import { getTemplateContentFromUrl } from '@/lib/template-manager';
 
 export async function generatePatentIncentiveForm(claimId: string): Promise<{ success: boolean; fileData?: string; error?: string }> {

@@ -34,7 +34,7 @@ import {
   linkEmrInterestsToNewUser,
   linkEmrCoPiInterestsToNewUser,
   verifyLoginOtp,
-} from "@/app/actions"
+} from "@/app/server-actions"
 import { Eye, EyeOff, Loader2 } from "lucide-react"
 import { OtpDialog } from "@/components/otp-dialog"
 import { Skeleton } from "@/components/ui/skeleton"
