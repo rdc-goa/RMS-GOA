@@ -1,10 +1,11 @@
 
+
 'use server';
 
 import { adminDb, adminStorage } from "@/lib/admin";
 import type { Project, GrantPhase, GrantDetails, User, Transaction } from "@/types";
 import { sendEmail as sendEmailUtility } from "@/lib/email";
-import { getSystemSettings, uploadFileToServer } from './actions';
+import { getSystemSettings, uploadFileToServer } from './server-actions';
 
 async function logActivity(level: 'INFO' | 'WARNING' | 'ERROR', message: string, context: Record<string, any> = {}) {
   try {
@@ -481,5 +482,3 @@ export async function updatePhaseStatus(
     return { success: false, error: error.message || "Failed to update phase status." }
   }
 }
-
-    

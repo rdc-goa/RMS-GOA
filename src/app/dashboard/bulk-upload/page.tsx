@@ -11,7 +11,7 @@ import { useToast } from '@/hooks/use-toast';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { FileWarning, Upload, Loader2, Trash2, Download, XCircle, CheckCircle } from 'lucide-react';
-import { bulkUploadProjects, deleteBulkProject } from '@/app/actions';
+import { bulkUploadProjects, deleteBulkProject } from '@/app/server-actions';
 import { collection, query, where, getDocs, orderBy } from 'firebase/firestore';
 import { db } from '@/lib/config';
 import type { Project } from '@/types';

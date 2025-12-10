@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useToast } from '@/hooks/use-toast';
 import { EmrInterest, User } from '@/types';
-import { updateEmrInterestDetails } from '@/app/actions';
+import { updateEmrInterestDetails } from '@/app/server-actions';
 
 interface HistoricalBulkUploadsProps {
   interests: EmrInterest[];
@@ -55,7 +55,7 @@ export default function HistoricalBulkUploads({ interests, allUsers, onUpdate }:
         userEmail: interest.userEmail,
       };
 
-      const result = await updateEmrInterestDetails(interest.id, interest.userId, updateData);
+      const result = await updateEmrInterestDetails(interest.id, updateData);
       if (result.success) {
         toast({ title: 'Updated', description: 'Interest details updated successfully.' });
         onUpdate();

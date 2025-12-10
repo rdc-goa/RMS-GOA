@@ -12,8 +12,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { FileWarning, Upload, Loader2, XCircle, CheckCircle } from 'lucide-react';
 import { bulkUploadEmrProjects } from '@/app/emr-actions';
-import { getEmrInterests,  } from '@/app/emr-actions';
-import { getAllUsers } from '@/app/actions';
+import { getEmrInterests } from '@/app/emr-actions';
+import { getAllUsers } from '@/app/server-actions';
 import HistoricalBulkUploads from './historical-bulk-uploads';
 import { EmrInterest, User } from '@/types';
 

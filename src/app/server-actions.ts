@@ -282,11 +282,11 @@ export async function getSystemSettings(): Promise<SystemSettings> {
       return settingsSnap.data() as SystemSettings
     }
     // Default settings if none are found
-    return { is2faEnabled: false, allowedDomains: [], croAssignments: [] }
+    return { is2faEnabled: false, authMethods: { email: true, google: true}, allowedDomains: [], croAssignments: [] }
   } catch (error) {
     console.error("Error fetching system settings:", error)
     // Return default settings on error to ensure app functionality
-    return { is2faEnabled: false, allowedDomains: [], croAssignments: [] }
+    return { is2faEnabled: false, authMethods: { email: true, google: true}, allowedDomains: [], croAssignments: [] }
   }
 }
 
@@ -781,7 +781,7 @@ export async function scheduleMeeting(
                       <p><strong style="color: #ffffff;">
                         ${meetingDetails.mode === 'Online' ? 'Meeting Link:' : 'Venue:'}
                       </strong> 
-                        ${meetingDetails.mode === 'Online' ? `<a href="${meetingDetails.venue}" style="color: #64b5f6; text-decoration: underline;">${venue}</a>` : meetingDetails.venue}
+                        ${meetingDetails.mode === 'Online' ? `<a href="${meetingDetails.venue}" style="color: #64b5f6; text-decoration: underline;">${meetingDetails.venue}</a>` : meetingDetails.venue}
                       </p>
                       <p style="color: #e0e0e0;">The following projects are scheduled for your review:</p>
                       <ul style="list-style-type: none; padding-left: 0;">
@@ -1601,114 +1601,6 @@ export async function updateUserTutorialStatus(uid: string): Promise<{ success: 
       stack: error.stack,
     })
     return { success: false, error: "Failed to update tutorial status." }
-  }
-}
-
-export async function generateOfficeNotingForm(
-  projectId: string,
-  formData: {
-    projectDuration: string
-    phases: { name: string; amount: number }[]
-  },
-): Promise<{ success: boolean; fileData?: string; error?: string }> {
-  try {
-    const projectRef = adminDb.collection("projects").doc(projectId)
-    const projectSnap = await projectRef.get()
-    if (!projectSnap.exists) {
-      return { success: false, error: "Project not found." }
-    }
-    const project = { id: projectSnap.id, ...projectSnap.data() } as Project
-
-    const piUserRef = adminDb.collection("users").doc(project.pi_uid)
-    const piUserSnap = await piUserRef.get()
-    const piUser = piUserSnap.exists ? (piUserSnap.data() as User) : null
-
-    let coPi1User: User | null = null
-    if (project.coPiDetails && project.coPiDetails.length > 0 && project.coPiDetails[0].uid) {
-      const coPi1UserRef = adminDb.collection("users").doc(project.coPiDetails[0].uid!)
-      const coPi1UserSnap = await coPi1UserRef.get()
-      if (coPi1UserSnap.exists) {
-        coPi1User = coPi1UserSnap.data() as User
-      }
-    }
-
-    const templatePath = path.join(process.cwd(), "src", "templates", "IMR_OFFICE_NOTING_TEMPLATE.docx")
-    if (!fs.existsSync(templatePath)) {
-      return { success: false, error: "Office Notings form template not found on the server." }
-    }
-    const content = fs.readFileSync(templatePath)
-
-    const zip = new PizZip(content)
-
-    const doc = new Docxtemplater(zip, { paragraphLoop: true, linebreaks: true })
-
-    const coPiData: { [key: string]: string } = {}
-    const coPiNames = project.coPiDetails?.map((c) => c.name) || []
-    for (let i = 0; i < 4; i++) {
-      coPiData[`co-pi${i + 1}`] = coPiNames[i] || "N/A"
-    }
-
-    const phaseData: { [key: string]: string } = {}
-    let totalAmount = 0
-    for (let i = 0; i < 4; i++) {
-      if (formData.phases[i]) {
-        phaseData[`phase${i + 1}_amount`] = formData.phases[i].amount.toLocaleString("en-IN")
-        totalAmount += formData.phases[i].amount
-      } else {
-        phaseData[`phase${i + 1}_amount`] = "N/A"
-      }
-    }
-
-    const data = {
-      pi_name: project.pi || "N/A",
-      pi_designation: piUser?.designation || "N/A",
-      pi_department: `${piUser?.designation || "N/A"}, ${piUser?.department || "N/A"}`,
-      pi_phone: project.pi_phoneNumber || piUser?.phoneNumber || "N/A",
-      pi_email: project.pi_email || "N/A",
-      ...coPiData,
-      copi_designation: `${coPi1User?.designation || "N/A"}, ${coPi1User?.department || "N/A"}`,
-      project_title: project.title || "N/A",
-      project_duration: formData.projectDuration || "N/A",
-      ...phaseData,
-      total_amount: totalAmount.toLocaleString("en-IN"),
-      presentation_date: project.meetingDetails?.date
-        ? format(parseISO(project.meetingDetails.date), "dd/MM/yyyy")
-        : "N/A",
-      presentation_time: project.meetingDetails?.time || "N/A",
-      date: format(new Date(), 'dd/MM/yyyy'),
-    }
-
-    doc.setData(data)
-
-    try {
-      doc.render()
-    } catch (error: any) {
-      console.error("Docxtemplater render error:", error)
-      if (error.properties && error.properties.errors) {
-        console.error("Template errors:", JSON.stringify(error.properties.errors))
-      }
-      return { success: false, error: "Failed to render the document template." }
-    }
-
-    const buf = doc.getZip().generate({ type: "nodebuffer" })
-    const base64 = buf.toString("base64")
-
-    if (project.status === "Recommended") {
-      await projectRef.update({
-        projectDuration: formData.projectDuration,
-        phases: formData.phases,
-      })
-    }
-
-    return { success: true, fileData: base64 }
-  } catch (error: any) {
-    console.error("Error generating office notings form:", error)
-    await logActivity("ERROR", "Failed to generate office notings form", {
-      projectId,
-      error: error.message,
-      stack: error.stack,
-    })
-    return { success: false, error: error.message || "Failed to generate the form." }
   }
 }
 
