@@ -128,6 +128,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const [isLogoutConfirmOpen, setIsLogoutConfirmOpen] = useState(false)
   const [isPostSetupDialogOpen, setIsPostSetupDialogOpen] = useState(false)
   const [linkedProjectsCount, setLinkedProjectsCount] = useState({ imr: 0, emr: 0 })
+  const [systemSettings, setSystemSettings] = useState<SystemSettings | null>(null);
   const router = useRouter()
   const pathname = usePathname()
   const { toast } = useToast()
@@ -399,6 +400,14 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       setMenuItems(sorted)
     }
   }, [user, allNavItems]);
+  
+  useEffect(() => {
+    const fetchSettings = async () => {
+        const settings = await getSystemSettings();
+        setSystemSettings(settings);
+    };
+    fetchSettings();
+  }, []);
 
   useEffect(() => {
     if (!user) return
@@ -590,6 +599,13 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   return (
     <>
+      <style jsx global>{`
+        :root {
+          ${systemSettings?.theme?.primary ? `--primary: ${systemSettings.theme.primary};` : ''}
+          ${systemSettings?.theme?.background ? `--background: ${systemSettings.theme.background};` : ''}
+          ${systemSettings?.theme?.accent ? `--accent: ${systemSettings.theme.accent};` : ''}
+        }
+      `}</style>
       <SidebarProvider>
         <Sidebar>
           <SidebarHeader>

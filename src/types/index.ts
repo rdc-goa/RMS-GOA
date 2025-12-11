@@ -535,6 +535,12 @@ export type DefaultModules = {
   [key in 'faculty' | 'CRO' | 'Evaluator' | 'Principal' | 'HOD' | 'IQAC']?: string[];
 };
 
+export type ThemeSettings = {
+    primary?: string;
+    accent?: string;
+    background?: string;
+}
+
 export type SystemSettings = {
   is2faEnabled: boolean
   authMethods?: AuthMethods;
@@ -551,6 +557,7 @@ export type SystemSettings = {
   templateUrls?: TemplateUrls;
   apiIntegrations?: ApiIntegrations;
   defaultModules?: DefaultModules;
+  theme?: ThemeSettings;
 }
 
 export type LoginOtp = {

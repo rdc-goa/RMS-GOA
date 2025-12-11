@@ -10,7 +10,8 @@
     --card-foreground: 224 71% 4%;
     --popover: 0 0% 100%;
     --popover-foreground: 224 71% 4%;
-    --primary: 211 79% 57%;
+    /* Updated to #3b8ee8 → hsl(207 74% 57%) */
+    --primary: 207 74% 57%;
     --primary-foreground: 0 0% 100%;
     --secondary: 210 40% 96.1%;
     --secondary-foreground: 222.2 47.4% 11.2%;
@@ -22,7 +23,8 @@
     --destructive-foreground: 210 40% 98%;
     --border: 214.3 31.8% 91.4%;
     --input: 214.3 31.8% 91.4%;
-    --ring: 211 79% 57%;
+    /* Updated ring to match new primary */
+    --ring: 207 74% 57%;
     --radius: 0.5rem;
   }
 
@@ -33,7 +35,8 @@
     --card-foreground: 210 40% 98%;
     --popover: 224 71% 4% / 0.1;
     --popover-foreground: 210 40% 98%;
-    --primary: 211 79% 57%;
+    /* Updated to #3b8ee8 */
+    --primary: 207 74% 57%;
     --primary-foreground: 0 0% 100%;
     --secondary: 217.2 32.6% 17.5% / 0.5;
     --secondary-foreground: 210 40% 98%;
@@ -45,7 +48,8 @@
     --destructive-foreground: 210 40% 98%;
     --border: 217 33% 25% / 0.4;
     --input: 217 33% 25% / 0.4;
-    --ring: 211 79% 57%;
+    /* Updated ring */
+    --ring: 207 74% 57%;
   }
 
   * {
@@ -61,8 +65,7 @@
       radial-gradient(at 95% 95%, hsla(260, 80%, 50%, 0.2) 0px, transparent 50%);
     background-attachment: fixed;
   }
-  
-  /* Hide number input spinners */
+
   input[type="number"]::-webkit-inner-spin-button,
   input[type="number"]::-webkit-outer-spin-button {
     -webkit-appearance: none;

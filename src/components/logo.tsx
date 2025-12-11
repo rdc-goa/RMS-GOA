@@ -39,7 +39,7 @@ export function Logo({ variant = 'public' }: LogoProps) {
   return (
     <div className="flex items-center justify-center p-2" style={{ minHeight: 49 }}>
       <Image
-        src="/PU GOA BLACK.svg"
+        src="/PUGOABLACK.svg"
         alt="RDC Logo"
         width={350}
         height={100}
@@ -47,7 +47,7 @@ export function Logo({ variant = 'public' }: LogoProps) {
         priority
       />
       <Image
-        src="/PU GOA White.svg"
+        src="/PUGOAWHITE.svg"
         alt="RDC Logo"
         width={350}
         height={100}
