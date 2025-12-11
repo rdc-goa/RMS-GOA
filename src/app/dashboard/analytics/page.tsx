@@ -130,17 +130,12 @@ export default function AnalyticsPage() {
     const isCro = user.role === 'CRO';
     const isHod = user.designation === 'HOD';
     const isSpecialPitUser = user.email === 'pit@paruluniversity.ac.in';
-    const isGoaHead = user.designation === 'Head of Goa Campus';
 
 
     if (isCro && user.faculties && user.faculties.length > 0) {
         projectsQuery = query(projectsCollection, where('faculty', 'in', user.faculties));
         emrQuery = query(emrCollection, where('faculty', 'in', user.faculties), where('status', 'in', ['Sanctioned', 'Process Complete']));
         claimsQuery = query(claimsCollection, where('faculty', 'in', user.faculties));
-    } else if (isGoaHead) {
-        projectsQuery = query(projectsCollection, where('campus', '==', 'Goa'));
-        emrQuery = query(emrCollection, where('campus', '==', 'Goa'), where('status', 'in', ['Sanctioned', 'Process Complete']));
-        claimsQuery = query(claimsCollection, where('campus', '==', 'Goa'));
     } else if (isHod && user.department && user.institute) {
         projectsQuery = query(projectsCollection, where('departmentName', '==', user.department), where('institute', '==', user.institute));
         emrQuery = query(emrCollection, where('department', '==', user.department), where('status', 'in', ['Sanctioned', 'Process Complete']));
@@ -304,7 +299,7 @@ export default function AnalyticsPage() {
     if (user?.role === 'CRO') {
         return { aggregationKey: 'institute', aggregationLabel: 'Institute' };
     }
-    if (user?.designation === 'Principal' || user?.designation === 'HOD' || user?.email === 'pit@paruluniversity.ac.in' || user?.designation === 'Head of Goa Campus') {
+    if (user?.designation === 'Principal' || user?.designation === 'HOD' || user?.email === 'pit@paruluniversity.ac.in') {
         return { aggregationKey: 'departmentName', aggregationLabel: 'Department' };
     }
     return { aggregationKey: 'faculty', aggregationLabel: 'Faculty' };
@@ -388,14 +383,12 @@ export default function AnalyticsPage() {
 
 
   const isCro = user?.role === 'CRO';
-  const isGoaHead = user?.designation === 'Head of Goa Campus';
 
   const getPageTitle = () => {
       if (isCro) {
           if (facultyFilter === 'all') return `Analytics for All Your Faculties`;
           return `Analytics for ${facultyFilter}`;
       }
-      if (isGoaHead) return 'Analytics for Goa Campus';
       if (user?.designation === 'Principal' && user.institute) return `Analytics for ${user.institute}`;
       if (user?.designation === 'Principal' && !user.institute) return 'Analytics (Principal - No Institute Set)';
       if (user?.designation === 'HOD' && user.department && user.institute) return `Analytics for ${user.department}, ${user.institute}`;
@@ -404,7 +397,7 @@ export default function AnalyticsPage() {
 
   const getPageDescription = () => {
     if (user?.designation === 'Principal' && !user.institute) return 'Your institute information is not configured. Please update your profile to see institute-specific analytics.';
-    if (user?.role === 'CRO' || user?.designation === 'Principal' || user?.designation === 'HOD' || isGoaHead) return 'Visualize project data and submission trends for your scope.';
+    if (user?.role === 'CRO' || user?.designation === 'Principal' || user?.designation === 'HOD') return 'Visualize project data and submission trends for your scope.';
     return 'Visualize project data and submission trends across the university.';
   }
 
