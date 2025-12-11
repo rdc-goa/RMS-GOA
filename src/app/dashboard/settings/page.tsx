@@ -35,7 +35,7 @@ import {
   updatePassword,
 } from "firebase/auth"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { Banknote, Bot, ShieldCheck, Plus, X, Award, CalendarIcon, Clock, Mail, FileText, Blocks } from "lucide-react"
+import { Banknote, Bot, ShieldCheck, Plus, X, Award, CalendarIcon, Clock, Mail, FileText, Blocks, Search } from "lucide-react"
 import { Combobox } from "@/components/ui/combobox"
 import { Switch } from "@/components/ui/switch"
 import { Label } from "@/components/ui/label"
@@ -151,6 +151,7 @@ export default function SettingsPage() {
   const [systemSettings, setSystemSettings] = useState<SystemSettings | null>(null)
   const [isSavingSettings, setIsSavingSettings] = useState(false)
   const [newAllowedDomain, setNewAllowedDomain] = useState("")
+  const [isPrefilling, setIsPrefilling] = useState(false);
 
   const profileForm = useForm<ProfileFormValues>({
     resolver: zodResolver(profileSchema),
@@ -286,6 +287,30 @@ export default function SettingsPage() {
     }
   }, [profileForm])
 
+  const handlePrefillData = async () => {
+      const misId = profileForm.getValues('misId');
+      if (!misId || !user?.email) {
+          toast({ variant: 'destructive', title: 'MIS ID Required', description: 'Please enter your MIS ID to fetch data.' });
+          return;
+      };
+      setIsPrefilling(true);
+      try {
+          const res = await fetch(`/api/get-staff-data?misId=${misId}&userEmailForFileCheck=${user.email}`);
+          const result = await res.json();
+          if (result.success && result.data.length > 0) {
+              profileForm.reset({ ...profileForm.getValues(), ...result.data[0] });
+              toast({ title: 'Profile Pre-filled', description: 'Your information has been pre-filled. Please review and save.' });
+          } else {
+             toast({ variant: 'destructive', title: 'Not Found', description: "Could not find your details using that MIS ID. Please enter them manually." });
+          }
+      } catch (error) {
+          console.error("Failed to fetch prefill data", error);
+          toast({ variant: 'destructive', title: 'Error', description: "Could not fetch your data. Please try again or enter manually." });
+      } finally {
+          setIsPrefilling(false);
+      }
+  };
+
   async function onProfileSubmit(data: ProfileFormValues) {
     if (!user) return
     setIsSubmittingProfile(true)
@@ -345,10 +370,9 @@ export default function SettingsPage() {
     setIsSubmittingBank(true)
     try {
       const userDocRef = doc(db, "users", user.uid)
-      await updateDoc(userDocRef, { bankDetails: data })
-      const updatedUser = { ...user, bankDetails: data }
-      localStorage.setItem("user", JSON.stringify(updatedUser))
-      setUser(updatedUser)
+      await updateDoc(userDocRef, { bankDetails: data });
+      // The user object in state will be updated on the next full page refresh or re-login.
+      // This avoids the stringify error.
       toast({ title: "Bank details updated successfully!" })
     } catch (error: any) {
       console.error("Bank details update error:", error)
@@ -1062,6 +1086,25 @@ export default function SettingsPage() {
                 <CardDescription>Update your personal information.</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
+                 <div className="flex items-end gap-2">
+                    <FormField
+                      control={profileForm.control}
+                      name="misId"
+                      render={({ field }) => (
+                        <FormItem className="flex-grow">
+                          <FormLabel>MIS ID</FormLabel>
+                          <FormControl>
+                            <Input placeholder="Your MIS ID" {...field} />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                     <Button type="button" variant="outline" onClick={handlePrefillData} disabled={isPrefilling || !profileForm.getValues('misId')}>
+                        {isPrefilling ? <Loader2 className="h-4 w-4 animate-spin"/> : <Search className="h-4 w-4"/>}
+                         <span className="ml-2 hidden sm:inline">Fetch Data</span>
+                     </Button>
+                  </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <FormField
                     control={profileForm.control}
@@ -1217,19 +1260,6 @@ export default function SettingsPage() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <FormField
                     control={profileForm.control}
-                    name="misId"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>MIS ID</FormLabel>
-                        <FormControl>
-                          <Input placeholder="Your MIS ID" {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  <FormField
-                    control={profileForm.control}
                     name="orcidId"
                     render={({ field }) => (
                       <FormItem>
@@ -1241,20 +1271,20 @@ export default function SettingsPage() {
                       </FormItem>
                     )}
                   />
+                  <FormField
+                    control={profileForm.control}
+                    name="scopusId"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Scopus ID (Optional)</FormLabel>
+                        <FormControl>
+                          <Input placeholder="Your Scopus Author ID" {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
                 </div>
-                <FormField
-                  control={profileForm.control}
-                  name="scopusId"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Scopus ID (Optional)</FormLabel>
-                      <FormControl>
-                        <Input placeholder="Your Scopus Author ID" {...field} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
                 <FormField
                   control={profileForm.control}
                   name="vidwanId"
