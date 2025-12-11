@@ -1,3 +1,4 @@
+
 import Image from 'next/image';
 
 interface LogoProps {
@@ -38,7 +39,7 @@ export function Logo({ variant = 'public' }: LogoProps) {
   return (
     <div className="flex items-center justify-center p-2" style={{ minHeight: 49 }}>
       <Image
-        src="https://pinxoxpbufq92wb4.public.blob.vercel-storage.com/RDC-PU-LOGO-BLACK.svg"
+        src="https://pinxoxpbufq92wb4.public.blob.vercel-storage.com/RDC-PU-GOA-LOGO-BLACK.svg"
         alt="RDC Logo"
         width={350}
         height={100}
@@ -46,7 +47,7 @@ export function Logo({ variant = 'public' }: LogoProps) {
         priority
       />
       <Image
-        src="https://pinxoxpbufq92wb4.public.blob.vercel-storage.com/RDC-PU-LOGO-WHITE.svg"
+        src="https://pinxoxpbufq92wb4.public.blob.vercel-storage.com/RDC-PU-GOA-LOGO-WHITE.svg"
         alt="RDC Logo"
         width={350}
         height={100}

@@ -5,8 +5,8 @@
 // It uses dangerouslySetInnerHTML because the content is static and controlled, which is a safe use-case.
 // Using a library like react-markdown would be overkill for this simple, trusted content.
 const sopContent = `
-<h1>Standard Operating Procedures (SOP) - R&D  Portal</h1>
-<p>This document outlines the standard operating procedures for various administrative and faculty roles within the Parul University Research & Development Portal.</p>
+<h1>Standard Operating Procedures (SOP) - R&D Portal</h1>
+<p>This document outlines the standard operating procedures for various administrative and faculty roles within the Parul University Goa Research & Development Portal.</p>
 <h2>Table of Contents</h2>
 <ol>
     <li><a href="#1-faculty-standard-user">Faculty (Standard User)</a></li>

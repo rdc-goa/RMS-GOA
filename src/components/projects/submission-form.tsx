@@ -19,8 +19,7 @@ import type { User, Project, CoPiDetails } from '@/types';
 import { Checkbox } from '@/components/ui/checkbox';
 import { db } from '@/lib/config';
 import { collection, doc, setDoc, getDocs, query, where } from 'firebase/firestore';
-import { uploadFileToServer } from '@/app/server-actions';
-import { saveProjectSubmission } from '@/app/project-actions';
+import { uploadFileToServer, saveProjectSubmission } from '@/app/server-actions';
 import { findUserByMisId } from '@/app/userfinding';
 import { Alert, AlertDescription, AlertTitle } from '../ui/alert';
 import Link from 'next/link';
@@ -659,12 +658,12 @@ export function SubmissionForm({ project }: SubmissionFormProps) {
                           <p className="text-sm text-muted-foreground">
                           I declare that I have gone through all the guidelines of the{" "}
                           <a
-                            href="https://pinxoxpbufq92wb4.public.blob.vercel-storage.com/Notification%201446_Revision%20in%20the%20Research%20%26%20Development%20Policy%20of%20the%20University%20%281%29.pdf"
+                            href="https://goa.paruluniversity.ac.in/wp-content/uploads/2024/07/Notification-1446_Revision-in-the-Research-Development-Policy-of-the-University-1.pdf"
                             target="_blank"
                             rel="noopener noreferrer"
                             className="font-medium text-primary underline-offset-4 hover:underline"
                           >
-                            Research Policy of Parul University
+                            Research Policy of Parul University Goa
                           </a>
                           .
                         </p>

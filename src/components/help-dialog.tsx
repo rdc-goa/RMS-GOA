@@ -30,10 +30,10 @@ export function HelpDialog() {
         </DialogHeader>
         <div className="text-center py-4">
             <a
-                href="mailto:helpdesk.rdc@paruluniversity.ac.in"
+                href="mailto:rdc@goa.paruluniversity.ac.in"
                 className="text-lg font-semibold text-primary hover:underline"
             >
-                helpdesk.rdc@paruluniversity.ac.in
+                rdc@goa.paruluniversity.ac.in
             </a>
         </div>
       </DialogContent>

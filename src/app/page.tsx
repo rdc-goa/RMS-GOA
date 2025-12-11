@@ -60,10 +60,10 @@ export default function LandingPage() {
                     Research & Development Cell
                   </div>
                   <h1 className="text-3xl font-bold tracking-tighter sm:text-5xl xl:text-6xl/none">
-                    Empowering University Research
+                    Empowering Research at PU Goa
                   </h1>
                   <p className="max-w-[600px] text-muted-foreground md:text-xl">
-                    Our comprehensive portal streamlines the entire research lifecycle. From IMR & EMR proposal submissions to AI-assisted evaluations, it is designed to foster innovation from within.
+                    Our comprehensive portal streamlines the entire research lifecycle. From IMR & EMR proposal submissions to AI-assisted evaluations, it is designed to foster innovation from within Parul University Goa.
                   </p>
                 </div>
                 <div className="flex flex-col gap-2 min-[400px]:flex-row">
@@ -96,7 +96,7 @@ export default function LandingPage() {
                 </div>
               </div>
               <Image
-                src="https://www.pierc.org/_next/image?url=%2F_next%2Fstatic%2Fmedia%2FmainBgImage.05039c52.png&w=1920&q=75"
+                src="https://goa.paruluniversity.ac.in/wp-content/uploads/2025/02/Central-Vista-Evening-View-1-1-e1739343524475.jpg"
                 width={600}
                 height={400}
                 alt="Hero"
@@ -220,7 +220,7 @@ export default function LandingPage() {
                         Ready to Transform Your Research Process?
                     </h2>
                     <p className="mx-auto max-w-[600px] text-muted-foreground md:text-xl/relaxed lg:text-base/relaxed xl:text-xl/relaxed">
-                        Create an account today and join the future of research management at Parul University.
+                        Create an account today and join the future of research management at Parul University Goa.
                     </p>
                 </div>
                 <div className="mx-auto w-full max-w-sm space-x-2">
@@ -233,7 +233,7 @@ export default function LandingPage() {
 
       </main>
       <footer className="flex flex-col gap-2 sm:flex-row py-6 w-full shrink-0 items-center px-4 md:px-6 border-t">
-        <p className="text-xs text-muted-foreground">&copy; {new Date().getFullYear()} Parul University. All rights reserved.</p>
+        <p className="text-xs text-muted-foreground">&copy; {new Date().getFullYear()} Parul University Goa. All rights reserved.</p>
         <nav className="sm:ml-auto flex gap-4 sm:gap-6">
           <Link className="text-xs hover:underline underline-offset-4" href="/help">
             Help

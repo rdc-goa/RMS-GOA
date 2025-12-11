@@ -1,3 +1,4 @@
+
 // src/components/emr/emr-evaluation-form.tsx
 'use client';
 
@@ -103,7 +104,7 @@ export function EmrEvaluationForm({ interest, user, isOpen, onOpenChange, onEval
     }
   };
 
-  const isFormDisabled = isSubmitting || loading || !!existingEvaluation;
+  const isFormDisabled = isSubmitting || loading;
 
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>

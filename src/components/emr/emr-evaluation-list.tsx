@@ -1,3 +1,4 @@
+
 // src/components/emr/emr-evaluation-list.tsx
 'use client';
 
@@ -90,8 +91,9 @@ export function EmrEvaluationList({ interests, calls, user, onActionComplete }: 
                                                 variant="outline" 
                                                 size="sm" 
                                                 onClick={() => { setSelectedInterest(interest); setIsEvaluationFormOpen(true); }}
+                                                disabled={!!myEvaluation}
                                             >
-                                                <Eye className="h-4 w-4 md:mr-2"/> <span className="hidden md:inline">{myEvaluation ? "View" : "Evaluate"}</span>
+                                                <Eye className="h-4 w-4 md:mr-2"/> <span className="hidden md:inline">{myEvaluation ? "Viewed" : "Evaluate"}</span>
                                             </Button>
                                         </TableCell>
                                     </TableRow>

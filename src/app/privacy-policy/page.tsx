@@ -30,7 +30,7 @@ export default function PrivacyPolicyPage() {
                 <p>For the purposes of this Privacy Policy:</p>
                 <ul>
                     <li><strong>Account</strong> means a unique account created for You to access our Service or parts of our Service.</li>
-                    <li><strong>University</strong> (referred to as either "the University", "We", "Us" or "Our" in this Agreement) refers to Parul University.</li>
+                    <li><strong>University</strong> (referred to as either "the University", "We", "Us" or "Our" in this Agreement) refers to Parul University Goa.</li>
                     <li><strong>Service</strong> refers to the Research & Development Portal website.</li>
                     <li><strong>Personal Data</strong> is any information that relates to an identified or identifiable individual.</li>
                     <li><strong>You</strong> means the individual accessing or using the Service, or the company, or other legal entity on behalf of which such individual is accessing or using the Service, as applicable.</li>
@@ -70,12 +70,12 @@ export default function PrivacyPolicyPage() {
                 <p>You are advised to review this Privacy Policy periodically for any changes. Changes to this Privacy Policy are effective when they are posted on this page.</p>
                 
                 <h2>Contact Us</h2>
-                <p>If you have any questions about this Privacy Policy, You can contact us at: <a href="mailto:helpdesk.rdc@paruluniversity.ac.in">helpdesk.rdc@paruluniversity.ac.in</a></p>
+                <p>If you have any questions about this Privacy Policy, You can contact us at: <a href="mailto:rdc@goa.paruluniversity.ac.in">rdc@goa.paruluniversity.ac.in</a></p>
             </div>
         </div>
       </main>
        <footer className="flex flex-col gap-2 sm:flex-row py-6 w-full shrink-0 items-center px-4 md:px-6 border-t">
-        <p className="text-xs text-muted-foreground">&copy; {new Date().getFullYear()} Parul University. All rights reserved.</p>
+        <p className="text-xs text-muted-foreground">&copy; {new Date().getFullYear()} Parul University Goa. All rights reserved.</p>
         <nav className="sm:ml-auto flex gap-4 sm:gap-6">
           <Link className="text-xs hover:underline underline-offset-4" href="/help">
             Help

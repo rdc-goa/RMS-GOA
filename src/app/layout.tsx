@@ -22,9 +22,9 @@ const sourceCodePro = Source_Code_Pro({ subsets: ['latin'], variable: '--font-so
 const structuredData = {
   "@context": "https://schema.org",
   "@type": "CollegeOrUniversity",
-  "name": "Parul University",
-  "url": "https://www.paruluniversity.ac.in/",
-  "logo": "https://www.paruluniversity.ac.in/images/header-logo.png",
+  "name": "Parul University Goa",
+  "url": "https://goa.paruluniversity.ac.in/",
+  "logo": "https://goa.paruluniversity.ac.in/wp-content/uploads/2024/04/Logo-PNG-1.png",
   "sameAs": [
     "https://www.facebook.com/paruluniversity",
     "https://twitter.com/paruluniversity",
@@ -43,7 +43,7 @@ const structuredData = {
     "@type": "ContactPoint",
     "telephone": "+91-2668-260300",
     "contactType": "customer service",
-    "email": "helpdesk.rdc@paruluniversity.ac.in"
+    "email": "rdc@goa.paruluniversity.ac.in"
   }
 };
 
