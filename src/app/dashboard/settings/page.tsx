@@ -371,8 +371,6 @@ export default function SettingsPage() {
     try {
         const userDocRef = doc(db, 'users', user.uid);
         await updateDoc(userDocRef, { bankDetails: data });
-        // The user object in state will be updated on the next full page refresh or re-login.
-        // This avoids stringify errors with server timestamps if we were to use them.
         toast({ title: 'Bank details updated successfully!' });
     } catch (error: any) {
         console.error("Bank details update error:", error);
@@ -646,6 +644,15 @@ export default function SettingsPage() {
     const newTemplateUrls = { ...systemSettings.templateUrls, [templateKey]: url }
     await handleSystemSettingsSave({ ...systemSettings, templateUrls: newTemplateUrls })
   }
+  
+  const handleThemeColorChange = async (colorType: 'primary' | 'accent' | 'background', value: string) => {
+      if (!systemSettings) return;
+      const newThemeSettings = {
+          ...systemSettings.theme,
+          [colorType]: value,
+      };
+      await handleSystemSettingsSave({ ...systemSettings, theme: newThemeSettings });
+  };
 
   const templateFields: { key: keyof NonNullable<SystemSettings["templateUrls"]>; label: string }[] = [
     { key: "INCENTIVE_RESEARCH_PAPER", label: "Incentive - Research Paper" },
@@ -718,6 +725,22 @@ export default function SettingsPage() {
               <CardDescription>Global settings for the application. Changes affect all users.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
+              <div className="space-y-4">
+                  <Label className="text-base">Theme Management</Label>
+                  <p className="text-sm text-muted-foreground">Customize the portal's appearance. Use valid hex color codes (e.g., #3b8ee8).</p>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      <FormField name="theme.primary" control={dummyForm.control} render={({ field }) => (
+                          <FormItem><FormLabel>Primary Color (Buttons)</FormLabel><Input type="text" defaultValue={systemSettings.theme?.primary} onBlur={(e) => handleThemeColorChange('primary', e.target.value)} disabled={isSavingSettings} /></FormItem>
+                      )} />
+                      <FormField name="theme.accent" control={dummyForm.control} render={({ field }) => (
+                          <FormItem><FormLabel>Accent Color</FormLabel><Input type="text" defaultValue={systemSettings.theme?.accent} onBlur={(e) => handleThemeColorChange('accent', e.target.value)} disabled={isSavingSettings} /></FormItem>
+                      )} />
+                      <FormField name="theme.background" control={dummyForm.control} render={({ field }) => (
+                          <FormItem><FormLabel>Background Color</FormLabel><Input type="text" defaultValue={systemSettings.theme?.background} onBlur={(e) => handleThemeColorChange('background', e.target.value)} disabled={isSavingSettings} /></FormItem>
+                      )} />
+                  </div>
+              </div>
+              <Separator />
                <div className="space-y-4">
                 <div className="flex items-center gap-2">
                     <Blocks className="h-5 w-5" />
@@ -1198,7 +1221,7 @@ export default function SettingsPage() {
                           </SelectTrigger>
                         </FormControl>
                         <SelectContent>
-                          {goaInstitutes.map((i, index) => (
+                          {[...new Set(goaInstitutes)].map((i, index) => (
                             <SelectItem key={`${i}-${index}`} value={i}>
                               {i}
                             </SelectItem>

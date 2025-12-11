@@ -11,7 +11,7 @@ export function Logo({ variant = 'public' }: LogoProps) {
       <div className="flex items-center justify-center p-6" style={{ maxHeight: 40 }}>
         {/* Expanded Light mode logo */}
         <Image
-          src="/PU GOA BLACK.svg"
+          src="/PUGOABLACK.svg"
           alt="RDC Logo"
           width={250}
           height={70}
@@ -20,7 +20,7 @@ export function Logo({ variant = 'public' }: LogoProps) {
         />
         {/* Expanded Dark mode logo */}
         <Image
-          src="/PU GOA White.svg"
+          src="/PUGOAWHITE.svg"
           alt="RDC Logo"
           width={250}
           height={70}

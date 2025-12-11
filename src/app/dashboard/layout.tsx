@@ -599,13 +599,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   return (
     <>
-      <style jsx global>{`
-        :root {
-          ${systemSettings?.theme?.primary ? `--primary: ${systemSettings.theme.primary};` : ''}
-          ${systemSettings?.theme?.background ? `--background: ${systemSettings.theme.background};` : ''}
-          ${systemSettings?.theme?.accent ? `--accent: ${systemSettings.theme.accent};` : ''}
-        }
-      `}</style>
       <SidebarProvider>
         <Sidebar>
           <SidebarHeader>
@@ -644,7 +637,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           </SidebarContent>
           <SidebarFooter className="hidden md:flex mt-auto group-data-[collapsible=icon]:hidden">
             <Image
-              src="https://pinxoxpbufq92wb4.public.blob.vercel-storage.com/PU-WATERMARK.svg"
+              src="/PU-WATERMARK.svg"
               alt="Parul University Goa Logo"
               width={150}
               height={50}
