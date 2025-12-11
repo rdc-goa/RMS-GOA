@@ -1,5 +1,4 @@
 
-
 'use server'
 
 import { adminDb, adminStorage } from "@/lib/admin"
@@ -35,7 +34,7 @@ import { generateSanctionOrder } from "./document-actions"
 // --- Centralized Logging Service ---
 type LogLevel = "INFO" | "WARNING" | "ERROR"
 
-async function logActivity(level: LogLevel, message: string, context: Record<string, any> = {}) {
+export async function logActivity(level: LogLevel, message: string, context: Record<string, any> = {}) {
   try {
     if (!message) {
       console.error("Log message is empty or undefined.")
@@ -51,7 +50,7 @@ async function logActivity(level: LogLevel, message: string, context: Record<str
     await adminDb.collection("logs").add(logEntry)
   } catch (error) {
     console.error("FATAL: Failed to write to logs collection.", error)
-    console.error("Original Log Entry:", { level, message, context })
+    console.error("Original Log Entry:", { level, message, context });
   }
 }
 

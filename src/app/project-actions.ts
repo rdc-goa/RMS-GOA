@@ -1,8 +1,9 @@
+
 'use server';
 
 import { adminDb } from '@/lib/admin';
 import type { Project } from '@/types';
-import { logActivity } from './server-actions'; // logActivity can stay in the main server-actions file
+import { logActivity } from '@/app/server-actions'; // logActivity can stay in the main server-actions file
 
 export async function notifyAdminsOnProjectSubmission(projectId: string, projectTitle: string, piName: string) {
   try {
