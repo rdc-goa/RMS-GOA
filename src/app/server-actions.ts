@@ -1,6 +1,6 @@
 
 
-"use server"
+'use server'
 
 import { adminDb, adminStorage } from "@/lib/admin"
 import { FieldValue } from "firebase-admin/firestore"
@@ -290,74 +290,6 @@ export async function getSystemSettings(): Promise<SystemSettings> {
   }
 }
 
-// Lightweight AI helper: derive a research domain from paper titles (fallback/stub).
-export async function getResearchDomain(input: { paperTitles: string[] }): Promise<{ success: boolean; domain?: string; error?: string }> {
-  try {
-    const titles = input.paperTitles || [];
-    if (titles.length === 0) return { success: true, domain: 'General' };
-
-    const keywords: Record<string, string> = {
-      biology: 'Biological Sciences',
-      chemistry: 'Chemical Sciences',
-      physics: 'Physical Sciences',
-      computer: 'Computer Science',
-      machine: 'Computer Science',
-      learning: 'Computer Science',
-      ai: 'Computer Science',
-      education: 'Education',
-      management: 'Management',
-      engineering: 'Engineering',
-    };
-
-    const joined = titles.join(' ').toLowerCase();
-    for (const k of Object.keys(keywords)) {
-      if (joined.includes(k)) return { success: true, domain: keywords[k] };
-    }
-    return { success: true, domain: 'General' };
-  } catch (error: any) {
-    console.error('getResearchDomain error', error);
-    return { success: false, error: error.message };
-  }
-}
-
-// Simple evaluation prompts generator (stub) used by evaluation UI.
-export async function getEvaluationPrompts(input: { title: string; abstract?: string }): Promise<{ success: boolean; prompts?: string[]; error?: string }> {
-  try {
-    const prompts = [] as string[];
-    if (input.title) prompts.push(`Summarize the main contribution of the paper titled: "${input.title}".`);
-    if (input.abstract) prompts.push(`Identify three strengths and three weaknesses from the abstract: "${input.abstract.slice(0, 300)}".`);
-    if (prompts.length === 0) prompts.push('Provide a short evaluation summary for this submission.');
-    return { success: true, prompts };
-  } catch (error: any) {
-    console.error('getEvaluationPrompts error', error);
-    return { success: false, error: error.message };
-  }
-}
-
-// Bulk upload project stubs (minimal implementations to satisfy imports during build).
-export async function bulkUploadProjects(data: any): Promise<{ success: boolean; error?: string; created?: number }> {
-  try {
-    // Basic validation only; real implementation should parse and insert documents.
-    if (!data) return { success: false, error: 'No data provided' };
-    // For now, return success with a created count placeholder.
-    return { success: true, created: Array.isArray(data) ? data.length : 1 };
-  } catch (error: any) {
-    console.error('bulkUploadProjects error', error);
-    return { success: false, error: error.message };
-  }
-}
-
-export async function deleteBulkProject(projectId: string): Promise<{ success: boolean; error?: string }> {
-  try {
-    if (!projectId) return { success: false, error: 'Project ID required' };
-    // Real implementation should delete the Firestore doc and related storage.
-    return { success: true };
-  } catch (error: any) {
-    console.error('deleteBulkProject error', error);
-    return { success: false, error: error.message };
-  }
-}
-
 export async function updateSystemSettings(settings: SystemSettings): Promise<{ success: boolean; error?: string }> {
   try {
     const settingsRef = adminDb.collection("system").doc("settings")
@@ -631,11 +563,20 @@ export async function updateProjectStatus(projectId: string, newStatus: Project[
     </div>`
 
     if (project.pi_email) {
+      const bccList: string[] = [];
+      if (["Recommended", "Not Recommended", "Revision Needed"].includes(newStatus)) {
+          const provostEmail = process.env.PROVOST_EMAIL;
+          const registrarEmail = process.env.REGISTRAR_EMAIL;
+          if (provostEmail) bccList.push(provostEmail);
+          if (registrarEmail) bccList.push(registrarEmail);
+      }
+      
       await sendEmailUtility({
         to: project.pi_email,
         subject: `Project Status Update: ${project.title}`,
         html: emailHtml,
         from: "default",
+        bcc: bccList.join(','),
       })
     }
 

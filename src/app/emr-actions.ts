@@ -990,6 +990,14 @@ export async function updateEmrStatus(
       await adminDb.collection("notifications").add(notification)
 
       if (interest.userEmail) {
+        const bccList: string[] = [];
+        if (["Recommended", "Not Recommended", "Revision Needed"].includes(status)) {
+            const provostEmail = process.env.PROVOST_EMAIL;
+            const registrarEmail = process.env.REGISTRAR_EMAIL;
+            if (provostEmail) bccList.push(provostEmail);
+            if (registrarEmail) bccList.push(registrarEmail);
+        }
+
         let emailHtml = `
             <div ${EMAIL_STYLES.background}>
                 ${EMAIL_STYLES.logo}
@@ -1025,6 +1033,7 @@ export async function updateEmrStatus(
           subject: `Update on your EMR Application`,
           html: emailHtml,
           from: "default",
+          bcc: bccList.join(','),
         })
       }
     }
@@ -1536,3 +1545,4 @@ export async function markEmrAttendance(callId: string, absentApplicantIds: stri
 
 
     
+
