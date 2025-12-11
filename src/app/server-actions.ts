@@ -1581,3 +1581,201 @@ export async function updateIncentiveClaimStatus(
     return { success: false, error: error.message || "Failed to update status." }
   }
 }
+
+export async function bulkUploadProjects(
+  projects: any[]
+): Promise<{ 
+    success: boolean; 
+    data: {
+        successfulCount: number;
+        failures: { projectTitle: string; piName: string; error: string }[];
+    };
+    error?: string; 
+}> {
+  let successfulCount = 0;
+  const failures: { projectTitle: string; piName: string; error: string }[] = [];
+  const projectsRef = adminDb.collection('projects');
+  
+  for (const p of projects) {
+      try {
+          const newProject: Partial<Project> = {
+              title: p.project_title,
+              pi: p.Name_of_staff,
+              pi_email: p.pi_email.toLowerCase(),
+              status: p.status,
+              submissionDate: p.sanction_date,
+              isBulkUploaded: true,
+              faculty: p.Faculty,
+              institute: p.Institute,
+              departmentName: p.Department,
+              grant: {
+                  totalAmount: Number(p.grant_amount) || 0,
+                  sanctionNumber: p.sanction_number,
+                  status: 'Completed',
+                  phases: []
+              }
+          };
+          await projectsRef.add(newProject);
+          successfulCount++;
+      } catch (error: any) {
+          failures.push({ projectTitle: p.project_title, piName: p.Name_of_staff, error: error.message });
+      }
+  }
+
+  await logActivity('INFO', 'Bulk IMR project upload completed', { successfulCount, failureCount: failures.length });
+  if (failures.length > 0) {
+      await logActivity('WARNING', 'Some IMR projects failed during bulk upload', { failures });
+  }
+
+  return { success: true, data: { successfulCount, failures } };
+}
+
+export async function deleteBulkProject(projectId: string): Promise<{ success: boolean; error?: string }> {
+    try {
+        const projectRef = adminDb.collection('projects').doc(projectId);
+        const projectSnap = await projectRef.get();
+
+        if (!projectSnap.exists) {
+            return { success: false, error: 'Project not found.' };
+        }
+
+        const project = projectSnap.data() as Project;
+        if (!project.isBulkUploaded) {
+            return { success: false, error: 'This action is only for bulk-uploaded projects.' };
+        }
+
+        await projectRef.delete();
+        await logActivity('INFO', 'Bulk-uploaded project deleted', { projectId, title: project.title });
+        return { success: true };
+    } catch (error: any) {
+        console.error('Error deleting bulk project:', error);
+        await logActivity('ERROR', 'Failed to delete bulk project', { projectId, error: error.message });
+        return { success: false, error: 'Could not delete the project.' };
+    }
+}
+
+export async function scheduleMeeting(
+    projects: { id: string; pi_uid: string; title: string; pi_email?: string; }[],
+    meetingDetails: {
+      date: string
+      time: string
+      venue: string
+      evaluatorUids: string[]
+    },
+    isMidTermReview: boolean = false,
+  ): Promise<{ success: boolean; error?: string }> {
+    const { date, time, venue, evaluatorUids } = meetingDetails
+  
+    if (!evaluatorUids || evaluatorUids.length === 0) {
+      return { success: false, error: "An evaluation committee must be assigned." }
+    }
+  
+    const timeZone = "Asia/Kolkata"
+    const batch = adminDb.batch()
+    const emailPromises = []
+  
+    const meetingDateTimeString = `${date}T${time}:00`
+  
+    for (const project of projects) {
+      const projectRef = adminDb.collection("projects").doc(project.id)
+      const updateData: { status: string; meetingDetails: any, hasHadMidTermReview?: boolean } = {
+        status: "Under Review",
+        meetingDetails: { date, time, venue, assignedEvaluators: evaluatorUids },
+      };
+
+      if (isMidTermReview) {
+          updateData.hasHadMidTermReview = true;
+      }
+  
+      batch.update(projectRef, updateData)
+  
+      const notificationRef = adminDb.collection("notifications").doc()
+      batch.set(notificationRef, {
+        uid: project.pi_uid,
+        projectId: project.id,
+        title: `Your ${isMidTermReview ? 'Mid-term Review' : 'IMR'} Meeting is Scheduled: "${project.title}"`,
+        createdAt: new Date().toISOString(),
+        isRead: false,
+      })
+  
+      const emailHtml = `
+          <div ${EMAIL_STYLES.background}>
+              ${EMAIL_STYLES.logo}
+              <p style="color:#ffffff;">Dear ${project.pi},</p>
+              <p style="color:#e0e0e0;">
+                  An ${isMidTermReview ? 'IMR mid-term review meeting' : 'IMR evaluation meeting'} has been scheduled for your project, "<strong style="color:#ffffff;">${project.title}</strong>".
+              </p>
+              <p><strong style="color:#ffffff;">Date:</strong> ${formatInTimeZone(meetingDateTimeString, timeZone, "MMMM d, yyyy")}</p>
+              <p><strong style="color:#ffffff;">Time:</strong> ${formatInTimeZone(meetingDateTimeString, timeZone, "h:mm a (z)")}</p>
+              <p><strong style="color:#ffffff;">Venue:</strong> ${venue}</p>
+              <p style="color:#cccccc; margin-top: 15px;">Please be prepared for your presentation. Good luck!</p>
+              ${EMAIL_STYLES.footer}
+          </div>
+      `
+  
+      if (project.pi_email) {
+        emailPromises.push(
+          sendEmailUtility({
+            to: project.pi_email,
+            subject: `IMR ${isMidTermReview ? 'Mid-term Review' : 'Evaluation'} Meeting Scheduled: ${project.title}`,
+            html: emailHtml,
+            from: 'default'
+          }),
+        )
+      }
+    }
+  
+    // Notify evaluators once
+    if (evaluatorUids && evaluatorUids.length > 0) {
+      const evaluatorDocs = await Promise.all(evaluatorUids.map((uid) => adminDb.collection("users").doc(uid).get()))
+  
+      for (const evaluatorDoc of evaluatorDocs) {
+        if (evaluatorDoc.exists) {
+          const evaluator = evaluatorDoc.data() as User
+  
+          const evaluatorNotificationRef = adminDb.collection("notifications").doc()
+          batch.set(evaluatorNotificationRef, {
+            uid: evaluator.uid,
+            title: `You've been assigned to an IMR ${isMidTermReview ? 'mid-term review' : 'evaluation'} committee`,
+            createdAt: new Date().toISOString(),
+            isRead: false,
+          })
+  
+          if (evaluator.email) {
+            emailPromises.push(
+              sendEmailUtility({
+                to: evaluator.email,
+                subject: `IMR ${isMidTermReview ? 'Mid-term Review' : 'Evaluation'} Assignment`,
+                html: `
+                  <div ${EMAIL_STYLES.background}>
+                      ${EMAIL_STYLES.logo}
+                      <p style="color:#ffffff;">Dear Evaluator,</p>
+                      <p style="color:#e0e0e0;">You have been assigned to an IMR ${isMidTermReview ? 'mid-term review' : 'evaluation'} committee.</p>
+                      <p><strong style="color:#ffffff;">Date:</strong> ${formatInTimeZone(meetingDateTimeString, timeZone, "MMMM d, yyyy")}</p>
+                      <p><strong style="color:#ffffff;">Time:</strong> ${formatInTimeZone(meetingDateTimeString, timeZone, "h:mm a (z)")}</p>
+                      <p><strong style="color:#ffffff;">Venue:</strong> ${venue}</p>
+                      <p style="color:#cccccc; margin-top: 15px;">Please review the assigned projects on the PU Goa Research Projects Portal.</p>
+                      ${EMAIL_STYLES.footer}
+                  </div>
+                `,
+                from: 'default'
+              }),
+            )
+          }
+        }
+      }
+    }
+  
+    try {
+      await batch.commit()
+      await Promise.all(emailPromises)
+      await logActivity("INFO", `IMR ${isMidTermReview ? 'mid-term' : ''} meeting scheduled`, { projectIds: projects.map(p => p.id), meetingDate: date, evaluatorCount: evaluatorUids.length });
+      return { success: true }
+    } catch (error: any) {
+      console.error("Error committing batch or sending emails:", error)
+      await logActivity("ERROR", `Failed to schedule IMR ${isMidTermReview ? 'mid-term' : ''} meeting`, { error: error.message });
+      return { success: false, error: "Failed to update project statuses or send notifications." }
+    }
+}
+
+    
