@@ -35,7 +35,7 @@ import {
   updatePassword,
 } from "firebase/auth"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { Banknote, Bot, ShieldCheck, Plus, X, Award, CalendarIcon, Clock, Mail, FileText, Blocks, Search } from "lucide-react"
+import { Banknote, Bot, ShieldCheck, Plus, X, Award, CalendarIcon, Clock, Mail, FileText, Blocks, Search, Loader2 } from "lucide-react"
 import { Combobox } from "@/components/ui/combobox"
 import { Switch } from "@/components/ui/switch"
 import { Label } from "@/components/ui/label"
@@ -366,19 +366,19 @@ export default function SettingsPage() {
   }
 
   async function onBankDetailsSubmit(data: BankDetailsFormValues) {
-    if (!user) return
-    setIsSubmittingBank(true)
+    if (!user) return;
+    setIsSubmittingBank(true);
     try {
-      const userDocRef = doc(db, "users", user.uid)
-      await updateDoc(userDocRef, { bankDetails: data });
-      // The user object in state will be updated on the next full page refresh or re-login.
-      // This avoids the stringify error.
-      toast({ title: "Bank details updated successfully!" })
+        const userDocRef = doc(db, 'users', user.uid);
+        await updateDoc(userDocRef, { bankDetails: data });
+        // The user object in state will be updated on the next full page refresh or re-login.
+        // This avoids stringify errors with server timestamps if we were to use them.
+        toast({ title: 'Bank details updated successfully!' });
     } catch (error: any) {
-      console.error("Bank details update error:", error)
-      toast({ variant: "destructive", title: "Update Failed", description: "Could not update your bank details." })
+        console.error("Bank details update error:", error);
+        toast({ variant: 'destructive', title: 'Update Failed', description: 'Could not update your bank details.' });
     } finally {
-      setIsSubmittingBank(false)
+        setIsSubmittingBank(false);
     }
   }
 
