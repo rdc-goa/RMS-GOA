@@ -3,7 +3,7 @@
 
 import type React from "react"
 
-import { useState, useEffect, useMemo } from "react"
+import { useState, useEffect, useMemo, useCallback } from "react"
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import * as z from "zod"
@@ -202,7 +202,7 @@ export default function SettingsPage() {
     },
   })
 
-  const dummyForm = useForm() // For the incentive approvers section
+  const dummyForm = useForm() // For the incentive approvers and theme section
 
   const selectedCampusForCro = croAssignmentForm.watch("campus")
   const facultyOptionsForCro = goaFaculties
@@ -366,8 +366,8 @@ export default function SettingsPage() {
   }
 
   async function onBankDetailsSubmit(data: BankDetailsFormValues) {
-    if (!user) return;
-    setIsSubmittingBank(true);
+    if (!user) return
+    setIsSubmittingBank(true)
     try {
         const userDocRef = doc(db, 'users', user.uid);
         await updateDoc(userDocRef, { bankDetails: data });
@@ -725,21 +725,23 @@ export default function SettingsPage() {
               <CardDescription>Global settings for the application. Changes affect all users.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
-              <div className="space-y-4">
-                  <Label className="text-base">Theme Management</Label>
-                  <p className="text-sm text-muted-foreground">Customize the portal's appearance. Use valid hex color codes (e.g., #3b8ee8).</p>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                      <FormField name="theme.primary" control={dummyForm.control} render={({ field }) => (
-                          <FormItem><FormLabel>Primary Color (Buttons)</FormLabel><Input type="text" defaultValue={systemSettings.theme?.primary} onBlur={(e) => handleThemeColorChange('primary', e.target.value)} disabled={isSavingSettings} /></FormItem>
-                      )} />
-                      <FormField name="theme.accent" control={dummyForm.control} render={({ field }) => (
-                          <FormItem><FormLabel>Accent Color</FormLabel><Input type="text" defaultValue={systemSettings.theme?.accent} onBlur={(e) => handleThemeColorChange('accent', e.target.value)} disabled={isSavingSettings} /></FormItem>
-                      )} />
-                      <FormField name="theme.background" control={dummyForm.control} render={({ field }) => (
-                          <FormItem><FormLabel>Background Color</FormLabel><Input type="text" defaultValue={systemSettings.theme?.background} onBlur={(e) => handleThemeColorChange('background', e.target.value)} disabled={isSavingSettings} /></FormItem>
-                      )} />
-                  </div>
-              </div>
+                <Form {...dummyForm}>
+                    <div className="space-y-4">
+                        <Label className="text-base">Theme Management</Label>
+                        <p className="text-sm text-muted-foreground">Customize the portal's appearance. Use valid hex color codes (e.g., #3b8ee8).</p>
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            <FormField name="theme.primary" control={dummyForm.control} render={({ field }) => (
+                                <FormItem><FormLabel>Primary Color (Buttons)</FormLabel><Input type="text" defaultValue={systemSettings.theme?.primary} onBlur={(e) => handleThemeColorChange('primary', e.target.value)} disabled={isSavingSettings} /></FormItem>
+                            )} />
+                            <FormField name="theme.accent" control={dummyForm.control} render={({ field }) => (
+                                <FormItem><FormLabel>Accent Color</FormLabel><Input type="text" defaultValue={systemSettings.theme?.accent} onBlur={(e) => handleThemeColorChange('accent', e.target.value)} disabled={isSavingSettings} /></FormItem>
+                            )} />
+                            <FormField name="theme.background" control={dummyForm.control} render={({ field }) => (
+                                <FormItem><FormLabel>Background Color</FormLabel><Input type="text" defaultValue={systemSettings.theme?.background} onBlur={(e) => handleThemeColorChange('background', e.target.value)} disabled={isSavingSettings} /></FormItem>
+                            )} />
+                        </div>
+                    </div>
+                </Form>
               <Separator />
                <div className="space-y-4">
                 <div className="flex items-center gap-2">
