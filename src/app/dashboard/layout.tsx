@@ -75,6 +75,69 @@ import {
 } from "@/components/ui/alert-dialog"
 import { subMonths, differenceInDays } from 'date-fns'
 
+// Helper function to convert hex to HSL string
+function hexToHsl(hex: string): string | null {
+    if (!hex || !hex.startsWith('#')) return null;
+
+    let r = 0, g = 0, b = 0;
+    if (hex.length === 4) {
+        r = parseInt(hex[1] + hex[1], 16);
+        g = parseInt(hex[2] + hex[2], 16);
+        b = parseInt(hex[3] + hex[3], 16);
+    } else if (hex.length === 7) {
+        r = parseInt(hex.substring(1, 3), 16);
+        g = parseInt(hex.substring(3, 5), 16);
+        b = parseInt(hex.substring(5, 7), 16);
+    } else {
+        return null; // Invalid hex format
+    }
+
+    r /= 255;
+    g /= 255;
+    b /= 255;
+
+    const max = Math.max(r, g, b);
+    const min = Math.min(r, g, b);
+    let h = 0, s = 0, l = (max + min) / 2;
+
+    if (max !== min) {
+        const d = max - min;
+        s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+        switch (max) {
+            case r: h = (g - b) / d + (g < b ? 6 : 0); break;
+            case g: h = (b - r) / d + 2; break;
+            case b: h = (r - g) / d + 4; break;
+        }
+        h /= 6;
+    }
+
+    h = Math.round(h * 360);
+    s = Math.round(s * 100);
+    l = Math.round(l * 100);
+
+    return `${h} ${s}% ${l}%`;
+}
+
+
+const DynamicThemeStyles = ({ themeSettings }: { themeSettings: SystemSettings['theme'] }) => {
+    if (!themeSettings) return null;
+
+    const styles = `
+      :root {
+        ${themeSettings.primary ? `--primary: ${hexToHsl(themeSettings.primary)};` : ''}
+        ${themeSettings.accent ? `--accent: ${hexToHsl(themeSettings.accent)};` : ''}
+        ${themeSettings.background ? `--background: ${hexToHsl(themeSettings.background)};` : ''}
+      }
+      .dark {
+        ${themeSettings.primary ? `--primary: ${hexToHsl(themeSettings.primary)};` : ''}
+        ${themeSettings.accent ? `--accent: ${hexToHsl(themeSettings.accent)};` : ''}
+        ${themeSettings.background ? `--background: ${hexToHsl(themeSettings.background)};` : ''}
+      }
+    `;
+
+    return <style>{styles}</style>;
+};
+
 
 interface NavItem {
   id: string
@@ -128,7 +191,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const [isLogoutConfirmOpen, setIsLogoutConfirmOpen] = useState(false)
   const [isPostSetupDialogOpen, setIsPostSetupDialogOpen] = useState(false)
   const [linkedProjectsCount, setLinkedProjectsCount] = useState({ imr: 0, emr: 0 })
-  const [systemSettings, setSystemSettings] = useState<SystemSettings | null>(null);
+  const [systemSettings, setSystemSettings] = useState<SystemSettings | null>(null)
   const router = useRouter()
   const pathname = usePathname()
   const { toast } = useToast()
@@ -599,6 +662,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   return (
     <>
+      <DynamicThemeStyles themeSettings={systemSettings?.theme} />
       <SidebarProvider>
         <Sidebar>
           <SidebarHeader>
