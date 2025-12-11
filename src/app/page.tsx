@@ -96,7 +96,7 @@ export default function LandingPage() {
                 </div>
               </div>
               <Image
-                src="https://goa.paruluniversity.ac.in/wp-content/uploads/2025/02/Central-Vista-Evening-View-1-1-e1739343524475.jpg"
+                src="/Central-Vista-Evening-View-1-1-e1739343524475.jpg"
                 width={600}
                 height={400}
                 alt="Hero"

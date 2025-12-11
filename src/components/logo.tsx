@@ -11,7 +11,7 @@ export function Logo({ variant = 'public' }: LogoProps) {
       <div className="flex items-center justify-center p-6" style={{ maxHeight: 40 }}>
         {/* Expanded Light mode logo */}
         <Image
-          src="https://pinxoxpbufq92wb4.public.blob.vercel-storage.com/Research%20%26%20Development%20%E2%80%A8Cell%20b.svg"
+          src="/PU GOA BLACK.svg"
           alt="RDC Logo"
           width={250}
           height={70}
@@ -20,7 +20,7 @@ export function Logo({ variant = 'public' }: LogoProps) {
         />
         {/* Expanded Dark mode logo */}
         <Image
-          src="https://pinxoxpbufq92wb4.public.blob.vercel-storage.com/Research%20%26%20Development%20%E2%80%A8Cell%20W.svg"
+          src="/PU GOA White.svg"
           alt="RDC Logo"
           width={250}
           height={70}
@@ -39,7 +39,7 @@ export function Logo({ variant = 'public' }: LogoProps) {
   return (
     <div className="flex items-center justify-center p-2" style={{ minHeight: 49 }}>
       <Image
-        src="https://pinxoxpbufq92wb4.public.blob.vercel-storage.com/RDC-PU-GOA-LOGO-BLACK.svg"
+        src="/PU GOA BLACK.svg"
         alt="RDC Logo"
         width={350}
         height={100}
@@ -47,7 +47,7 @@ export function Logo({ variant = 'public' }: LogoProps) {
         priority
       />
       <Image
-        src="https://pinxoxpbufq92wb4.public.blob.vercel-storage.com/RDC-PU-GOA-LOGO-WHITE.svg"
+        src="/PU GOA White.svg"
         alt="RDC Logo"
         width={350}
         height={100}
