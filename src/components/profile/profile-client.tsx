@@ -3,7 +3,8 @@
 
 import { useState, useEffect } from 'react';
 import type { User, Project, EmrInterest, FundingCall, ResearchPaper, Author, CoPiDetails, IncentiveClaim } from '@/types';
-import { getResearchDomain, uploadFileToServer, updateEmrInterestDetails } from '@/app/server-actions';
+import { uploadFileToServer, updateEmrInterestDetails } from '@/app/server-actions';
+import { getResearchDomainSuggestion as getResearchDomain } from '@/ai/flows/research-domain-suggestion';
 import { findUserByMisId } from '@/app/userfinding';
 import { addResearchPaper, checkUserOrStaff, updateResearchPaper, deleteResearchPaper, manageCoAuthorRequest } from '@/app/bulkpapers';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -511,7 +512,7 @@ export function ProfileClient({ user, projects, emrInterests: initialEmrInterest
                 setLoadingDomain(true);
                 try {
                     const result = await getResearchDomain({ paperTitles: allTitles });
-                    if (result.success) { setDomain(result.domain); }
+                    if (result) { setDomain(result.domain); }
                 } catch (error) { console.error("Error fetching research domain:", error); } 
                 finally { setLoadingDomain(false); }
             }
