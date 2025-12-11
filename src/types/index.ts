@@ -531,6 +531,10 @@ export type AuthMethods = {
     google?: boolean;
 };
 
+export type DefaultModules = {
+  [key in 'faculty' | 'CRO' | 'Evaluator' | 'Principal' | 'HOD' | 'IQAC']?: string[];
+};
+
 export type SystemSettings = {
   is2faEnabled: boolean
   authMethods?: AuthMethods;
@@ -546,6 +550,7 @@ export type SystemSettings = {
   dndEmail?: string;
   templateUrls?: TemplateUrls;
   apiIntegrations?: ApiIntegrations;
+  defaultModules?: DefaultModules;
 }
 
 export type LoginOtp = {

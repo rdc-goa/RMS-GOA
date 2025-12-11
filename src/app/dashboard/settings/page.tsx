@@ -1,3 +1,4 @@
+
 "use client"
 
 import type React from "react"
@@ -24,7 +25,7 @@ import {
   updateSystemSettings,
   checkMisIdExists,
 } from "@/app/server-actions"
-import type { User, SystemSettings, CroAssignment, ApproverSetting, ApiIntegrations } from "@/types"
+import type { User, SystemSettings, CroAssignment, ApproverSetting, ApiIntegrations, DefaultModules } from "@/types"
 import { Skeleton } from "@/components/ui/skeleton"
 import {
   onAuthStateChanged,
@@ -34,13 +35,14 @@ import {
   updatePassword,
 } from "firebase/auth"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { Banknote, Bot, ShieldCheck, Plus, X, Award, CalendarIcon, Clock, Mail, FileText } from "lucide-react"
+import { Banknote, Bot, ShieldCheck, Plus, X, Award, CalendarIcon, Clock, Mail, FileText, Blocks } from "lucide-react"
 import { Combobox } from "@/components/ui/combobox"
 import { Switch } from "@/components/ui/switch"
 import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Checkbox } from "@/components/ui/checkbox"
+import { ALL_MODULES } from '@/lib/modules';
 
 const profileSchema = z.object({
   name: z.string().min(2, "Name must be at least 2 characters."),
@@ -345,7 +347,7 @@ export default function SettingsPage() {
       const userDocRef = doc(db, "users", user.uid)
       await updateDoc(userDocRef, { bankDetails: data })
       const updatedUser = { ...user, bankDetails: data }
-      localStorage.setItem("user", JSON.JSON.stringify(updatedUser))
+      localStorage.setItem("user", JSON.stringify(updatedUser))
       setUser(updatedUser)
       toast({ title: "Bank details updated successfully!" })
     } catch (error: any) {
@@ -445,6 +447,23 @@ export default function SettingsPage() {
     }
     setIsSavingSettings(false)
   }
+
+  const handleDefaultModuleChange = async (
+    role: keyof DefaultModules,
+    moduleId: string,
+    checked: boolean
+  ) => {
+    if (!systemSettings) return;
+
+    const currentModules = systemSettings.defaultModules?.[role] || [];
+    const newModules = checked
+      ? [...currentModules, moduleId]
+      : currentModules.filter(id => id !== moduleId);
+      
+    const newDefaultModules = { ...systemSettings.defaultModules, [role]: newModules };
+    await handleSystemSettingsSave({ ...systemSettings, defaultModules: newDefaultModules });
+  };
+
 
   const handleApiIntegrationToggle = async (api: keyof ApiIntegrations, enabled: boolean) => {
     if (!systemSettings) return
@@ -620,6 +639,8 @@ export default function SettingsPage() {
 
   const isAcademicInfoLocked = isCro || isPrincipal
 
+  const defaultModuleRoles: (keyof DefaultModules)[] = ['faculty', 'CRO', 'Evaluator', 'Principal', 'HOD', 'IQAC'];
+
   if (loading) {
     return (
       <div className="container mx-auto py-10">
@@ -673,6 +694,40 @@ export default function SettingsPage() {
               <CardDescription>Global settings for the application. Changes affect all users.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
+               <div className="space-y-4">
+                <div className="flex items-center gap-2">
+                    <Blocks className="h-5 w-5" />
+                    <Label className="text-base">Default Modules for New Users</Label>
+                </div>
+                <p className="text-sm text-muted-foreground">
+                    Configure the default sidebar modules that are enabled for newly registered users of each role.
+                </p>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    {defaultModuleRoles.map(role => (
+                        <div key={role} className="p-4 border rounded-lg">
+                            <h4 className="font-semibold text-base mb-3">{role} Defaults</h4>
+                            <div className="grid grid-cols-2 gap-x-4 gap-y-2">
+                                {ALL_MODULES.map(module => {
+                                    const defaultForRole = systemSettings.defaultModules?.[role] || [];
+                                    const isChecked = defaultForRole.includes(module.id);
+                                    return (
+                                        <div key={`${role}-${module.id}`} className="flex items-center space-x-2">
+                                            <Checkbox
+                                                id={`${role}-${module.id}`}
+                                                checked={isChecked}
+                                                onCheckedChange={(checked) => handleDefaultModuleChange(role, module.id, !!checked)}
+                                                disabled={isSavingSettings}
+                                            />
+                                            <Label htmlFor={`${role}-${module.id}`} className="text-sm font-normal">{module.label}</Label>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                    ))}
+                </div>
+              </div>
+              <Separator />
               <div className="space-y-4">
                 <div className="flex items-center gap-2">
                   <Bot className="h-5 w-5" />
@@ -710,6 +765,21 @@ export default function SettingsPage() {
                 </div>
               </div>
               <Separator />
+              <div className="flex items-center justify-between">
+                <div className="space-y-0.5">
+                  <Label className="text-base">Two-Factor Authentication (2FA)</Label>
+                  <p className="text-sm text-muted-foreground">
+                    {systemSettings.is2faEnabled ? "Enabled" : "Disabled"} - Require users to verify their identity with
+                    an email OTP upon login.
+                  </p>
+                </div>
+                <Switch
+                  checked={systemSettings.is2faEnabled}
+                  onCheckedChange={handle2faToggle}
+                  disabled={isSavingSettings}
+                />
+              </div>
+              <Separator />
               <div className="space-y-4">
                 <div className="flex items-center gap-2">
                   <FileText className="h-5 w-5" />
@@ -735,21 +805,6 @@ export default function SettingsPage() {
                     </div>
                   ))}
                 </div>
-              </div>
-              <Separator />
-              <div className="flex items-center justify-between">
-                <div className="space-y-0.5">
-                  <Label className="text-base">Two-Factor Authentication (2FA)</Label>
-                  <p className="text-sm text-muted-foreground">
-                    {systemSettings.is2faEnabled ? "Enabled" : "Disabled"} - Require users to verify their identity with
-                    an email OTP upon login.
-                  </p>
-                </div>
-                <Switch
-                  checked={systemSettings.is2faEnabled}
-                  onCheckedChange={handle2faToggle}
-                  disabled={isSavingSettings}
-                />
               </div>
               <Separator />
               <div className="space-y-4">
