@@ -19,7 +19,7 @@ import type { User, Project, CoPiDetails } from '@/types';
 import { Checkbox } from '@/components/ui/checkbox';
 import { db } from '@/lib/config';
 import { collection, doc, setDoc, getDocs, query, where } from 'firebase/firestore';
-import { uploadFileToServer, saveProjectSubmission } from '@/app/server-actions';
+import { uploadFileToServer, saveProjectSubmission, resizeImage } from '@/app/server-actions';
 import { findUserByMisId } from '@/app/userfinding';
 import { Alert, AlertDescription, AlertTitle } from '../ui/alert';
 import Link from 'next/link';
@@ -64,7 +64,7 @@ const sdgGoalsList = [
   "Goal 17: Partnerships for the Goals",
 ];
 
-const fileToDataUrl = (file: File): Promise<string> => {
+const fileToDataUrl = async (file: File): Promise<string> => {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => resolve(reader.result as string);
@@ -319,7 +319,12 @@ export function SubmissionForm({ project }: SubmissionFormProps) {
       let projectId = project?.id || doc(collection(db, 'projects')).id;
 
       const uploadFile = async (file: File, folder: string): Promise<string> => {
-        const dataUrl = await fileToDataUrl(file);
+        let fileToUpload = file;
+        // Resize image files before creating data URL
+        if (file.type.startsWith('image/')) {
+          fileToUpload = await resizeImage(file);
+        }
+        const dataUrl = await fileToDataUrl(fileToUpload);
         const path = `projects/${projectId}/${folder}/${file.name}`;
         const result = await uploadFileToServer(dataUrl, path);
         if (result.success && result.url) return result.url;
@@ -697,3 +702,5 @@ export function SubmissionForm({ project }: SubmissionFormProps) {
     </Card>
   );
 }
+
+    

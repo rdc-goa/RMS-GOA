@@ -35,12 +35,6 @@ const nextConfig: NextConfig = {
         port: '',
         pathname: '/**',
       },
-      {
-        protocol: 'https',
-        hostname: 'goa.paruluniversity.ac.in',
-        port: '',
-        pathname: '/**',
-      },
     ],
   },
   experimental: {

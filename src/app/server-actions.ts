@@ -32,9 +32,7 @@ import { awardInitialGrant, addGrantPhase, updatePhaseStatus } from "./grant-act
 import { generateSanctionOrder } from "./document-actions"
 
 // --- Centralized Logging Service ---
-type LogLevel = "INFO" | "WARNING" | "ERROR"
-
-export async function logActivity(level: LogLevel, message: string, context: Record<string, any> = {}) {
+export async function logActivity(level: 'INFO' | 'WARNING' | 'ERROR', message: string, context: Record<string, any> = {}) {
   try {
     if (!message) {
       console.error("Log message is empty or undefined.")
@@ -261,14 +259,14 @@ const EMAIL_STYLES = {
   footer: ` 
     <p style="color:#b0bec5; margin-top: 30px;">Best Regards,</p>
     <p style="color:#b0bec5;">Research & Development Cell Team,</p>
-    <p style="color:#b0bec5;">Parul University</p>
+    <p style="color:#b0bec5;">Parul University Goa</p>
     <hr style="border-top: 1px solid #4f5b62; margin-top: 20px;">
     <p style="font-size:10px; color:#999999; text-align:center; margin-top:10px;">
         This is a system generated automatic email. If you feel this is an error, please report at the earliest.
     </p>`,
 }
 
-export async function sendEmail(options: { to: string; subject: string; html: string; from: "default" | "rdc" }) {
+export async function sendEmail(options: { to: string; subject: string; html: string; from: "default" | "rdc", bcc?: string, cc?: string }) {
   return await sendEmailUtility(options)
 }
 
@@ -302,532 +300,52 @@ export async function updateSystemSettings(settings: SystemSettings): Promise<{ 
   }
 }
 
-export async function uploadApproverSignature(
-  stage: 2 | 3 | 4,
-  signatureDataUrl: string
-): Promise<{ success: boolean; url?: string; error?: string }> {
-  try {
-    const path = `system/signatures/approver_stage_${stage}_signature.png`;
-    const uploadResult = await uploadFileToServer(signatureDataUrl, path);
+export async function resizeImage(file: File, maxWidth = 1024, maxHeight = 1024, quality = 0.8): Promise<File> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    reader.onload = event => {
+      const img = new Image();
+      img.src = event.target?.result as string;
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        let { width, height } = img;
 
-    if (!uploadResult.success || !uploadResult.url) {
-      throw new Error(uploadResult.error || "Signature upload failed.");
-    }
-    
-    const settings = await getSystemSettings();
-    const currentApprovers = settings.incentiveApprovers || [];
-    const approverIndex = currentApprovers.findIndex(a => a.stage === stage);
-    
-    if (approverIndex !== -1) {
-      currentApprovers[approverIndex].signatureUrl = uploadResult.url;
-    } else {
-      // This case should ideally not happen if an approver email is set, but handle it defensively.
-      const newApprover = { stage, email: '', signatureUrl: uploadResult.url };
-      currentApprovers.push(newApprover);
-      currentApprovers.sort((a,b) => a.stage - b.stage);
-    }
-    
-    await updateSystemSettings({ ...settings, incentiveApprovers: currentApprovers });
-    
-    await logActivity('INFO', `Approver signature for stage ${stage} updated.`);
-    return { success: true, url: uploadResult.url };
-
-  } catch (error: any) {
-    console.error(`Error uploading signature for stage ${stage}:`, error);
-    await logActivity('ERROR', 'Failed to upload approver signature', { stage, error: error.message });
-    return { success: false, error: error.message || 'Server error during upload.' };
-  }
-}
-
-
-export async function sendLoginOtp(email: string): Promise<{ success: boolean; error?: string }> {
-  try {
-    const otp = Math.floor(100000 + Math.random() * 900000).toString()
-    const expiresAt = Date.now() + 10 * 60 * 1000 // 10 minutes from now
-
-    const otpData: LoginOtp = { email, otp, expiresAt }
-    await adminDb.collection("loginOtps").doc(email).set(otpData)
-
-    const emailHtml = `
-      <div ${EMAIL_STYLES.background}>
-        ${EMAIL_STYLES.logo}
-        <p style="color:#ffffff; text-align:center; font-size:18px;">Your Verification Code</p>
-        <p style="color:#e0e0e0; text-align:center;">Please use the following code to complete your login. This code will expire in 10 minutes.</p>
-        <div style="text-align:center; margin: 20px 0;">
-            <p style="background-color:#2c3e50; color:#ffffff; display:inline-block; padding: 10px 20px; font-size:24px; letter-spacing: 5px; border-radius: 5px;">
-                ${otp}
-            </p>
-        </div>
-        ${EMAIL_STYLES.footer}
-      </div>
-    `
-
-    await sendEmailUtility({
-      to: email,
-      subject: "Your Login Verification Code for PU Research Projects Portal",
-      html: emailHtml,
-      from: "default",
-    })
-
-    return { success: true }
-  } catch (error: any) {
-    console.error("Error sending OTP:", error)
-    return { success: false, error: "Failed to send OTP email." }
-  }
-}
-
-export async function verifyLoginOtp(email: string, otp: string): Promise<{ success: boolean; error?: string }> {
-  try {
-    const otpRef = adminDb.collection("loginOtps").doc(email)
-    const otpSnap = await otpRef.get()
-
-    if (!otpSnap.exists) {
-      return { success: false, error: "Invalid or expired OTP. Please try again." }
-    }
-
-    const otpData = otpSnap.data() as LoginOtp
-
-    if (otpData.otp !== otp) {
-      return { success: false, error: "The OTP you entered is incorrect." }
-    }
-
-    if (Date.now() > otpData.expiresAt) {
-      await otpRef.delete() // Clean up expired OTP
-      return { success: false, error: "Your OTP has expired. Please log in again to receive a new one." }
-    }
-
-    await otpRef.delete() // OTP is valid and used, so delete it
-    return { success: true }
-  } catch (error: any) {
-    console.error("Error verifying OTP:", error)
-    return { success: false, error: "An unexpected error occurred during verification." }
-  }
-}
-
-export async function saveProjectSubmission(
-  projectId: string,
-  projectData: Omit<Project, "id">,
-): Promise<{ success: boolean; error?: string }> {
-  try {
-    const projectRef = adminDb.collection("projects").doc(projectId)
-    await projectRef.set(projectData, { merge: true })
-
-    // Notify admins only on final submission, not on saving drafts
-    if (projectData.status === "Submitted") {
-      await notifyAdminsOnProjectSubmission(projectId, projectData.title, projectData.pi)
-    }
-
-    await logActivity("INFO", `Project ${projectData.status}`, { projectId, title: projectData.title })
-    return { success: true }
-  } catch (error: any) {
-    console.error("Error saving project submission:", error)
-    await logActivity("ERROR", "Failed to save project submission", {
-      projectId,
-      title: projectData.title,
-      error: error.message,
-      stack: error.stack,
-    })
-    return { success: false, error: error.message || "Failed to save project." }
-  }
-}
-
-export async function linkPapersToNewUser(
-  uid: string,
-  email: string,
-): Promise<{ success: boolean; count: number; error?: string }> {
-  try {
-    if (!uid || !email) {
-      return { success: false, count: 0, error: "User ID and email are required." }
-    }
-
-    const lowercasedEmail = email.toLowerCase()
-    const papersRef = adminDb.collection("papers")
-
-    // This is the correct way to query for a value within an array.
-    const papersQuery = papersRef.where("authorEmails", "array-contains", lowercasedEmail)
-
-    const snapshot = await papersQuery.get()
-    if (snapshot.empty) {
-      console.log(`No papers found to link for new user: ${email}`)
-      return { success: true, count: 0 }
-    }
-
-    console.log(`Found ${snapshot.docs.length} papers to link for new user: ${email}`)
-
-    const batch = adminDb.batch()
-    let updatedCount = 0
-
-    snapshot.forEach((doc) => {
-      const paper = doc.data() as ResearchPaper
-      let needsUpdate = false
-
-      const updatedAuthors = paper.authors.map((author) => {
-        // Find the author entry that matches the new user's email and doesn't have a UID yet.
-        if (author.email.toLowerCase() === lowercasedEmail && !author.uid) {
-          needsUpdate = true
-          return { ...author, uid: uid, isExternal: false } // Update UID and mark as internal
-        }
-        return author
-      })
-
-      if (needsUpdate) {
-        const paperRef = doc.ref
-        // Add the new UID to the authorUids array for future queries.
-        const updatedAuthorUids = [...new Set([...(paper.authorUids || []), uid])]
-        batch.update(paperRef, { authors: updatedAuthors, authorUids: updatedAuthorUids })
-        updatedCount++
-      }
-    })
-
-    if (updatedCount > 0) {
-      await batch.commit()
-      console.log(`Successfully committed updates for ${updatedCount} papers for user ${email}.`)
-    }
-
-    return { success: true, count: updatedCount }
-  } catch (error: any) {
-    console.error("Error linking papers to new user:", error)
-    await logActivity("ERROR", "Failed to link papers to new user", {
-      uid,
-      email,
-      error: error.message,
-      stack: error.stack,
-    })
-    return { success: false, count: 0, error: error.message || "Failed to link papers." }
-  }
-}
-
-export async function updateProjectStatus(projectId: string, newStatus: Project["status"], comments?: string) {
-  try {
-    const projectRef = adminDb.collection("projects").doc(projectId)
-    const projectSnap = await projectRef.get()
-
-    if (!projectSnap.exists) {
-      return { success: false, error: "Project not found." }
-    }
-    const project = projectSnap.data() as Project
-
-    const updateData: { [key: string]: any } = { status: newStatus }
-    if (comments) {
-      if (newStatus === "Revision Needed") {
-        updateData.revisionComments = comments
-      } else if (newStatus === "Not Recommended") {
-        updateData.rejectionComments = comments
-      }
-    }
-
-    await projectRef.update(updateData)
-    await logActivity("INFO", "Project status updated", { projectId, newStatus, piUid: project.pi_uid })
-
-    const notification = {
-      uid: project.pi_uid,
-      projectId: projectId,
-      title: `Your project "${project.title}" status was updated to: ${newStatus}`,
-      createdAt: new Date().toISOString(),
-      isRead: false,
-    }
-    await adminDb.collection("notifications").add(notification)
-
-    let emailHtml = `
-      <div ${EMAIL_STYLES.background}>
-        ${EMAIL_STYLES.logo}
-        <p style="color:#ffffff;">Dear ${project.pi},</p>
-        <p style="color:#e0e0e0;">
-          The status of your project, "<strong style="color:#ffffff;">${project.title}</strong>" has been updated to 
-          <strong style="color:#ffca28;">${newStatus}</strong>.
-        </p>
-    `
-
-    if (comments) {
-      const reasonTitle = newStatus === 'Revision Needed' ? "Evaluator's Comments for Revision:" : "Reason for Decision:";
-      emailHtml += `
-          <div style="margin-top:20px; padding:15px; border:1px solid #4f5b62; border-radius:6px; background-color:#2c3e50;">
-            <h4 style="color:#ffffff; margin-top:0;">${reasonTitle}</h4>
-            <p style="color:#e0e0e0; white-space: pre-wrap;">${comments}</p>
-          </div>
-        `
-      if (newStatus === 'Revision Needed') {
-         emailHtml += `<p style="color:#e0e0e0; margin-top:20px;">Please submit the revised proposal from your project details page on the portal.</p>`
-      }
-    }
-
-    emailHtml += `
-      <p style="color:#e0e0e_0;">
-        You can view your project details on the 
-        <a href="${process.env.BASE_URL}/dashboard/project/${projectId}" style="color:#64b5f6; text-decoration:underline;">
-          PU Goa Research Projects Portal
-        </a>.
-      </p>
-      ${EMAIL_STYLES.footer}
-    </div>`
-
-    if (project.pi_email) {
-      const bccList: string[] = [];
-      if (["Recommended", "Not Recommended", "Revision Needed"].includes(newStatus)) {
-          const provostEmail = process.env.PROVOST_EMAIL;
-          const registrarEmail = process.env.REGISTRAR_EMAIL;
-          if (provostEmail) bccList.push(provostEmail);
-          if (registrarEmail) bccList.push(registrarEmail);
-      }
-      
-      await sendEmailUtility({
-        to: project.pi_email,
-        subject: `Project Status Update: ${project.title}`,
-        html: emailHtml,
-        from: "default",
-        bcc: bccList.join(','),
-      })
-    }
-
-    return { success: true }
-  } catch (error: any) {
-    console.error("Error updating project status:", error)
-    await logActivity("ERROR", "Failed to update project status", {
-      projectId,
-      newStatus,
-      error: error.message,
-      stack: error.stack,
-    })
-    return { success: false, error: error.message || "Failed to update status." }
-  }
-}
-
-
-export async function updateIncentiveClaimStatus(claimId: string, newStatus: IncentiveClaim["status"]) {
-  try {
-    const claimRef = adminDb.collection("incentiveClaims").doc(claimId)
-    const claimSnap = await claimRef.get()
-
-    if (!claimSnap.exists) {
-      return { success: false, error: "Incentive claim not found." }
-    }
-    const claim = claimSnap.data() as IncentiveClaim
-
-    await claimRef.update({ status: newStatus })
-    await logActivity("INFO", "Incentive claim status updated", { claimId, newStatus, userId: claim.uid })
-
-    const claimTitle =
-      claim.paperTitle ||
-      claim.patentTitle ||
-      claim.conferencePaperTitle ||
-      claim.publicationTitle ||
-      claim.professionalBodyName ||
-      claim.apcPaperTitle ||
-      "Your Claim"
-
-    const notification = {
-      uid: claim.uid,
-      projectId: claimId,
-      title: `Your incentive claim for "${claimTitle}" was updated to: ${newStatus}`,
-      createdAt: new Date().toISOString(),
-      isRead: false,
-    }
-    await adminDb.collection("notifications").add(notification)
-
-    if (claim.userEmail) {
-      await sendEmailUtility({
-        to: claim.userEmail,
-        subject: `Incentive Claim Status Update: ${newStatus}`,
-        html: `
-            <div ${EMAIL_STYLES.background}>
-                ${EMAIL_STYLES.logo}
-                <p style="color:#ffffff;">Dear ${claim.userName},</p>
-                <p style="color:#e0e0e0;">
-                  The status of your incentive claim for 
-                  "<strong style="color:#ffffff;">${claimTitle}</strong>" has been updated to 
-                  <strong style="color:${newStatus === "Accepted" ? "#00e676" : newStatus === "Rejected" ? "#ff5252" : "#ffca28"};">
-                    ${newStatus}
-                  </strong>.
-                </p>
-                <p style="color:#e0e0e0;">
-                  You can view your claims on the 
-                  <a href="${process.env.BASE_URL}/dashboard/incentive-claim" style="color:#64b5f6; text-decoration:underline;">
-                  PU Goa Research Projects Portal           
-                  </a>.
-                </p>
-                ${EMAIL_STYLES.footer}
-            </div>
-            `,
-        from: "default",
-      })
-    }
-
-    return { success: true }
-  } catch (error: any) {
-    console.error("Error updating incentive claim status:", error)
-    await logActivity("ERROR", "Failed to update incentive claim status", {
-      claimId,
-      newStatus,
-      error: error.message,
-      stack: error.stack,
-    })
-    return { success: false, error: error.message || "Failed to update status." }
-  }
-}
-
-export async function scheduleMeeting(
-  projectsToSchedule: { id: string; pi_uid: string; title: string; pi_email?: string }[],
-  meetingDetails: { date: string; time: string; venue: string; evaluatorUids: string[]; mode: 'Online' | 'Offline' },
-  isMidTermReview: boolean = false,
-) {
-  try {
-    const batch = adminDb.batch()
-    const timeZone = "Asia/Kolkata"
-    const meetingDateTimeString = `${meetingDetails.date}T${meetingDetails.time}:00`
-
-    const formattedDate = formatInTimeZone(meetingDateTimeString, timeZone, "MMMM d, yyyy")
-    const formattedTime = formatInTimeZone(meetingDateTimeString, timeZone, "h:mm a (z)")
-
-    const meetingType = isMidTermReview ? "IMR Mid-term Review Meeting" : "IMR Evaluation Meeting"
-    const subjectPrefix = isMidTermReview ? "Mid-term Review" : "IMR Meeting"
-    const subjectOnlineIndicator = meetingDetails.mode === 'Online' ? ' (Online)' : '';
-
-    const meetingDate = toDate(meetingDateTimeString, { timeZone });
-    const startTime = format(meetingDate, "yyyyMMdd'T'HHmmss'Z'");
-    const endTime = format(addHours(meetingDate, 1), "yyyyMMdd'T'HHmmss'Z'");
-
-    for (const projectData of projectsToSchedule) {
-      const projectRef = adminDb.collection("projects").doc(projectData.id)
-
-      const updateData: any = {
-        meetingDetails: {
-          date: meetingDetails.date,
-          time: meetingDetails.time,
-          venue: meetingDetails.venue,
-          mode: meetingDetails.mode,
-          assignedEvaluators: meetingDetails.evaluatorUids,
-        },
-      };
-
-      if (isMidTermReview) {
-        updateData.hasHadMidTermReview = true;
-      } else {
-        updateData.status = "Under Review";
-      }
-
-      batch.update(projectRef, updateData);
-
-      const notificationRef = adminDb.collection("notifications").doc()
-      batch.set(notificationRef, {
-        uid: projectData.pi_uid,
-        projectId: projectData.id,
-        title: `${subjectPrefix} scheduled for your project: "${projectData.title}"`,
-        createdAt: new Date().toISOString(),
-        isRead: false,
-      })
-
-      if (projectData.pi_email) {
-          const calendarLink = `https://www.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent(`${subjectPrefix}: ${projectData.title}`)}&dates=${startTime}/${endTime}&details=${encodeURIComponent(`For project: ${projectData.title}`)}&location=${encodeURIComponent(meetingDetails.venue)}`;
-
-          const emailHtml = `
-            <div ${EMAIL_STYLES.background}>
-              ${EMAIL_STYLES.logo}
-              <p style="color: #ffffff;">Dear Researcher,</p>
-              <p style="color: #e0e0e0;">
-                An <strong style="color: #ffffff;">${meetingType}</strong> has been scheduled for your project, 
-                "<strong style="color: #ffffff;">${projectData.title}</strong>".
-              </p>
-              <p><strong style="color: #ffffff;">Date:</strong> ${formattedDate}</p>
-              <p><strong style="color: #ffffff;">Time:</strong> ${formattedTime}</p>
-              <p><strong style="color: #ffffff;">
-                ${meetingDetails.mode === 'Online' ? 'Meeting Link:' : 'Venue:'}
-              </strong> 
-                ${meetingDetails.mode === 'Online' ? `<a href="${meetingDetails.venue}" style="color: #64b5f6; text-decoration: underline;">${meetingDetails.venue}</a>` : meetingDetails.venue}
-              </p>
-              ${meetingDetails.mode === 'Online' ? `<a href="${calendarLink}" target="_blank" style="display: inline-block; background-color: #4285F4; color: white; padding: 8px 12px; text-decoration: none; border-radius: 4px; margin-top: 10px;">Save to Google Calendar</a>` : ''}
-              <p style="color: #cccccc; margin-top: 15px;">
-                Please prepare for your presentation. You can view more details on the 
-                <a href="${process.env.BASE_URL}/dashboard/project/${projectData.id}" style="color: #64b5f6; text-decoration: underline;">
-                  PU Goa Research Projects Portal
-                </a>.
-              </p>
-              ${EMAIL_STYLES.footer}
-            </div>
-          `;
-        await sendEmailUtility({
-          to: projectData.pi_email,
-          subject: `${subjectPrefix} Scheduled for Your Project: ${projectData.title}${subjectOnlineIndicator}`,
-          html: emailHtml,
-          from: "default",
-        })
-      }
-    }
-
-    // Notify evaluators
-    if (meetingDetails.evaluatorUids && meetingDetails.evaluatorUids.length > 0) {
-      const evaluatorDocs = await Promise.all(
-        meetingDetails.evaluatorUids.map((uid) => adminDb.collection("users").doc(uid).get()),
-      )
-
-      const projectTitles = projectsToSchedule.map((p) => `<li style="color: #cccccc;">${p.title}</li>`).join("")
-      
-      for (const evaluatorDocSnapshot of evaluatorDocs) {
-        if (evaluatorDocSnapshot.exists) {
-          const evaluator = evaluatorDocSnapshot.data() as User
-          
-           const calendarLink = `https://www.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent(`${meetingType} Committee`)}&dates=${startTime}/${endTime}&details=${encodeURIComponent(`Reviewing projects including: ${projectsToSchedule[0].title}`)}&location=${encodeURIComponent(meetingDetails.venue)}`;
-
-          const evaluatorNotificationRef = adminDb.collection("notifications").doc()
-          batch.set(evaluatorNotificationRef, {
-            uid: evaluator.uid,
-            projectId: projectsToSchedule[0].id,
-            title: `You've been assigned to an IMR evaluation on ${formattedDate}`,
-            createdAt: new Date().toISOString(),
-            isRead: false,
-          })
-
-          if (evaluator.email) {
-              const emailHtml = `
-                  <div ${EMAIL_STYLES.background}>
-                      ${EMAIL_STYLES.logo}
-                      <p style="color: #ffffff;">Dear ${evaluator.name},</p>
-                      <p style="color: #e0e0e0;">
-                          You have been assigned to an <strong style="color:#ffffff;">${meetingType}</strong> committee with the following details. You are requested to be present.
-                      </p>
-                      <p><strong style="color: #ffffff;">Date:</strong> ${formattedDate}</p>
-                      <p><strong style="color: #ffffff;">Time:</strong> ${formattedTime}</p>
-                      <p><strong style="color: #ffffff;">
-                        ${meetingDetails.mode === 'Online' ? 'Meeting Link:' : 'Venue:'}
-                      </strong> 
-                        ${meetingDetails.mode === 'Online' ? `<a href="${meetingDetails.venue}" style="color: #64b5f6; text-decoration: underline;">${meetingDetails.venue}</a>` : meetingDetails.venue}
-                      </p>
-                      <p style="color: #e0e0e0;">The following projects are scheduled for your review:</p>
-                      <ul style="list-style-type: none; padding-left: 0;">
-                          ${projectTitles}
-                      </ul>
-                       ${meetingDetails.mode === 'Online' ? `<a href="${calendarLink}" target="_blank" style="display: inline-block; background-color: #4285F4; color: white; padding: 8px 12px; text-decoration: none; border-radius: 4px; margin-top: 10px;">Save to Google Calendar</a>` : ''}
-                      <p style="color: #cccccc; margin-top: 15px;">
-                          You can access your evaluation queue on the
-                          <a href="${process.env.BASE_URL}/dashboard/evaluator-dashboard" style="color: #64b5f6; text-decoration: underline;">
-                         PU Goa Research Projects Portal
-                          </a>.
-                      </p>
-                      ${EMAIL_STYLES.footer}
-                  </div>
-              `;
-
-            await sendEmailUtility({
-              to: evaluator.email,
-              subject: `IMR Evaluation Assignment (${isMidTermReview ? 'Mid-term Review' : 'New Submission'})${subjectOnlineIndicator}`,
-              html: emailHtml,
-              from: "default",
-            })
+        if (width > height) {
+          if (width > maxWidth) {
+            height *= maxWidth / width;
+            width = maxWidth;
+          }
+        } else {
+          if (height > maxHeight) {
+            width *= maxHeight / height;
+            height = maxHeight;
           }
         }
-      }
-    }
 
-    await batch.commit()
-    await logActivity("INFO", `IMR ${isMidTermReview ? 'mid-term review' : ''} meeting scheduled`, {
-      projectIds: projectsToSchedule.map((p) => p.id),
-      meetingDate: meetingDetails.date,
-    })
-    return { success: true }
-  } catch (error: any) {
-    console.error("Error scheduling meeting:", error)
-    await logActivity("ERROR", "Failed to schedule IMR meeting", { error: error.message, stack: error.stack })
-    return { success: false, error: error.message || "Failed to schedule meeting." }
-  }
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          return reject(new Error('Could not get canvas context'));
+        }
+        ctx.drawImage(img, 0, 0, width, height);
+        
+        canvas.toBlob(blob => {
+          if (!blob) {
+            return reject(new Error('Canvas to Blob conversion failed'));
+          }
+          const resizedFile = new File([blob], file.name, {
+            type: `image/${file.type.split('/')[1] || 'jpeg'}`,
+            lastModified: Date.now(),
+          });
+          resolve(resizedFile);
+        }, `image/${file.type.split('/')[1] || 'jpeg'}`, quality);
+      };
+      img.onerror = error => reject(error);
+    };
+    reader.onerror = error => reject(error);
+  });
 }
 
 export async function uploadFileToServer(
@@ -1785,3 +1303,5 @@ export async function updateEmrInterestDetails(
         return { success: false, error: 'Failed to update details.' };
     }
 }
+
+    
