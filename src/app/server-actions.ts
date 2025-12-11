@@ -569,7 +569,7 @@ export async function checkMisIdExists(
       return { exists: false }
     }
 
-    // A different user with the same MIS ID and campus exists.
+    // A different user is already the HOD for this department/institute.
     return { exists: true }
   } catch (error: any) {
     console.error("Error checking MIS ID uniqueness:", error)
@@ -1304,4 +1304,280 @@ export async function updateEmrInterestDetails(
     }
 }
 
+export async function linkPapersToNewUser(uid: string, email: string): Promise<{ success: boolean; count: number; error?: string }> {
+    try {
+        if (!uid || !email) {
+            return { success: false, count: 0, error: 'User UID and Email are required.' };
+        }
+        
+        const lowercasedEmail = email.toLowerCase();
+        const papersRef = adminDb.collection('papers');
+        const q = papersRef.where('authorEmails', 'array-contains', lowercasedEmail);
+        const snapshot = await q.get();
+
+        if (snapshot.empty) {
+            return { success: true, count: 0 };
+        }
+
+        const batch = adminDb.batch();
+        let updatedCount = 0;
+
+        snapshot.forEach(doc => {
+            const paper = doc.data() as ResearchPaper;
+            let needsUpdate = false;
+
+            const updatedAuthors = paper.authors.map(author => {
+                if (author.email.toLowerCase() === lowercasedEmail && !author.uid) {
+                    needsUpdate = true;
+                    return { ...author, uid: uid };
+                }
+                return author;
+            });
+            
+            if (needsUpdate) {
+                const updatedAuthorUids = [...new Set([...paper.authorUids, uid])];
+                batch.update(doc.ref, { 
+                    authors: updatedAuthors,
+                    authorUids: updatedAuthorUids,
+                });
+                updatedCount++;
+            }
+        });
+        
+        if (updatedCount > 0) {
+            await batch.commit();
+            await logActivity('INFO', 'Linked existing papers to new user', { uid, email, count: updatedCount });
+        }
+
+        return { success: true, count: updatedCount };
+
+    } catch (error: any) {
+        console.error("Error linking papers to new user:", error);
+        await logActivity('ERROR', 'Failed to link papers to new user', { uid, email, error: error.message });
+        return { success: false, count: 0, error: 'Failed to link papers.' };
+    }
+}
+
+export async function sendLoginOtp(email: string): Promise<{ success: boolean; error?: string }> {
+  try {
+    const domainCheck = await isEmailDomainAllowed(email);
+    if (!domainCheck.allowed) {
+      return { success: false, error: "This email domain is not permitted to log in." };
+    }
     
+    // Generate a 6-digit OTP
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    const expiresAt = Date.now() + 10 * 60 * 1000; // 10 minutes from now
+    
+    const otpRef = adminDb.collection('loginOtps').doc(email.toLowerCase());
+    await otpRef.set({ email: email.toLowerCase(), otp, expiresAt });
+    
+    const emailHtml = `
+      <div ${EMAIL_STYLES.background}>
+        ${EMAIL_STYLES.logo}
+        <p style="color:#ffffff; font-size: 16px;">Hello,</p>
+        <p style="color:#e0e0e0;">Your One-Time Password (OTP) for the PU Goa Research Projects Portal is:</p>
+        <div style="font-size: 28px; font-weight: bold; color: #ffffff; text-align: center; letter-spacing: 5px; margin: 25px 0; padding: 15px; background-color: rgba(255, 255, 255, 0.1); border-radius: 8px;">
+          ${otp}
+        </div>
+        <p style="color:#e0e0e0;">This code will expire in 10 minutes. If you did not request this, please ignore this email.</p>
+        ${EMAIL_STYLES.footer}
+      </div>
+    `;
+
+    await sendEmailUtility({
+      to: email,
+      subject: 'Your Login OTP for PU Goa Research Portal',
+      html: emailHtml,
+      from: 'default'
+    });
+
+    await logActivity('INFO', 'Login OTP sent', { email });
+    return { success: true };
+  } catch (error: any) {
+    console.error('Error sending login OTP:', error);
+    await logActivity('ERROR', 'Failed to send login OTP', { email, error: error.message });
+    return { success: false, error: 'Failed to send OTP. Please try again.' };
+  }
+}
+
+export async function verifyLoginOtp(email: string, otp: string): Promise<{ success: boolean; error?: string }> {
+  try {
+    const otpRef = adminDb.collection('loginOtps').doc(email.toLowerCase());
+    const otpSnap = await otpRef.get();
+
+    if (!otpSnap.exists) {
+      return { success: false, error: 'OTP not found or expired. Please try again.' };
+    }
+
+    const otpData = otpSnap.data() as LoginOtp;
+    
+    if (otpData.expiresAt < Date.now()) {
+      await otpRef.delete();
+      return { success: false, error: 'OTP has expired. Please try again.' };
+    }
+
+    if (otpData.otp !== otp) {
+      return { success: false, error: 'Invalid OTP.' };
+    }
+    
+    // OTP is valid, delete it so it can't be reused
+    await otpRef.delete();
+    
+    return { success: true };
+  } catch (error: any) {
+    console.error('Error verifying OTP:', error);
+    return { success: false, error: 'An unexpected error occurred during verification.' };
+  }
+}
+
+export async function saveProjectSubmission(
+  projectId: string,
+  projectData: Omit<Project, "id">,
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const projectRef = adminDb.collection("projects").doc(projectId)
+    await projectRef.set(projectData, { merge: true })
+
+    // Notify admins only on final submission, not on saving drafts
+    if (projectData.status === "Submitted") {
+      await notifyAdminsOnProjectSubmission(projectId, projectData.title, projectData.pi)
+    }
+
+    await logActivity("INFO", `Project ${projectData.status}`, { projectId, title: projectData.title })
+    return { success: true }
+  } catch (error: any) {
+    console.error("Error saving project submission:", error)
+    await logActivity("ERROR", "Failed to save project submission", {
+      projectId,
+      title: projectData.title,
+      error: error.message,
+      stack: error.stack,
+    })
+    return { success: false, error: error.message || "Failed to save project." }
+  }
+}
+
+export async function getEvaluationPrompts(project: { title: string; abstract: string }): Promise<{ success: boolean; prompts: { guidance: string }; error?: string }> {
+    // This function can be replaced with a call to a GenAI model in the future.
+    // For now, it returns a static, detailed prompt.
+    const staticGuidance = `
+        Based on the project's title and abstract, please evaluate the following aspects:
+        1.  **Relevance & Significance:** How important is the research problem? Does it address a current gap in knowledge or a societal need?
+        2.  **Methodology:** Is the proposed research design and methodology sound? Are the methods appropriate for the research questions?
+        3.  **Feasibility:** Is the project feasible within the proposed timeline and budget? Are the required resources and expertise available?
+        4.  **Innovation:** Does the project propose a novel approach or idea? What is the potential for generating new knowledge or intellectual property?
+        5.  **Outcomes & Impact:** Are the expected outcomes clearly defined? What is the potential impact of this research on the field and beyond?
+    `;
+    return { success: true, prompts: { guidance: staticGuidance } };
+}
+
+export async function updateProjectStatus(
+  projectId: string,
+  newStatus: Project["status"],
+  comments?: string
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const projectRef = adminDb.collection("projects").doc(projectId)
+    const updateData: { status: string; [key: string]: any } = { status: newStatus }
+
+    if (comments) {
+      if (newStatus === "Revision Needed") {
+        updateData.revisionComments = comments
+      } else if (newStatus === "Not Recommended") {
+        updateData.rejectionComments = comments
+      }
+    }
+
+    await projectRef.update(updateData)
+    await logActivity("INFO", "Project status updated", { projectId, newStatus })
+
+    // Notify the PI
+    const projectSnap = await projectRef.get()
+    if (projectSnap.exists) {
+      const project = projectSnap.data() as Project
+      const notification = {
+        uid: project.pi_uid,
+        projectId: projectId,
+        title: `Your project "${project.title}" status has been updated to: ${newStatus}`,
+        createdAt: new Date().toISOString(),
+        isRead: false,
+      }
+      await adminDb.collection("notifications").add(notification)
+
+      if (project.pi_email) {
+        let emailHtml = `
+            <div ${EMAIL_STYLES.background}>
+                ${EMAIL_STYLES.logo}
+                <p style="color:#ffffff;">Dear ${project.pi},</p>
+                <p style="color:#e0e0e0;">The status of your IMR project, "<strong style="color:#ffffff;">${project.title}</strong>," has been updated to <strong style="color:#ffffff;">${newStatus}</strong>.</p>
+                ${comments ? `<div style="margin-top:20px; padding:15px; border:1px solid #4f5b62; border-radius:6px; background-color:#2c3e50;"><h4 style="color:#ffffff; margin-top:0;">Committee Comments:</h4><p style="color:#e0e0e0; white-space: pre-wrap;">${comments}</p></div>` : ""}
+                <p style="color:#e0e0e0; margin-top:20px;">Please visit the portal for more details.</p>
+                ${EMAIL_STYLES.footer}
+            </div>`
+
+        await sendEmailUtility({
+          to: project.pi_email,
+          subject: `Status Update for Your IMR Project: ${project.title}`,
+          html: emailHtml,
+          from: "default",
+        })
+      }
+    }
+
+    return { success: true }
+  } catch (error: any) {
+    console.error("Error updating project status:", error)
+    await logActivity("ERROR", "Failed to update project status", {
+      projectId,
+      newStatus,
+      error: error.message,
+      stack: error.stack,
+    })
+    return { success: false, error: error.message || "Failed to update status." }
+  }
+}
+
+export async function updateIncentiveClaimStatus(
+  claimId: string,
+  newStatus: IncentiveClaim["status"],
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const claimRef = adminDb.collection("incentiveClaims").doc(claimId)
+    await claimRef.update({ status: newStatus })
+    await logActivity("INFO", "Incentive claim status updated", { claimId, newStatus })
+
+    // Notify the user
+    const claimSnap = await claimRef.get()
+    if (claimSnap.exists) {
+      const claim = claimSnap.data() as IncentiveClaim
+      const notification = {
+        uid: claim.uid,
+        title: `Your incentive claim for "${claim.paperTitle}" has been updated to: ${newStatus}`,
+        createdAt: new Date().toISOString(),
+        isRead: false,
+      }
+      await adminDb.collection("notifications").add(notification)
+
+      if (claim.userEmail) {
+        await sendEmailUtility({
+          to: claim.userEmail,
+          subject: `Update on Your Incentive Claim`,
+          html: `<p>Dear ${claim.userName},</p><p>The status of your incentive claim for "${claim.paperTitle}" has been updated to <strong>${newStatus}</strong>.</p><p>Please check the portal for more details.</p>`,
+          from: "default",
+        })
+      }
+    }
+
+    return { success: true }
+  } catch (error: any) {
+    console.error("Error updating incentive claim status:", error)
+    await logActivity("ERROR", "Failed to update incentive claim status", {
+      claimId,
+      newStatus,
+      error: error.message,
+      stack: error.stack,
+    })
+    return { success: false, error: error.message || "Failed to update status." }
+  }
+}
