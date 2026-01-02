@@ -1,5 +1,4 @@
 
-
 'use client';
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
@@ -71,6 +70,19 @@ const goaFaculties = [
     "Faculty of Physiotherapy",
     "University Office"
 ];
+
+const campuses = ["Goa"]
+
+const goaInstitutes = [
+  "Parul College of Applied and Health Sciences",
+  "Parul College of Engineering",
+  "Parul College of Information Technology & Computer Science",
+  "Parul College of Management",
+  "Parul College of Nursing",
+  "Parul College of Pharmacy",
+  "Parul College of Physiotherapy",
+  "University Office",
+]
 
 const notificationTypes = [
   { id: 'projectStatus', label: 'IMR Project Status Updates' },
@@ -464,8 +476,7 @@ export default function ManageUsersPage() {
                             setSelectedUsers([]);
                           }
                         }}
-                        // @ts-ignore
-                        indeterminate={isSomeSelected || undefined}
+                        indeterminate={isSomeSelected}
                       />
                     </TableHead>
                     <TableHead>
