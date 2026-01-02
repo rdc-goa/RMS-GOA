@@ -3,27 +3,38 @@
 
 import { NextResponse } from 'next/server';
 import * as XLSX from 'xlsx';
-import fs from 'fs';
-import path from 'path';
 
 interface StaffData {
   Department?: string;
 }
 
-export async function GET() {
-  const filePath = path.join(process.cwd(), 'goastaffdata.xlsx');
+const GOA_STAFF_DATA_URL = 'https://pinxoxpbufq92wb4.public.blob.vercel-storage.com/goastaffdata.xlsx';
 
-  try {
-    if (!fs.existsSync(filePath)) {
-      console.warn(`Goa staff data file not found at: ${filePath}. Cannot fetch departments.`);
-      return NextResponse.json({ success: false, error: 'Goa department data source not found on the server.' }, { status: 404 });
+const readStaffDataFromUrl = async (url: string): Promise<StaffData[]> => {
+    try {
+        const response = await fetch(url, { cache: 'no-store' });
+        if (!response.ok) {
+            console.warn(`Failed to fetch staff data from URL: ${url}. Status: ${response.status}`);
+            return [];
+        }
+        const buffer = await response.arrayBuffer();
+        const workbook = XLSX.read(buffer, { type: 'buffer' });
+        const sheetName = workbook.SheetNames[0];
+        const worksheet = workbook.Sheets[sheetName];
+        return XLSX.utils.sheet_to_json<StaffData>(worksheet);
+    } catch (error) {
+        console.error(`Error reading staff data from ${url}:`, error);
+        return [];
     }
+}
 
-    const buffer = fs.readFileSync(filePath);
-    const workbook = XLSX.read(buffer, { type: 'buffer' });
-    const sheetName = workbook.SheetNames[0];
-    const worksheet = workbook.Sheets[sheetName];
-    const jsonData = XLSX.utils.sheet_to_json<StaffData>(worksheet);
+export async function GET() {
+  try {
+    const jsonData = await readStaffDataFromUrl(GOA_STAFF_DATA_URL);
+    
+    if (jsonData.length === 0) {
+        return NextResponse.json({ success: false, error: 'Could not load department data source.' }, { status: 404 });
+    }
 
     const departments = jsonData
       .map(row => row.Department)
