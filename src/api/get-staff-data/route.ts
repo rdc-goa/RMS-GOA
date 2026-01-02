@@ -21,12 +21,13 @@ interface StaffData {
   ORCID_ID?: string | number;
   Vidwan_ID?: string | number;
   Type?: 'CRO' | 'Institutional' | 'faculty';
-  Campus?: 'Goa';
+  Campus?: 'Vadodara' | 'Ahmedabad' | 'Rajkot' | 'Goa';
   // Goa specific columns
   Orcid?: string | number;
 }
 
 const GOA_STAFF_DATA_URL = 'https://pinxoxpbufq92wb4.public.blob.vercel-storage.com/goastaffdata.xlsx';
+const VADODARA_STAFF_DATA_URL = 'https://pinxoxpbufq92wb4.public.blob.vercel-storage.com/staffdata.xlsx';
 
 const readStaffDataFromUrl = async (url: string): Promise<StaffData[]> => {
     try {
@@ -46,8 +47,10 @@ const readStaffDataFromUrl = async (url: string): Promise<StaffData[]> => {
     }
 }
 
-const formatUserRecord = (record: StaffData) => {
+const formatUserRecord = (record: StaffData, defaultCampus: 'Vadodara' | 'Goa') => {
+    const isGoaUser = record.Email?.toLowerCase().endsWith('@goa.paruluniversity.ac.in');
     const instituteName = record.Type === 'Institutional' ? record.Name : record.Institute;
+    const resolvedCampus = record.Campus || (isGoaUser ? 'Goa' : defaultCampus);
 
     return {
         name: record.Name,
@@ -63,7 +66,7 @@ const formatUserRecord = (record: StaffData) => {
         orcidId: String(record.ORCID_ID || record.Orcid || ''),
         vidwanId: String(record.Vidwan_ID || ''),
         type: record.Type || 'faculty',
-        campus: 'Goa',
+        campus: resolvedCampus,
     };
 };
 
@@ -80,7 +83,7 @@ export async function GET(request: NextRequest) {
   const allFoundRecords: StaffData[] = [];
   const foundEmails = new Set<string>();
 
-  const searchAndAdd = (data: StaffData[]) => {
+  const searchAndAdd = (data: StaffData[], defaultCampus: 'Vadodara' | 'Goa') => {
       let foundRecord: StaffData | undefined;
       if (email) {
           foundRecord = data.find(row => row.Email && row.Email.toLowerCase() === email.toLowerCase());
@@ -89,33 +92,40 @@ export async function GET(request: NextRequest) {
       }
       
       if (foundRecord && foundRecord.Email && !foundEmails.has(foundRecord.Email.toLowerCase())) {
-          allFoundRecords.push(formatUserRecord(foundRecord) as any);
+          allFoundRecords.push(formatUserRecord(foundRecord, defaultCampus) as any);
           foundEmails.add(foundRecord.Email.toLowerCase());
       }
   };
   
-  const searchAndAddAll = (data: StaffData[]) => {
+  const searchAndAddAll = (data: StaffData[], defaultCampus: 'Vadodara' | 'Goa') => {
       data.forEach(row => {
           if (row['MIS ID'] && String(row['MIS ID']).toLowerCase() === misId?.toLowerCase()) {
              if (row.Email && !foundEmails.has(row.Email.toLowerCase())) {
-                allFoundRecords.push(formatUserRecord(row) as any);
+                allFoundRecords.push(formatUserRecord(row, defaultCampus) as any);
                 foundEmails.add(row.Email.toLowerCase());
             }
           }
       });
   };
 
-  const goastaffdata = await readStaffDataFromUrl(GOA_STAFF_DATA_URL);
+  const [staffdata, goastaffdata] = await Promise.all([
+      readStaffDataFromUrl(VADODARA_STAFF_DATA_URL),
+      readStaffDataFromUrl(GOA_STAFF_DATA_URL)
+  ]);
 
   if (fetchAll) {
-      searchAndAddAll(goastaffdata);
+      searchAndAddAll(staffdata, 'Vadodara');
+      searchAndAddAll(goastaffdata, 'Goa');
   } else {
-    searchAndAdd(goastaffdata);
+    // If searching by MIS ID, check both files.
+    // If searching by email, the file is determined by the email domain.
+    searchAndAdd(staffdata, 'Vadodara');
+    searchAndAdd(goastaffdata, 'Goa');
   }
 
   if (allFoundRecords.length > 0) {
     return NextResponse.json({ success: true, data: allFoundRecords });
   } else {
-    return NextResponse.json({ success: false, error: `User not found in the Goa staff data file.` }, { status: 404 });
+    return NextResponse.json({ success: false, error: `User not found in any staff data file.` }, { status: 404 });
   }
 }
