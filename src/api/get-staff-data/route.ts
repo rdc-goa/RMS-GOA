@@ -27,7 +27,6 @@ interface StaffData {
 }
 
 const GOA_STAFF_DATA_URL = 'https://pinxoxpbufq92wb4.public.blob.vercel-storage.com/goastaffdata.xlsx';
-const VADODARA_STAFF_DATA_URL = 'https://pinxoxpbufq92wb4.public.blob.vercel-storage.com/staffdata.xlsx';
 
 const readStaffDataFromUrl = async (url: string): Promise<StaffData[]> => {
     try {
@@ -47,7 +46,7 @@ const readStaffDataFromUrl = async (url: string): Promise<StaffData[]> => {
     }
 }
 
-const formatUserRecord = (record: StaffData, defaultCampus: 'Vadodara' | 'Goa') => {
+const formatUserRecord = (record: StaffData, defaultCampus:'Goa') => {
     const isGoaUser = record.Email?.toLowerCase().endsWith('@goa.paruluniversity.ac.in');
     const instituteName = record.Type === 'Institutional' ? record.Name : record.Institute;
     const resolvedCampus = record.Campus || (isGoaUser ? 'Goa' : defaultCampus);

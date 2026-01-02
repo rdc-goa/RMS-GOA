@@ -26,7 +26,6 @@ interface StaffData {
 }
 
 const GOA_STAFF_DATA_URL = 'https://pinxoxpbufq92wb4.public.blob.vercel-storage.com/goastaffdata.xlsx';
-const VADODARA_STAFF_DATA_URL = 'https://pinxoxpbufq92wb4.public.blob.vercel-storage.com/staffdata.xlsx';
 
 const readStaffDataFromUrl = async (url: string): Promise<StaffData[]> => {
     try {

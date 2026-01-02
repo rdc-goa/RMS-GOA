@@ -153,7 +153,7 @@ The application should now be running at [http://localhost:9002](http://localhos
 -   `public/`: Static assets like images and logos.
 -   `firestore.rules`: Security rules for the Firestore database.
 -   `apphosting.yaml`: Configuration for deployment to Firebase App Hosting.
--   `staffdata.xlsx`, `goastaffdata.xlsx`: These files in the root directory contain historical user and academic data used to pre-fill profiles.
+-   `goastaffdata.xlsx`: These files in the root directory contain historical user and academic data used to pre-fill profiles.
 
 ## ☁️ Deployment
 
