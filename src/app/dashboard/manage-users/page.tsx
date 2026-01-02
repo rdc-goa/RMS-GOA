@@ -48,7 +48,7 @@ import { collection, getDocs, doc, deleteDoc, updateDoc } from 'firebase/firesto
 import type { User, IncentiveClaim, NotificationSettings } from '@/types';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
-import { getDefaultModulesForRole, ALL_MODULES } from "@/lib/modules";
+import { getDefaultModulesForRole } from "@/lib/modules";
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -173,72 +173,6 @@ function NotificationSettingsDialog({ user, open, onOpenChange, onUpdate }: { us
     );
 }
 
-function ModuleManagerDialog({ user, open, onOpenChange, onUpdate }: { user: User | null, open: boolean, onOpenChange: (open: boolean) => void, onUpdate: () => void }) {
-    const { toast } = useToast();
-    const [userModules, setUserModules] = useState<string[]>([]);
-    const [isSaving, setIsSaving] = useState(false);
-
-    useEffect(() => {
-        if (user) {
-            setUserModules(user.allowedModules || getDefaultModulesForRole(user.role, user.designation));
-        }
-    }, [user]);
-
-    if (!user) return null;
-
-    const handleModuleChange = (moduleId: string, checked: boolean) => {
-        setUserModules(prev => checked ? [...prev, moduleId] : prev.filter(id => id !== moduleId));
-    };
-
-    const handleSaveChanges = async () => {
-        setIsSaving(true);
-        try {
-            const userDocRef = doc(db, 'users', user.uid);
-            await updateDoc(userDocRef, { allowedModules: userModules });
-            toast({ title: 'Permissions Updated', description: 'User modules have been saved successfully.' });
-            onUpdate();
-            onOpenChange(false);
-        } catch (error: any) {
-            toast({ variant: 'destructive', title: 'Update Failed', description: error.message || 'Could not update permissions.' });
-        } finally {
-            setIsSaving(false);
-        }
-    };
-
-    return (
-         <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogContent className="sm:max-w-3xl">
-                <DialogHeader>
-                    <DialogTitle>Manage Modules for {user.name}</DialogTitle>
-                    <DialogDescription>Enable or disable access to specific portal features for this user.</DialogDescription>
-                </DialogHeader>
-                <div className="py-4 max-h-[60vh] overflow-y-auto pr-4">
-                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
-                        {ALL_MODULES.map((module) => (
-                            <div key={module.id} className="flex items-center space-x-2">
-                                <Checkbox
-                                    id={`${user.uid}-${module.id}`}
-                                    checked={userModules.includes(module.id)}
-                                    onCheckedChange={(checked) => handleModuleChange(module.id, !!checked)}
-                                />
-                                <Label htmlFor={`${user.uid}-${module.id}`} className="text-sm font-normal">{module.label}</Label>
-                            </div>
-                        ))}
-                    </div>
-                </div>
-                <DialogFooter>
-                    <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
-                    <Button onClick={handleSaveChanges} disabled={isSaving}>
-                        {isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                        Save Changes
-                    </Button>
-                </DialogFooter>
-            </DialogContent>
-        </Dialog>
-    );
-}
-
-
 function ProfileDetailsDialog({ user, open, onOpenChange }: { user: User | null, open: boolean, onOpenChange: (open: boolean) => void }) {
     if (!user) return null;
 
@@ -315,7 +249,6 @@ export default function ManageUsersPage() {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [userToDelete, setUserToDelete] = useState<User | null>(null);
   const [userToView, setUserToView] = useState<User | null>(null);
-  const [userToManageModules, setUserToManageModules] = useState<User | null>(null);
   const [userToManageNotifications, setUserToManageNotifications] = useState<User | null>(null);
   const { toast } = useToast();
   const router = useRouter();
@@ -447,7 +380,7 @@ export default function ManageUsersPage() {
     try {
       const userDocRef = doc(db, 'users', uid);
       
-      const newDesignation = extraData?.designation || (newRole === 'Super-admin' ? 'Super-admin' : 'faculty');
+      const newDesignation = newRole === 'Super-admin' ? 'Super-admin' : (extraData?.designation || 'faculty');
       const defaultModules = getDefaultModulesForRole(newRole, newDesignation);
       
       const updatePayload: Partial<User> = {
@@ -466,32 +399,6 @@ export default function ManageUsersPage() {
        toast({ variant: 'destructive', title: "Error", description: "Could not update role." });
     }
   }, [fetchUsersAndClaims, toast]);
-  
-  const handleBulkGrant = async (moduleId: string) => {
-    setIsBulkSubmitting(true);
-    const result = await bulkGrantModuleAccess(selectedUsers, moduleId);
-    if (result.success) {
-      toast({ title: 'Success', description: `Granted access to '${moduleId}' for ${selectedUsers.length} users.` });
-      setSelectedUsers([]);
-      fetchUsersAndClaims();
-    } else {
-      toast({ variant: 'destructive', title: 'Error', description: result.error });
-    }
-    setIsBulkSubmitting(false);
-  };
-  
-  const handleBulkRevoke = async (moduleId: string) => {
-    setIsBulkSubmitting(true);
-    const result = await bulkRevokeModuleAccess(selectedUsers, moduleId);
-    if (result.success) {
-      toast({ title: 'Success', description: `Revoked access to '${moduleId}' for ${selectedUsers.length} users.` });
-      setSelectedUsers([]);
-      fetchUsersAndClaims();
-    } else {
-      toast({ variant: 'destructive', title: 'Error', description: result.error });
-    }
-    setIsBulkSubmitting(false);
-  };
   
   if (loading || !currentUser) {
     return (
@@ -587,8 +494,8 @@ export default function ManageUsersPage() {
                 <TableBody>
                   {sortedAndFilteredUsers.map((user) => {
                     const isPrimarySuperAdmin = user.email === PRIMARY_SUPER_ADMIN_EMAIL;
-                    const isCurrentUserLoggedIn = user.uid === currentUser?.uid;
-                    const isActionsDisabled = isCurrentUserLoggedIn || (isPrimarySuperAdmin && currentUser?.email !== PRIMARY_SUPER_ADMIN_EMAIL);
+                    const canPerformActions = isCurrentUserSuperAdmin && !isPrimarySuperAdmin && user.uid !== currentUser?.uid;
+
                     const profileLink = user.campus === 'Goa' ? `/goa/${user.misId}` : `/profile/${user.misId}`;
 
                     return (
@@ -627,7 +534,7 @@ export default function ManageUsersPage() {
                         <TableCell className="text-right">
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild>
-                              <Button aria-haspopup="true" size="icon" variant="ghost" disabled={isActionsDisabled}>
+                              <Button aria-haspopup="true" size="icon" variant="ghost" disabled={!canPerformActions}>
                                 <MoreHorizontal className="h-4 w-4" />
                                 <span className="sr-only">Toggle menu</span>
                               </Button>
@@ -635,33 +542,26 @@ export default function ManageUsersPage() {
                             <DropdownMenuContent align="end">
                               <DropdownMenuLabel>Actions</DropdownMenuLabel>
                               <DropdownMenuItem onSelect={() => setUserToView(user)}>View Details</DropdownMenuItem>
-                              {isCurrentUserSuperAdmin && (
-                                <>
-                                  <DropdownMenuItem onSelect={() => setUserToManageModules(user)}>
-                                      <ShieldCheck className="mr-2 h-4 w-4" /> Manage Modules
-                                  </DropdownMenuItem>
-                                  <DropdownMenuItem onSelect={() => setUserToManageNotifications(user)}>
-                                      <Bell className="mr-2 h-4 w-4" /> Notification Settings
-                                  </DropdownMenuItem>
-                                  <DropdownMenuSub>
-                                      <DropdownMenuSubTrigger>Change Role</DropdownMenuSubTrigger>
-                                      <DropdownMenuPortal>
-                                          <DropdownMenuSubContent>
-                                              {availableRoles.map(role => (
-                                                  <DropdownMenuItem 
-                                                      key={role} 
-                                                      onClick={() => handleRoleChange(user.uid, role)}
-                                                      disabled={user.role === role}
-                                                  >
-                                                    {role.charAt(0).toUpperCase() + role.slice(1)}
-                                                  </DropdownMenuItem>
-                                              ))}
-                                          </DropdownMenuSubContent>
-                                      </DropdownMenuPortal>
-                                  </DropdownMenuSub>
-                                </>
-                              )}
-                              {isCurrentUserSuperAdmin && user.role === 'CRO' && (
+                              <DropdownMenuItem onSelect={() => setUserToManageNotifications(user)}>
+                                  <Bell className="mr-2 h-4 w-4" /> Notification Settings
+                              </DropdownMenuItem>
+                              <DropdownMenuSub>
+                                  <DropdownMenuSubTrigger>Change Role</DropdownMenuSubTrigger>
+                                  <DropdownMenuPortal>
+                                      <DropdownMenuSubContent>
+                                          {availableRoles.map(role => (
+                                              <DropdownMenuItem 
+                                                  key={role} 
+                                                  onClick={() => handleRoleChange(user.uid, role)}
+                                                  disabled={user.role === role}
+                                              >
+                                                {role.charAt(0).toUpperCase() + role.slice(1)}
+                                              </DropdownMenuItem>
+                                          ))}
+                                      </DropdownMenuSubContent>
+                                  </DropdownMenuPortal>
+                              </DropdownMenuSub>
+                              {user.role === 'CRO' && (
                                   <DropdownMenuSub>
                                       <DropdownMenuSubTrigger>Assign Faculties</DropdownMenuSubTrigger>
                                       <DropdownMenuPortal>
@@ -703,8 +603,7 @@ export default function ManageUsersPage() {
             <div className="grid md:hidden grid-cols-1 sm:grid-cols-2 gap-4">
               {sortedAndFilteredUsers.map(user => {
                 const isPrimarySuperAdmin = user.email === PRIMARY_SUPER_ADMIN_EMAIL;
-                const isCurrentUserLoggedIn = user.uid === currentUser?.uid;
-                const isActionsDisabled = isCurrentUserLoggedIn || (isPrimarySuperAdmin && currentUser?.email !== PRIMARY_SUPER_ADMIN_EMAIL);
+                const canPerformActions = isCurrentUserSuperAdmin && !isPrimarySuperAdmin && user.uid !== currentUser?.uid;
                 const profileLink = user.campus === 'Goa' ? `/goa/${user.misId}` : `/profile/${user.misId}`;
                 return (
                   <Card key={user.uid} className="flex flex-col">
@@ -731,18 +630,13 @@ export default function ManageUsersPage() {
                         </div>
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="icon" className="h-7 w-7" disabled={isActionsDisabled}>
+                            <Button variant="ghost" size="icon" className="h-7 w-7" disabled={!canPerformActions}>
                               <MoreHorizontal className="h-4 w-4" />
                             </Button>
                           </DropdownMenuTrigger>
                            <DropdownMenuContent align="end">
                             <DropdownMenuLabel>Actions</DropdownMenuLabel>
                             <DropdownMenuItem onSelect={() => setUserToView(user)}>View Details</DropdownMenuItem>
-                            {isCurrentUserSuperAdmin && (
-                              <>
-                                <DropdownMenuItem onSelect={() => setUserToManageModules(user)}>
-                                    <ShieldCheck className="mr-2 h-4 w-4" /> Manage Modules
-                                </DropdownMenuItem>
                                 <DropdownMenuItem onSelect={() => setUserToManageNotifications(user)}>
                                     <Bell className="mr-2 h-4 w-4" /> Notification Settings
                                 </DropdownMenuItem>
@@ -756,9 +650,7 @@ export default function ManageUsersPage() {
                                         </DropdownMenuSubContent>
                                     </DropdownMenuPortal>
                                 </DropdownMenuSub>
-                              </>
-                            )}
-                            {isCurrentUserSuperAdmin && user.role === 'CRO' && (
+                            {user.role === 'CRO' && (
                                 <DropdownMenuSub>
                                     <DropdownMenuSubTrigger>Assign Faculties</DropdownMenuSubTrigger>
                                     <DropdownMenuPortal>
@@ -797,34 +689,6 @@ export default function ManageUsersPage() {
               <CardFooter className="p-4 border-t sticky bottom-0 bg-background/95">
                 <div className="flex items-center gap-4">
                   <span className="text-sm text-muted-foreground">{selectedUsers.length} user(s) selected</span>
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button variant="outline" disabled={isBulkSubmitting}>
-                        <Library className="mr-2 h-4 w-4" /> Grant Module Access
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="start">
-                      {ALL_MODULES.map(module => (
-                        <DropdownMenuItem key={module.id} onSelect={() => handleBulkGrant(module.id)}>
-                          {module.label}
-                        </DropdownMenuItem>
-                      ))}
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                   <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button variant="destructive" disabled={isBulkSubmitting}>
-                        <Ban className="mr-2 h-4 w-4" /> Revoke Module Access
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="start">
-                      {ALL_MODULES.map(module => (
-                        <DropdownMenuItem key={module.id} onSelect={() => handleBulkRevoke(module.id)}>
-                          {module.label}
-                        </DropdownMenuItem>
-                      ))}
-                    </DropdownMenuContent>
-                  </DropdownMenu>
                    {isBulkSubmitting && <Loader2 className="h-5 w-5 animate-spin" />}
                 </div>
               </CardFooter>
@@ -832,7 +696,6 @@ export default function ManageUsersPage() {
         </Card>
       </div>
        <ProfileDetailsDialog user={userToView} open={!!userToView} onOpenChange={() => setUserToView(null)} />
-       <ModuleManagerDialog user={userToManageModules} open={!!userToManageModules} onOpenChange={() => setUserToManageModules(null)} onUpdate={fetchUsersAndClaims} />
        <NotificationSettingsDialog user={userToManageNotifications} open={!!userToManageNotifications} onOpenChange={() => setUserToManageNotifications(null)} onUpdate={fetchUsersAndClaims} />
        {userToDelete && (
           <AlertDialog open={!!userToDelete} onOpenChange={(open) => !open && setUserToDelete(null)}>
