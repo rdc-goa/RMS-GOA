@@ -7,7 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter }
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { MoreHorizontal, ArrowUpDown, ChevronDown, ShieldCheck, Loader2, Library, Users2, Ban, Bell } from "lucide-react";
+import { MoreHorizontal, ArrowUpDown, ChevronDown, ShieldCheck, Loader2, Library, Users2, Ban, Bell, Check, UserCog } from "lucide-react";
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
@@ -388,11 +388,11 @@ export default function ManageUsersPage() {
     }
   }, [fetchUsersAndClaims, toast]);
 
-  const handleRoleChange = useCallback(async (uid: string, newRole: User['role'], extraData?: Record<string, any>) => {
+  const handleRoleChange = useCallback(async (userToUpdate: User, newRole: User['role'], extraData?: Record<string, any>) => {
     try {
-      const userDocRef = doc(db, 'users', uid);
+      const userDocRef = doc(db, 'users', userToUpdate.uid);
       
-      const newDesignation = newRole === 'Super-admin' ? 'Super-admin' : (extraData?.designation || 'faculty');
+      const newDesignation = newRole === 'Super-admin' ? 'Super-admin' : (userToUpdate.designation || 'faculty');
       const defaultModules = getDefaultModulesForRole(newRole, newDesignation);
       
       const updatePayload: Partial<User> = {
@@ -404,7 +404,7 @@ export default function ManageUsersPage() {
       
       await updateDoc(userDocRef, updatePayload);
       
-      toast({ title: 'Role Updated', description: "The user's role and permissions have been changed." });
+      toast({ title: 'Role Updated', description: `The role for ${userToUpdate.name} has been changed.` });
       fetchUsersAndClaims();
     } catch (error) {
        console.error("Error updating role:", error);
@@ -505,8 +505,7 @@ export default function ManageUsersPage() {
                 <TableBody>
                   {sortedAndFilteredUsers.map((user) => {
                     const isPrimarySuperAdmin = user.email === PRIMARY_SUPER_ADMIN_EMAIL;
-                    const canPerformActions = isCurrentUserSuperAdmin && !isPrimarySuperAdmin && user.uid !== currentUser?.uid;
-
+                    const canPerformActions = currentUser?.role === 'Super-admin' && !isPrimarySuperAdmin && user.uid !== currentUser?.uid;
                     const profileLink = user.campus === 'Goa' ? `/goa/${user.misId}` : `/profile/${user.misId}`;
 
                     return (
@@ -545,7 +544,7 @@ export default function ManageUsersPage() {
                         <TableCell className="text-right">
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild>
-                              <Button aria-haspopup="true" size="icon" variant="ghost" disabled={!canPerformActions}>
+                              <Button aria-haspopup="true" size="icon" variant="ghost">
                                 <MoreHorizontal className="h-4 w-4" />
                                 <span className="sr-only">Toggle menu</span>
                               </Button>
@@ -553,54 +552,60 @@ export default function ManageUsersPage() {
                             <DropdownMenuContent align="end">
                               <DropdownMenuLabel>Actions</DropdownMenuLabel>
                               <DropdownMenuItem onSelect={() => setUserToView(user)}>View Details</DropdownMenuItem>
-                              <DropdownMenuItem onSelect={() => setUserToManageNotifications(user)}>
-                                  <Bell className="mr-2 h-4 w-4" /> Notification Settings
-                              </DropdownMenuItem>
-                              <DropdownMenuSub>
-                                  <DropdownMenuSubTrigger>Change Role</DropdownMenuSubTrigger>
-                                  <DropdownMenuPortal>
-                                      <DropdownMenuSubContent>
-                                          {availableRoles.map(role => (
-                                              <DropdownMenuItem 
-                                                  key={role} 
-                                                  onClick={() => handleRoleChange(user.uid, role)}
-                                                  disabled={user.role === role}
-                                              >
-                                                {role.charAt(0).toUpperCase() + role.slice(1)}
-                                              </DropdownMenuItem>
-                                          ))}
-                                      </DropdownMenuSubContent>
-                                  </DropdownMenuPortal>
-                              </DropdownMenuSub>
-                              {user.role === 'CRO' && (
+                              {canPerformActions && (
+                                  <>
+                                  <DropdownMenuItem onSelect={() => setUserToManageNotifications(user)}>
+                                      <Bell className="mr-2 h-4 w-4" /> Notification Settings
+                                  </DropdownMenuItem>
                                   <DropdownMenuSub>
-                                      <DropdownMenuSubTrigger>Assign Faculties</DropdownMenuSubTrigger>
+                                      <DropdownMenuSubTrigger>Change Role</DropdownMenuSubTrigger>
                                       <DropdownMenuPortal>
-                                          <DropdownMenuSubContent className="max-h-80 overflow-y-auto">
-                                              <DropdownMenuLabel>Faculties</DropdownMenuLabel>
-                                              <DropdownMenuSeparator />
-                                              {goaFaculties.map(faculty => (
-                                                  <DropdownMenuCheckboxItem
-                                                      key={faculty}
-                                                      checked={user.faculties?.includes(faculty)}
-                                                      onCheckedChange={(checked) => {
-                                                          const currentFaculties = user.faculties || [];
-                                                          const newFaculties = checked
-                                                              ? [...currentFaculties, faculty]
-                                                              : currentFaculties.filter(f => f !== faculty);
-                                                          handleRoleChange(user.uid, user.role, { faculties: newFaculties });
-                                                      }}
+                                          <DropdownMenuSubContent>
+                                              {availableRoles.map(role => (
+                                                  <DropdownMenuItem 
+                                                      key={role} 
+                                                      onClick={() => handleRoleChange(user, role)}
+                                                      disabled={user.role === role}
                                                   >
-                                                      {faculty}
-                                                  </DropdownMenuCheckboxItem>
+                                                    {role.charAt(0).toUpperCase() + role.slice(1)}
+                                                  </DropdownMenuItem>
                                               ))}
                                           </DropdownMenuSubContent>
                                       </DropdownMenuPortal>
                                   </DropdownMenuSub>
+                                  {user.role === 'CRO' && (
+                                      <DropdownMenuSub>
+                                          <DropdownMenuSubTrigger>Assign Faculties</DropdownMenuSubTrigger>
+                                          <DropdownMenuPortal>
+                                              <DropdownMenuSubContent className="max-h-80 overflow-y-auto">
+                                                  <DropdownMenuLabel>Faculties</DropdownMenuLabel>
+                                                  <DropdownMenuSeparator />
+                                                  {goaFaculties.map(faculty => (
+                                                      <DropdownMenuCheckboxItem
+                                                          key={faculty}
+                                                          checked={user.faculties?.includes(faculty)}
+                                                          onCheckedChange={(checked) => {
+                                                              const currentFaculties = user.faculties || [];
+                                                              const newFaculties = checked
+                                                                  ? [...currentFaculties, faculty]
+                                                                  : currentFaculties.filter(f => f !== faculty);
+                                                              handleRoleChange(user, user.role, { faculties: newFaculties });
+                                                          }}
+                                                      >
+                                                          {faculty}
+                                                      </DropdownMenuCheckboxItem>
+                                                  ))}
+                                              </DropdownMenuSubContent>
+                                          </DropdownMenuPortal>
+                                      </DropdownMenuSub>
+                                  )}
+                                   <DropdownMenuSeparator />
+                                    <DropdownMenuItem className="text-destructive" onSelect={() => setUserToDelete(user)}>
+                                        <Trash2 className="mr-2 h-4 w-4"/>
+                                        Delete User
+                                    </DropdownMenuItem>
+                                  </>
                               )}
-                              <DropdownMenuItem className="text-destructive" onSelect={() => setUserToDelete(user)}>
-                                Delete User
-                              </DropdownMenuItem>
                             </DropdownMenuContent>
                           </DropdownMenu>
                         </TableCell>
@@ -614,7 +619,7 @@ export default function ManageUsersPage() {
             <div className="grid md:hidden grid-cols-1 sm:grid-cols-2 gap-4">
               {sortedAndFilteredUsers.map(user => {
                 const isPrimarySuperAdmin = user.email === PRIMARY_SUPER_ADMIN_EMAIL;
-                const canPerformActions = isCurrentUserSuperAdmin && !isPrimarySuperAdmin && user.uid !== currentUser?.uid;
+                const canPerformActions = currentUser?.role === 'Super-admin' && !isPrimarySuperAdmin && user.uid !== currentUser?.uid;
                 const profileLink = user.campus === 'Goa' ? `/goa/${user.misId}` : `/profile/${user.misId}`;
                 return (
                   <Card key={user.uid} className="flex flex-col">
@@ -641,49 +646,54 @@ export default function ManageUsersPage() {
                         </div>
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="icon" className="h-7 w-7" disabled={!canPerformActions}>
+                            <Button variant="ghost" size="icon" className="h-7 w-7">
                               <MoreHorizontal className="h-4 w-4" />
                             </Button>
                           </DropdownMenuTrigger>
                            <DropdownMenuContent align="end">
                             <DropdownMenuLabel>Actions</DropdownMenuLabel>
                             <DropdownMenuItem onSelect={() => setUserToView(user)}>View Details</DropdownMenuItem>
-                                <DropdownMenuItem onSelect={() => setUserToManageNotifications(user)}>
-                                    <Bell className="mr-2 h-4 w-4" /> Notification Settings
-                                </DropdownMenuItem>
-                                <DropdownMenuSub>
-                                    <DropdownMenuSubTrigger>Change Role</DropdownMenuSubTrigger>
-                                    <DropdownMenuPortal>
-                                        <DropdownMenuSubContent>
-                                            {availableRoles.map(role => (
-                                                <DropdownMenuItem key={role} onClick={() => handleRoleChange(user.uid, role)} disabled={user.role === role}>{role.charAt(0).toUpperCase() + role.slice(1)}</DropdownMenuItem>
-                                            ))}
-                                        </DropdownMenuSubContent>
-                                    </DropdownMenuPortal>
-                                </DropdownMenuSub>
-                            {user.role === 'CRO' && (
-                                <DropdownMenuSub>
-                                    <DropdownMenuSubTrigger>Assign Faculties</DropdownMenuSubTrigger>
-                                    <DropdownMenuPortal>
-                                        <DropdownMenuSubContent className="max-h-80 overflow-y-auto">
-                                            <DropdownMenuLabel>Faculties</DropdownMenuLabel>
-                                            <DropdownMenuSeparator />
-                                            {goaFaculties.map(faculty => (
-                                                <DropdownMenuCheckboxItem
-                                                    key={faculty}
-                                                    checked={user.faculties?.includes(faculty)}
-                                                    onCheckedChange={(checked) => {
-                                                        const currentFaculties = user.faculties || [];
-                                                        const newFaculties = checked ? [...currentFaculties, faculty] : currentFaculties.filter(f => f !== faculty);
-                                                        handleRoleChange(user.uid, user.role, { faculties: newFaculties });
-                                                    }}
-                                                >{faculty}</DropdownMenuCheckboxItem>
-                                            ))}
-                                        </DropdownMenuSubContent>
-                                    </DropdownMenuPortal>
-                                </DropdownMenuSub>
-                            )}
-                            <DropdownMenuItem className="text-destructive" onSelect={() => setUserToDelete(user)}>Delete User</DropdownMenuItem>
+                                {canPerformActions && (
+                                    <>
+                                        <DropdownMenuItem onSelect={() => setUserToManageNotifications(user)}>
+                                            <Bell className="mr-2 h-4 w-4" /> Notification Settings
+                                        </DropdownMenuItem>
+                                        <DropdownMenuSub>
+                                            <DropdownMenuSubTrigger>Change Role</DropdownMenuSubTrigger>
+                                            <DropdownMenuPortal>
+                                                <DropdownMenuSubContent>
+                                                    {availableRoles.map(role => (
+                                                        <DropdownMenuItem key={role} onClick={() => handleRoleChange(user, role)} disabled={user.role === role}>{role.charAt(0).toUpperCase() + role.slice(1)}</DropdownMenuItem>
+                                                    ))}
+                                                </DropdownMenuSubContent>
+                                            </DropdownMenuPortal>
+                                        </DropdownMenuSub>
+                                        {user.role === 'CRO' && (
+                                            <DropdownMenuSub>
+                                                <DropdownMenuSubTrigger>Assign Faculties</DropdownMenuSubTrigger>
+                                                <DropdownMenuPortal>
+                                                    <DropdownMenuSubContent className="max-h-80 overflow-y-auto">
+                                                        <DropdownMenuLabel>Faculties</DropdownMenuLabel>
+                                                        <DropdownMenuSeparator />
+                                                        {goaFaculties.map(faculty => (
+                                                            <DropdownMenuCheckboxItem
+                                                                key={faculty}
+                                                                checked={user.faculties?.includes(faculty)}
+                                                                onCheckedChange={(checked) => {
+                                                                    const currentFaculties = user.faculties || [];
+                                                                    const newFaculties = checked ? [...currentFaculties, faculty] : currentFaculties.filter(f => f !== faculty);
+                                                                    handleRoleChange(user, user.role, { faculties: newFaculties });
+                                                                }}
+                                                            >{faculty}</DropdownMenuCheckboxItem>
+                                                        ))}
+                                                    </DropdownMenuSubContent>
+                                                </DropdownMenuPortal>
+                                            </DropdownMenuSub>
+                                        )}
+                                        <DropdownMenuSeparator />
+                                        <DropdownMenuItem className="text-destructive" onSelect={() => setUserToDelete(user)}>Delete User</DropdownMenuItem>
+                                    </>
+                                )}
                           </DropdownMenuContent>
                         </DropdownMenu>
                     </CardHeader>
@@ -696,14 +706,12 @@ export default function ManageUsersPage() {
               })}
             </div>
           </CardContent>
-           {selectedUsers.length > 0 && isCurrentUserSuperAdmin && (
-              <CardFooter className="p-4 border-t sticky bottom-0 bg-background/95">
-                <div className="flex items-center gap-4">
-                  <span className="text-sm text-muted-foreground">{selectedUsers.length} user(s) selected</span>
-                   {isBulkSubmitting && <Loader2 className="h-5 w-5 animate-spin" />}
-                </div>
-              </CardFooter>
-          )}
+          <CardFooter className="p-4 border-t sticky bottom-0 bg-background/95">
+            <div className="flex items-center gap-4">
+              <span className="text-sm text-muted-foreground">{selectedUsers.length} user(s) selected</span>
+               {isBulkSubmitting && <Loader2 className="h-5 w-5 animate-spin" />}
+            </div>
+          </CardFooter>
         </Card>
       </div>
        <ProfileDetailsDialog user={userToView} open={!!userToView} onOpenChange={() => setUserToView(null)} />
