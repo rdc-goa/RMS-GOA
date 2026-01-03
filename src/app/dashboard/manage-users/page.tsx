@@ -47,7 +47,7 @@ import { collection, getDocs, doc, deleteDoc, updateDoc } from 'firebase/firesto
 import type { User, IncentiveClaim, NotificationSettings } from '@/types';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
-import { getDefaultModulesForRole } from "@/lib/modules";
+import { getDefaultModulesForRole, ALL_MODULES } from "@/lib/modules";
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -94,6 +94,91 @@ const notificationTypes = [
 ] as const;
 
 type NotificationTypeId = typeof notificationTypes[number]['id'];
+
+function ModuleManagementDialog({ users, open, onOpenChange, onUpdate }: { users: User[], open: boolean, onOpenChange: (open: boolean) => void, onUpdate: () => void }) {
+    const { toast } = useToast();
+    const [isSaving, setIsSaving] = useState(false);
+
+    const commonModules = useMemo(() => {
+        if (users.length === 0) return [];
+        return ALL_MODULES.filter(module =>
+            users.every(user => user.allowedModules?.includes(module.id))
+        );
+    }, [users]);
+    
+    const [selectedModules, setSelectedModules] = useState<string[]>(commonModules.map(m => m.id));
+
+    useEffect(() => {
+        setSelectedModules(commonModules.map(m => m.id));
+    }, [commonModules]);
+
+    if (users.length === 0) return null;
+
+    const handleModuleToggle = (moduleId: string, checked: boolean) => {
+        setSelectedModules(prev =>
+            checked ? [...prev, moduleId] : prev.filter(id => id !== moduleId)
+        );
+    };
+
+    const handleSaveChanges = async () => {
+        setIsSaving(true);
+        const userIds = users.map(u => u.uid);
+        const modulesToGrant = selectedModules;
+        const modulesToRevoke = ALL_MODULES.map(m => m.id).filter(id => !selectedModules.includes(id));
+        
+        try {
+            if (modulesToGrant.length > 0) {
+                await bulkGrantModuleAccess(userIds, modulesToGrant);
+            }
+            if (modulesToRevoke.length > 0) {
+                await bulkRevokeModuleAccess(userIds, modulesToRevoke);
+            }
+            toast({ title: "Permissions updated successfully." });
+            onUpdate();
+            onOpenChange(false);
+        } catch (error: any) {
+            toast({ variant: 'destructive', title: "Update Failed", description: error.message || "Could not update module permissions." });
+        } finally {
+            setIsSaving(false);
+        }
+    };
+
+    const userNames = users.map(u => u.name).join(', ');
+
+    return (
+        <Dialog open={open} onOpenChange={onOpenChange}>
+            <DialogContent className="sm:max-w-2xl">
+                <DialogHeader>
+                    <DialogTitle>Manage Modules for {users.length > 1 ? `${users.length} Users` : userNames}</DialogTitle>
+                    <DialogDescription>
+                        Select the modules and features these users should have access to.
+                    </DialogDescription>
+                </DialogHeader>
+                <div className="py-4 max-h-[60vh] overflow-y-auto pr-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                        {ALL_MODULES.map(module => (
+                            <div key={module.id} className="flex items-center space-x-2">
+                                <Checkbox
+                                    id={`module-${module.id}`}
+                                    checked={selectedModules.includes(module.id)}
+                                    onCheckedChange={(checked) => handleModuleToggle(module.id, !!checked)}
+                                />
+                                <Label htmlFor={`module-${module.id}`}>{module.label}</Label>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+                <DialogFooter>
+                    <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
+                    <Button onClick={handleSaveChanges} disabled={isSaving}>
+                        {isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                        Save Changes
+                    </Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
+    );
+}
 
 function NotificationSettingsDialog({ user, open, onOpenChange, onUpdate }: { user: User | null, open: boolean, onOpenChange: (open: boolean) => void, onUpdate: () => void }) {
     const { toast } = useToast();
@@ -262,6 +347,8 @@ export default function ManageUsersPage() {
   const [userToDelete, setUserToDelete] = useState<User | null>(null);
   const [userToView, setUserToView] = useState<User | null>(null);
   const [userToManageNotifications, setUserToManageNotifications] = useState<User | null>(null);
+  const [userForModuleMgmt, setUserForModuleMgmt] = useState<User | null>(null);
+  const [isModuleMgmtOpen, setIsModuleMgmtOpen] = useState(false);
   const { toast } = useToast();
   const router = useRouter();
   const [searchTerm, setSearchTerm] = useState('');
@@ -553,7 +640,10 @@ export default function ManageUsersPage() {
                               <DropdownMenuLabel>Actions</DropdownMenuLabel>
                               <DropdownMenuItem onSelect={() => setUserToView(user)}>View Details</DropdownMenuItem>
                               {canPerformActions && (
-                                  <>
+                                <>
+                                  <DropdownMenuItem onSelect={() => { setUserForModuleMgmt(user); setIsModuleMgmtOpen(true); }}>
+                                    <ShieldCheck className="mr-2 h-4 w-4" /> Manage Modules
+                                  </DropdownMenuItem>
                                   <DropdownMenuItem onSelect={() => setUserToManageNotifications(user)}>
                                       <Bell className="mr-2 h-4 w-4" /> Notification Settings
                                   </DropdownMenuItem>
@@ -655,6 +745,9 @@ export default function ManageUsersPage() {
                             <DropdownMenuItem onSelect={() => setUserToView(user)}>View Details</DropdownMenuItem>
                                 {canPerformActions && (
                                     <>
+                                        <DropdownMenuItem onSelect={() => { setUserForModuleMgmt(user); setIsModuleMgmtOpen(true); }}>
+                                            <ShieldCheck className="mr-2 h-4 w-4" /> Manage Modules
+                                        </DropdownMenuItem>
                                         <DropdownMenuItem onSelect={() => setUserToManageNotifications(user)}>
                                             <Bell className="mr-2 h-4 w-4" /> Notification Settings
                                         </DropdownMenuItem>
@@ -691,7 +784,9 @@ export default function ManageUsersPage() {
                                             </DropdownMenuSub>
                                         )}
                                         <DropdownMenuSeparator />
-                                        <DropdownMenuItem className="text-destructive" onSelect={() => setUserToDelete(user)}>Delete User</DropdownMenuItem>
+                                        <DropdownMenuItem className="text-destructive" onSelect={() => setUserToDelete(user)}>
+                                            <Trash2 className="mr-2 h-4 w-4" /> Delete User
+                                        </DropdownMenuItem>
                                     </>
                                 )}
                           </DropdownMenuContent>
@@ -709,13 +804,32 @@ export default function ManageUsersPage() {
           <CardFooter className="p-4 border-t sticky bottom-0 bg-background/95">
             <div className="flex items-center gap-4">
               <span className="text-sm text-muted-foreground">{selectedUsers.length} user(s) selected</span>
-               {isBulkSubmitting && <Loader2 className="h-5 w-5 animate-spin" />}
+              {isCurrentUserSuperAdmin && selectedUsers.length > 0 && (
+                <Button size="sm" onClick={() => setIsModuleMgmtOpen(true)} disabled={isBulkSubmitting}>
+                  <ShieldCheck className="mr-2 h-4 w-4" /> Manage Modules
+                </Button>
+              )}
             </div>
           </CardFooter>
         </Card>
       </div>
        <ProfileDetailsDialog user={userToView} open={!!userToView} onOpenChange={() => setUserToView(null)} />
        <NotificationSettingsDialog user={userToManageNotifications} open={!!userToManageNotifications} onOpenChange={() => setUserToManageNotifications(null)} onUpdate={fetchUsersAndClaims} />
+       <ModuleManagementDialog 
+            users={
+                isModuleMgmtOpen && selectedUsers.length > 0
+                ? users.filter(u => selectedUsers.includes(u.uid))
+                : userForModuleMgmt ? [userForModuleMgmt] : []
+            }
+            open={isModuleMgmtOpen || !!userForModuleMgmt} 
+            onOpenChange={(open) => {
+                if (!open) {
+                    setIsModuleMgmtOpen(false);
+                    setUserForModuleMgmt(null);
+                }
+            }} 
+            onUpdate={fetchUsersAndClaims} 
+        />
        {userToDelete && (
           <AlertDialog open={!!userToDelete} onOpenChange={(open) => !open && setUserToDelete(null)}>
               <AlertDialogContent>
