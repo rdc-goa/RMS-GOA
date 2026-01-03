@@ -7,7 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter }
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { MoreHorizontal, ArrowUpDown, ChevronDown, ShieldCheck, Loader2, Library, Users2, Ban, Bell, Check, UserCog } from "lucide-react";
+import { MoreHorizontal, ArrowUpDown, ChevronDown, ShieldCheck, Loader2, Library, Users2, Ban, Bell, Check, UserCog, Trash2 } from "lucide-react";
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
