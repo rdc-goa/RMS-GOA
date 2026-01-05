@@ -299,6 +299,99 @@ export async function addTransaction(
   }
 }
 
+export async function updateTransaction(
+    projectId: string,
+    phaseId: string,
+    transactionId: string,
+    transactionData: {
+      dateOfTransaction: string;
+      amount: number;
+      vendorName: string;
+      isGstRegistered: boolean;
+      gstNumber?: string;
+      description?: string;
+      invoiceDataUrl?: string;
+      invoiceFileName?: string;
+    }
+  ): Promise<{ success: boolean; error?: string; updatedProject?: Project }> {
+    try {
+      const projectRef = adminDb.collection("projects").doc(projectId);
+      const projectSnap = await projectRef.get();
+  
+      if (!projectSnap.exists) {
+        return { success: false, error: "Project not found." };
+      }
+  
+      const project = projectSnap.data() as Project;
+      if (!project.grant?.phases) {
+        return { success: false, error: "Grant details or phases not found." };
+      }
+  
+      const phaseIndex = project.grant.phases.findIndex((p) => p.id === phaseId);
+      if (phaseIndex === -1) {
+        return { success: false, error: "Phase not found." };
+      }
+  
+      const transactionIndex = project.grant.phases[phaseIndex].transactions?.findIndex(
+        (t) => t.id === transactionId
+      );
+      if (transactionIndex === -1 || transactionIndex === undefined) {
+        return { success: false, error: "Transaction not found." };
+      }
+      
+      const existingTransaction = project.grant.phases[phaseIndex].transactions![transactionIndex];
+      let newInvoiceUrl = existingTransaction.invoiceUrl;
+
+      if (transactionData.invoiceDataUrl && transactionData.invoiceFileName) {
+        // A new file was uploaded, replace the old one
+        if (existingTransaction.invoiceUrl) {
+            try {
+                const oldUrl = new URL(existingTransaction.invoiceUrl);
+                const oldFilePath = decodeURIComponent(oldUrl.pathname.substring(oldUrl.pathname.indexOf('/o/') + 3));
+                await adminStorage.bucket().file(oldFilePath).delete();
+            } catch (e) {
+                console.warn(`Could not delete old invoice file during update: ${e}`);
+            }
+        }
+        
+        const path = `invoices/${projectId}/${phaseId}/${new Date().toISOString()}-${transactionData.invoiceFileName}`;
+        const result = await uploadFileToServer(transactionData.invoiceDataUrl, path);
+        if (!result.success || !result.url) {
+          throw new Error(result.error || "New invoice upload failed");
+        }
+        newInvoiceUrl = result.url;
+      }
+  
+      const updatedTransaction: Transaction = {
+        ...existingTransaction,
+        dateOfTransaction: transactionData.dateOfTransaction,
+        amount: transactionData.amount,
+        vendorName: transactionData.vendorName,
+        isGstRegistered: transactionData.isGstRegistered,
+        gstNumber: transactionData.gstNumber,
+        description: transactionData.description || "",
+        invoiceUrl: newInvoiceUrl,
+      };
+      
+      const updatedPhases = [...project.grant.phases];
+      const updatedTransactions = [...(updatedPhases[phaseIndex].transactions || [])];
+      updatedTransactions[transactionIndex] = updatedTransaction;
+      updatedPhases[phaseIndex] = { ...updatedPhases[phaseIndex], transactions: updatedTransactions };
+  
+      const updatedGrant = { ...project.grant, phases: updatedPhases };
+      await projectRef.update({ grant: updatedGrant });
+  
+      await logActivity("INFO", "Grant transaction updated", { projectId, phaseId, transactionId });
+      const updatedProject = { ...project, grant: updatedGrant };
+      return { success: true, updatedProject };
+  
+    } catch (error: any) {
+      console.error("Error in updateTransaction server action:", error);
+      await logActivity("ERROR", "Failed to update grant transaction", { projectId, transactionId, error: error.message });
+      return { success: false, error: error.message || "Failed to update transaction." };
+    }
+  }
+
 export async function deleteTransaction(
     projectId: string, 
     phaseId: string, 

@@ -10,9 +10,9 @@ import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, For
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { useToast } from "@/hooks/use-toast"
-import { addGrantPhase, addTransaction, updatePhaseStatus, deleteTransaction } from "@/app/grant-actions"
+import { addGrantPhase, addTransaction, updatePhaseStatus, deleteTransaction, updateTransaction } from "@/app/grant-actions"
 import { generateInstallmentOfficeNoting } from "@/app/document-actions"
-import React, { useState } from "react"
+import React, { useState, useEffect } from "react"
 import {
   DollarSign,
   Banknote,
@@ -25,6 +25,7 @@ import {
   Download,
   Loader2,
   Trash2,
+  Edit,
 } from "lucide-react"
 import * as XLSX from "xlsx"
 import {
@@ -80,6 +81,7 @@ export function GrantManagement({ project, user, onUpdate }: GrantManagementProp
   const [isAddPhaseOpen, setIsAddPhaseOpen] = useState(false)
   const [isTransactionOpen, setIsTransactionOpen] = useState(false)
   const [currentPhaseId, setCurrentPhaseId] = useState<string | null>(null)
+  const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null)
   const [isDownloading, setIsDownloading] = useState(false);
   const [phaseForNoting, setPhaseForNoting] = useState<GrantPhase | null>(null);
   const [transactionToDelete, setTransactionToDelete] = useState<{phaseId: string, transaction: Transaction} | null>(null);
@@ -111,9 +113,15 @@ export function GrantManagement({ project, user, onUpdate }: GrantManagementProp
       gstNumber: z.string().optional(),
       description: z.string().min(10, "Description is required."),
       invoice: z.any()
-        .refine((files) => files?.length > 0, "An invoice file is required.")
-        .refine((files) => files?.[0]?.size <= MAX_FILE_SIZE, `File size must be less than 5MB.`)
-        .refine((files) => ACCEPTED_FILE_TYPES.includes(files?.[0]?.type), "Only .pdf files are accepted."),
+        .optional()
+        .refine(
+            (files) => !editingTransaction || (files && files.length > 0) ? files?.[0]?.size <= MAX_FILE_SIZE : true,
+            `File size must be less than 5MB.`
+        )
+        .refine(
+            (files) => !editingTransaction || (files && files.length > 0) ? ACCEPTED_FILE_TYPES.includes(files?.[0]?.type) : true,
+            "Only .pdf files are accepted."
+        ),
     })
     .refine(
       (data) => {
@@ -156,6 +164,22 @@ export function GrantManagement({ project, user, onUpdate }: GrantManagementProp
       description: "",
     },
   })
+
+  useEffect(() => {
+    if (editingTransaction) {
+        transactionForm.reset({
+            dateOfTransaction: format(parseISO(editingTransaction.dateOfTransaction), 'yyyy-MM-dd'),
+            amount: editingTransaction.amount,
+            vendorName: editingTransaction.vendorName,
+            isGstRegistered: editingTransaction.isGstRegistered,
+            gstNumber: editingTransaction.gstNumber,
+            description: editingTransaction.description,
+            invoice: undefined,
+        });
+    } else {
+        transactionForm.reset();
+    }
+}, [editingTransaction, transactionForm]);
 
   const handleExportTransactions = (phase: GrantPhase) => {
     if (!phase.transactions || phase.transactions.length === 0) {
@@ -245,40 +269,52 @@ export function GrantManagement({ project, user, onUpdate }: GrantManagementProp
     }
   }
 
-  const handleAddTransaction = async (values: z.infer<typeof transactionSchema>) => {
+  const handleTransactionSubmit = async (values: z.infer<typeof transactionSchema>) => {
     if (!grant || !currentPhaseId) return;
     setIsSubmitting(true);
-    console.log("CLIENT: handleAddTransaction called with projectId:", project.id, "and phaseId:", currentPhaseId);
+    
     try {
+        let invoiceDataUrl: string | undefined = editingTransaction?.invoiceUrl;
+        let invoiceFileName: string | undefined = 'existing_invoice.pdf';
         const invoiceFile = values.invoice?.[0];
-        if (!invoiceFile) {
-            throw new Error("Invoice file is missing.");
-        }
-        const invoiceDataUrl = await fileToDataUrl(invoiceFile);
 
-        const result = await addTransaction(project.id, currentPhaseId, {
+        if (invoiceFile) {
+            invoiceDataUrl = await fileToDataUrl(invoiceFile);
+            invoiceFileName = invoiceFile.name;
+        }
+
+        if (!invoiceDataUrl) {
+            throw new Error("Invoice file is required.");
+        }
+        
+        const transactionPayload = {
             dateOfTransaction: values.dateOfTransaction,
             amount: values.amount,
             vendorName: values.vendorName,
             isGstRegistered: values.isGstRegistered,
             gstNumber: values.gstNumber,
             description: values.description,
-            invoiceDataUrl: invoiceDataUrl,
-            invoiceFileName: invoiceFile.name,
-        });
+            invoiceDataUrl,
+            invoiceFileName,
+        };
+        
+        const result = editingTransaction
+            ? await updateTransaction(project.id, currentPhaseId, editingTransaction.id, transactionPayload)
+            : await addTransaction(project.id, currentPhaseId, transactionPayload);
+
 
         if (result.success && result.updatedProject) {
             onUpdate(result.updatedProject);
-            toast({ title: "Success", description: "Transaction added successfully." });
-            transactionForm.reset();
+            toast({ title: "Success", description: `Transaction ${editingTransaction ? 'updated' : 'added'} successfully.` });
             setIsTransactionOpen(false);
             setCurrentPhaseId(null);
+            setEditingTransaction(null);
         } else {
-            throw new Error(result.error || "Failed to add transaction.");
+            throw new Error(result.error || `Failed to ${editingTransaction ? 'update' : 'add'} transaction.`);
         }
     } catch (error: any) {
-        console.error("Client error in handleAddTransaction:", error);
-        toast({ variant: "destructive", title: "Error", description: error.message || "Failed to add transaction." });
+        console.error(`Error in handleTransactionSubmit:`, error);
+        toast({ variant: "destructive", title: "Error", description: error.message || `Failed to ${editingTransaction ? 'update' : 'add'} transaction.` });
     } finally {
         setIsSubmitting(false);
     }
@@ -518,6 +554,7 @@ export function GrantManagement({ project, user, onUpdate }: GrantManagementProp
                                 size="sm"
                                 onClick={() => {
                                   setCurrentPhaseId(phase.id)
+                                  setEditingTransaction(null);
                                   setIsTransactionOpen(true)
                                 }}
                               >
@@ -549,50 +586,52 @@ export function GrantManagement({ project, user, onUpdate }: GrantManagementProp
                               <TableHead>GST</TableHead>
                               <TableHead>Description</TableHead>
                               <TableHead>Invoice</TableHead>
-                              {(isPI || isAdmin) && <TableHead className="text-right">Action</TableHead>}
+                              {(isPI || isCoPi || isAdmin) && <TableHead className="text-right">Action</TableHead>}
                             </TableRow>
                           </TableHeader>
                           <TableBody>
-                            {phase.transactions?.map((transaction) => (
-                              <TableRow key={transaction.id}>
-                                <TableCell>{format(parseISO(transaction.dateOfTransaction), "dd/MM/yyyy")}</TableCell>
-                                <TableCell>{transaction.vendorName}</TableCell>
-                                <TableCell>₹{transaction.amount.toLocaleString("en-IN")}</TableCell>
-                                <TableCell>
-                                  {transaction.isGstRegistered ? (
-                                    <span className="text-green-600">Yes ({transaction.gstNumber})</span>
-                                  ) : (
-                                    <span className="text-muted-foreground">No</span>
-                                  )}
-                                </TableCell>
-                                <TableCell className="whitespace-pre-wrap max-w-xs">{transaction.description}</TableCell>
-                                <TableCell>
-                                  {transaction.invoiceUrl ? (
-                                    <Link
-                                      href={transaction.invoiceUrl}
-                                      target="_blank"
-                                      rel="noopener noreferrer"
-                                      className="text-blue-600 hover:underline"
-                                    >
-                                      View Invoice
-                                    </Link>
-                                  ) : (
-                                    <span className="text-muted-foreground">N/A</span>
-                                  )}
-                                </TableCell>
-                                {(isPI || isAdmin) && (
-                                    <TableCell className="text-right">
-                                        <Button
-                                            variant="ghost"
-                                            size="icon"
-                                            onClick={() => setTransactionToDelete({ phaseId: phase.id, transaction })}
-                                        >
-                                            <Trash2 className="h-4 w-4 text-destructive" />
-                                        </Button>
+                            {phase.transactions?.map((transaction) => {
+                                const canEdit = (isPI || isCoPi) && phase.status === 'Disbursed';
+                                return (
+                                  <TableRow key={transaction.id}>
+                                    <TableCell>{format(parseISO(transaction.dateOfTransaction), "dd/MM/yyyy")}</TableCell>
+                                    <TableCell>{transaction.vendorName}</TableCell>
+                                    <TableCell>₹{transaction.amount.toLocaleString("en-IN")}</TableCell>
+                                    <TableCell>
+                                      {transaction.isGstRegistered ? (
+                                        <span className="text-green-600">Yes ({transaction.gstNumber})</span>
+                                      ) : (
+                                        <span className="text-muted-foreground">No</span>
+                                      )}
                                     </TableCell>
-                                )}
-                              </TableRow>
-                            ))}
+                                    <TableCell className="whitespace-pre-wrap max-w-xs">{transaction.description}</TableCell>
+                                    <TableCell>
+                                      {transaction.invoiceUrl ? (
+                                        <Link
+                                          href={transaction.invoiceUrl}
+                                          target="_blank"
+                                          rel="noopener noreferrer"
+                                          className="text-blue-600 hover:underline"
+                                        >
+                                          View Invoice
+                                        </Link>
+                                      ) : (
+                                        <span className="text-muted-foreground">N/A</span>
+                                      )}
+                                    </TableCell>
+                                    {(isPI || isCoPi || isAdmin) && (
+                                        <TableCell className="text-right">
+                                            <div className="flex items-center justify-end gap-1">
+                                                {canEdit && (
+                                                    <Button variant="ghost" size="icon" onClick={() => { setCurrentPhaseId(phase.id); setEditingTransaction(transaction); setIsTransactionOpen(true); }}><Edit className="h-4 w-4" /></Button>
+                                                )}
+                                                <Button variant="ghost" size="icon" onClick={() => setTransactionToDelete({ phaseId: phase.id, transaction })} disabled={!canEdit}><Trash2 className="h-4 w-4 text-destructive" /></Button>
+                                            </div>
+                                        </TableCell>
+                                    )}
+                                  </TableRow>
+                                )
+                            })}
                           </TableBody>
                         </Table>
                       </div>
@@ -632,13 +671,13 @@ export function GrantManagement({ project, user, onUpdate }: GrantManagementProp
         <Dialog open={isTransactionOpen} onOpenChange={setIsTransactionOpen}>
           <DialogContent className="max-w-2xl">
             <DialogHeader>
-              <DialogTitle>Add Transaction</DialogTitle>
+              <DialogTitle>{editingTransaction ? 'Edit' : 'Add'} Transaction</DialogTitle>
               <DialogDescription>Record a new expense for this grant phase.</DialogDescription>
             </DialogHeader>
             <Form {...transactionForm}>
               <form
                 id="add-transaction-form"
-                onSubmit={transactionForm.handleSubmit(handleAddTransaction)}
+                onSubmit={transactionForm.handleSubmit(handleTransactionSubmit)}
                 className="space-y-4 py-4"
               >
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -736,7 +775,7 @@ export function GrantManagement({ project, user, onUpdate }: GrantManagementProp
                           {...field}
                         />
                       </FormControl>
-                      <FormDescription>Below 5 MB</FormDescription>
+                      <FormDescription>Below 5 MB. {editingTransaction ? 'Uploading a new file will replace the old one.' : ''}</FormDescription>
                       <FormMessage />
                     </FormItem>
                   )}
@@ -748,7 +787,7 @@ export function GrantManagement({ project, user, onUpdate }: GrantManagementProp
                 <Button variant="outline">Cancel</Button>
               </DialogClose>
               <Button type="submit" form="add-transaction-form" disabled={isSubmitting}>
-                {isSubmitting ? "Adding..." : "Add Transaction"}
+                {isSubmitting ? "Saving..." : (editingTransaction ? "Save Changes" : "Add Transaction")}
               </Button>
             </DialogFooter>
           </DialogContent>
@@ -807,5 +846,3 @@ export function GrantManagement({ project, user, onUpdate }: GrantManagementProp
     </Card>
   );
 }
-
-    
