@@ -157,11 +157,11 @@ export async function checkPatentUniqueness(title: string, applicationNumber: st
 
 export async function bulkGrantModuleAccess(
   userIds: string[],
-  moduleId: string,
+  modules: string[],
 ): Promise<{ success: boolean; error?: string }> {
   try {
-    if (!userIds || userIds.length === 0 || !moduleId) {
-      return { success: false, error: "User IDs and a module ID are required." }
+    if (!userIds || userIds.length === 0 || !modules || modules.length === 0) {
+      return { success: false, error: "User IDs and at least one module ID are required." }
     }
     const batch = adminDb.batch()
     const usersRef = adminDb.collection("users")
@@ -169,18 +169,18 @@ export async function bulkGrantModuleAccess(
     userIds.forEach((uid) => {
       const userRef = usersRef.doc(uid)
       batch.update(userRef, {
-        allowedModules: FieldValue.arrayUnion(moduleId),
+        allowedModules: FieldValue.arrayUnion(...modules),
       })
     })
 
     await batch.commit()
-    await logActivity("INFO", "Bulk module access granted", { userIds, moduleId })
+    await logActivity("INFO", "Bulk module access granted", { userIds, modules })
     return { success: true }
   } catch (error: any) {
     console.error("Error in bulkGrantModuleAccess:", error)
     await logActivity("ERROR", "Failed to grant bulk module access", {
       userIds,
-      moduleId,
+      modules,
       error: error.message,
       stack: error.stack,
     })
@@ -190,11 +190,11 @@ export async function bulkGrantModuleAccess(
 
 export async function bulkRevokeModuleAccess(
   userIds: string[],
-  moduleId: string,
+  modules: string[],
 ): Promise<{ success: boolean; error?: string }> {
   try {
-    if (!userIds || userIds.length === 0 || !moduleId) {
-      return { success: false, error: "User IDs and a module ID are required." }
+    if (!userIds || userIds.length === 0 || !modules || modules.length === 0) {
+      return { success: false, error: "User IDs and at least one module ID are required." }
     }
     const batch = adminDb.batch()
     const usersRef = adminDb.collection("users")
@@ -202,18 +202,18 @@ export async function bulkRevokeModuleAccess(
     userIds.forEach((uid) => {
       const userRef = usersRef.doc(uid)
       batch.update(userRef, {
-        allowedModules: FieldValue.arrayRemove(moduleId),
+        allowedModules: FieldValue.arrayRemove(...modules),
       })
     })
 
     await batch.commit()
-    await logActivity("INFO", "Bulk module access revoked", { userIds, moduleId })
+    await logActivity("INFO", "Bulk module access revoked", { userIds, modules })
     return { success: true }
   } catch (error: any) {
     console.error("Error in bulkRevokeModuleAccess:", error)
     await logActivity("ERROR", "Failed to revoke bulk module access", {
       userIds,
-      moduleId,
+      modules,
       error: error.message,
       stack: error.stack,
     })
@@ -1778,4 +1778,62 @@ export async function scheduleMeeting(
     }
 }
 
+export async function sendErrorEmail(
+    data: {
+        error: { name: string; message: string; stack?: string },
+        context?: any,
+        user: { name: string; email: string; phoneNumber: string } | null
+    }
+): Promise<{ success: boolean }> {
+    const { error, context, user } = data;
+    const to = process.env.HELPDESK_EMAIL || 'helpdesk.rdc@paruluniversity.ac.in';
+
+    const userHtml = user
+        ? `<h3>User Details:</h3>
+           <ul>
+             <li><b>Name:</b> ${user.name}</li>
+             <li><b>Email:</b> ${user.email}</li>
+             <li><b>Phone:</b> ${user.phoneNumber}</li>
+           </ul>`
+        : '<h3>User Details:</h3><p>User was not logged in or could not be identified.</p>';
+
+    const contextHtml = context
+        ? `<h3>Error Context:</h3><pre style="background-color:#333; color: #f0f0f0; padding:10px; border-radius:4px; white-space: pre-wrap; word-wrap: break-word;"><code>${JSON.stringify(context, null, 2)}</code></pre>`
+        : '';
+        
+    const emailHtml = `
+      <html>
+        <body style="font-family: sans-serif; background-color: #f4f4f4; padding: 20px;">
+          <div style="max-width: 800px; margin: auto; background: white; padding: 20px; border-radius: 8px; border: 1px solid #ddd;">
+            <h1 style="color: #d9534f;">An Application Error Occurred</h1>
+            <p>An error was automatically caught by the system. Please find the details below.</p>
+            
+            ${userHtml}
+            
+            <h3>Error Details:</h3>
+            <p><b>Name:</b> ${error.name}</p>
+            <p><b>Message:</b> ${error.message}</p>
+            
+            ${contextHtml}
+            
+            <h3>Stack Trace:</h3>
+            <pre style="background-color:#333; color: #f0f0f0; padding:10px; border-radius:4px; white-space: pre-wrap; word-wrap: break-word;"><code>${error.stack || 'No stack trace available'}</code></pre>
+          </div>
+        </body>
+      </html>`;
+      
+    try {
+        await sendEmailUtility({
+            to,
+            subject: `[RDC Portal Error] - ${error.name}: ${error.message}`,
+            html: emailHtml,
+            from: 'default',
+        });
+        console.log(`Error report email sent successfully to ${to}.`);
+        return { success: true };
+    } catch (emailError: any) {
+        console.error('FATAL: Failed to send error report email:', emailError);
+        return { success: false };
+    }
+}
     

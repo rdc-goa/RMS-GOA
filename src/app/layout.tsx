@@ -15,10 +15,6 @@ import { FirebaseProvider } from '@/components/providers/FirebaseProvider';
 const inter = Inter({ subsets: ['latin'], variable: '--font-inter' });
 const sourceCodePro = Source_Code_Pro({ subsets: ['latin'], variable: '--font-source-code-pro' });
 
-// Since this is now a client component, we can't export metadata directly.
-// This should be moved to a parent layout if needed, but for this app structure it's okay here.
-// export const metadata: Metadata = { ... };
-
 const structuredData = {
   "@context": "https://schema.org",
   "@type": "CollegeOrUniversity",
@@ -43,7 +39,7 @@ const structuredData = {
     "@type": "ContactPoint",
     "telephone": "+91-2668-260300",
     "contactType": "customer service",
-    "email": "rdc@goa.paruluniversity.ac.in"
+    "email": "helpdesk.rdc@paruluniversity.ac.in"
   }
 };
 
