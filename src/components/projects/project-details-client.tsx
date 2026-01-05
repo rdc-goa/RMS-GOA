@@ -26,6 +26,7 @@ import {
   markImrAttendance,
   getSystemSettings,
   generateSanctionOrder,
+  uploadFileToServer as uploadFile, // Renamed to avoid conflicts
 } from "@/app/server-actions"
 import { generateRecommendationForm, generateOfficeNotingForm } from "@/app/document-actions"
 import { findUserByMisId } from '@/app/userfinding';
@@ -69,7 +70,7 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { useIsMobile } from "@/hooks/use-mobile"
 
-import { Check, ChevronDown, Clock, X, DollarSign, FileCheck2, CalendarIcon, Edit, UserCog, Banknote, AlertCircle, Users, Loader2, Printer, Download, Plus, FileText, Trash2, UserCheck } from 'lucide-react'
+import { Check, ChevronDown, Clock, X, DollarSign, FileCheck2, CalendarIcon, Edit, UserCog, Banknote, AlertCircle, Users, Loader2, Printer, Download, Plus, FileText, Trash2, UserCheck, Upload } from 'lucide-react'
 
 import { GrantManagement } from "./grant-management"
 import { EvaluationForm } from "./evaluation-form"
@@ -307,7 +308,7 @@ export function ProjectDetailsClient({ project: initialProject, allUsers, piUser
   const [isAwarding, setIsAwarding] = useState(false);
   const [isDownloadingSanctionOrder, setIsDownloadingSanctionOrder] = useState(false);
   const [systemSettings, setSystemSettings] = useState<SystemSettings | null>(null);
-  const isMobile = useIsMobile();
+  const [isProposalUploadOpen, setIsProposalUploadOpen] = useState(false);
 
   // Co-PI management state
   const [coPiSearchTerm, setCoPiSearchTerm] = useState("")
@@ -666,7 +667,7 @@ export function ProjectDetailsClient({ project: initialProject, allUsers, piUser
           }
 
           const path = `reports/${project.id}/${folder}/${Date.now()}-${file.name}`
-          const result = await uploadFileToServer(dataUrl, path)
+          const result = await uploadFile(dataUrl, path)
 
           if (!result.success || !result.url) {
             throw new Error(result.error || `Failed to upload ${file.name}`)
@@ -719,7 +720,7 @@ export function ProjectDetailsClient({ project: initialProject, allUsers, piUser
     try {
       const dataUrl = await fileToDataUrl(revisedProposalFile)
       const path = `revisions/${project.id}/${revisedProposalFile.name}`
-      const uploadResult = await uploadFileToServer(dataUrl, path)
+      const uploadResult = await uploadFile(dataUrl, path)
 
       if (!uploadResult.success || !uploadResult.url) {
         throw new Error(uploadResult.error || "Revision upload failed")
@@ -748,6 +749,37 @@ export function ProjectDetailsClient({ project: initialProject, allUsers, piUser
       setIsSubmittingRevision(false)
     }
   }
+  
+  const handleProposalUploadSubmit = async () => {
+    if (!revisedProposalFile) {
+      toast({ variant: "destructive", title: "File Missing", description: "Please upload a proposal file." });
+      return;
+    }
+    setIsSubmittingRevision(true);
+    try {
+      const dataUrl = await fileToDataUrl(revisedProposalFile);
+      const path = `projects/${project.id}/proposal/${revisedProposalFile.name}`;
+      const uploadResult = await uploadFile(dataUrl, path);
+
+      if (!uploadResult.success || !uploadResult.url) {
+        throw new Error(uploadResult.error || "Proposal upload failed");
+      }
+
+      await updateDoc(doc(db, 'projects', project.id), { proposalUrl: uploadResult.url });
+
+      toast({ title: "Proposal Uploaded", description: "The project proposal has been successfully uploaded." });
+      setIsProposalUploadOpen(false);
+      setRevisedProposalFile(null);
+      refetchProject();
+
+    } catch (error: any) {
+      console.error("Error uploading proposal:", error);
+      toast({ variant: "destructive", title: "Upload Failed", description: error.message });
+    } finally {
+      setIsSubmittingRevision(false);
+    }
+  };
+
 
   const handleDurationSubmit = async (data: DurationFormData) => {
     setIsUpdating(true)
@@ -913,6 +945,29 @@ export function ProjectDetailsClient({ project: initialProject, allUsers, piUser
       <div className="flex items-center justify-between mb-4">
         <div>{/* Spacer */}</div>
         <div className="flex items-center gap-2">
+            {isUserAdmin && project.status === 'Draft' && (
+                <Dialog open={isProposalUploadOpen} onOpenChange={setIsProposalUploadOpen}>
+                    <DialogTrigger asChild>
+                        <Button variant="outline"><Upload className="mr-2 h-4 w-4" /> Upload Proposal</Button>
+                    </DialogTrigger>
+                    <DialogContent>
+                        <DialogHeader>
+                            <DialogTitle>Upload Proposal for PI</DialogTitle>
+                            <DialogDescription>As an admin, you can upload or replace the proposal PDF for this draft project.</DialogDescription>
+                        </DialogHeader>
+                        <div className="py-4">
+                          <Label htmlFor="admin-proposal-upload">Proposal PDF</Label>
+                          <Input id="admin-proposal-upload" type="file" accept=".pdf" onChange={(e) => setRevisedProposalFile(e.target.files ? e.target.files[0] : null)} />
+                        </div>
+                        <DialogFooter>
+                            <DialogClose asChild><Button variant="ghost">Cancel</Button></DialogClose>
+                            <Button onClick={handleProposalUploadSubmit} disabled={isSubmittingRevision || !revisedProposalFile}>
+                                {isSubmittingRevision ? 'Uploading...' : 'Upload'}
+                            </Button>
+                        </DialogFooter>
+                    </DialogContent>
+                </Dialog>
+            )}
             {showDownloadButton && (
                 <TooltipProvider>
                     <Tooltip>
@@ -1278,7 +1333,7 @@ export function ProjectDetailsClient({ project: initialProject, allUsers, piUser
                 <dt className="font-medium text-muted-foreground">Principal Investigator</dt>
                 <dd>
                     {piUser?.misId ? (
-                        <Link href={`/profile/${piUser.misId}`} className="text-primary hover:underline" target="_blank">
+                        <Link href={piUser.campus === 'Goa' ? `/goa/${piUser.misId}` : `/profile/${piUser.misId}`} className="text-primary hover:underline" target="_blank">
                             {project.pi}
                         </Link>
                     ) : (
@@ -1710,3 +1765,5 @@ function OfficeNotingDialog({ isOpen, onOpenChange, onSubmit, isPrinting, form }
         </Dialog>
     );
 }
+
+    

@@ -30,6 +30,7 @@ import PizZip from "pizzip"
 import Docxtemplater from "docxtemplater"
 import { awardInitialGrant, addGrantPhase, updatePhaseStatus } from "./grant-actions"
 import { generateSanctionOrder } from "./document-actions"
+import { put } from '@vercel/blob';
 
 // --- Centralized Logging Service ---
 export async function logActivity(level: 'INFO' | 'WARNING' | 'ERROR', message: string, context: Record<string, any> = {}) {
@@ -356,45 +357,42 @@ export async function uploadFileToServer(
     if (!fileDataUrl || typeof fileDataUrl !== "string") {
       throw new Error("Invalid file data URL provided.");
     }
-
     const bucket = adminStorage.bucket();
     const file = bucket.file(path);
 
     const match = fileDataUrl.match(/^data:(.+);base64,(.+)$/);
-    if (!match || match.length < 3) {
-      throw new Error("Invalid data URL format.");
-    }
-
+    if (!match || match.length < 3) throw new Error("Invalid data URL format.");
     const mimeType = match[1];
     const base64Data = match[2];
-
-    if (!mimeType || !base64Data) {
-      throw new Error("Could not extract file data from data URL.");
-    }
-
+    if (!mimeType || !base64Data) throw new Error("Could not extract file data from data URL.");
+    
     const buffer = Buffer.from(base64Data, "base64");
 
-    // The modern, correct way to upload and get a public URL
-    await file.save(buffer, {
-      metadata: {
-        contentType: mimeType,
-      },
-    });
-
-    // Make the file public
+    await file.save(buffer, { metadata: { contentType: mimeType } });
     await file.makePublic();
-    
-    // Get the public URL
     const publicUrl = file.publicUrl();
-
-    console.log(`File uploaded successfully to ${path}, URL: ${publicUrl}`);
-
+    console.log(`File uploaded to Firebase Storage: ${publicUrl}`);
     return { success: true, url: publicUrl };
+  } catch (firebaseError: any) {
+    console.warn(`Firebase Storage upload failed: ${firebaseError.message}. Falling back to Vercel Blob.`);
+    await logActivity("WARNING", "Firebase upload failed, falling back to Vercel Blob", { path, error: firebaseError.message });
 
-  } catch (error: any) {
-    console.error("Error uploading file via admin:", error);
-    await logActivity("ERROR", "File upload failed", { path, error: error.message, stack: error.stack });
-    return { success: false, error: error.message || "Failed to upload file." };
+    try {
+      const match = fileDataUrl.match(/^data:(.+);base64,(.+)$/);
+      if (!match) throw new Error("Invalid data URL for Vercel fallback.");
+      const buffer = Buffer.from(match[2], 'base64');
+      
+      const blob = await put(path, buffer, {
+        access: 'public',
+        contentType: match[1],
+      });
+      console.log(`File uploaded to Vercel Blob: ${blob.url}`);
+      return { success: true, url: blob.url };
+    } catch (vercelError: any) {
+      console.error("Vercel Blob fallback upload failed:", vercelError);
+      await logActivity("ERROR", "File upload failed on both Firebase and Vercel Blob", { path, firebaseError: firebaseError.message, vercelError: vercelError.message });
+      return { success: false, error: `Upload failed on both services. Vercel: ${vercelError.message}` };
+    }
   }
 }
 
@@ -1836,4 +1834,6 @@ export async function sendErrorEmail(
         return { success: false };
     }
 }
+    
+
     
