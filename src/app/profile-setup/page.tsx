@@ -339,12 +339,14 @@ export default function ProfileSetupPage() {
             <CardContent>
                {userType !== 'Institutional' && (
                 <div className="space-y-4 mb-6 p-4 border rounded-lg bg-muted/50">
-                  <Label>Fetch Details with MIS ID (Optional)</Label>
+                  <Label htmlFor="misIdFetch">Fetch Details with MIS ID (Optional)</Label>
                    <div className="flex items-center gap-2">
                       <Input
+                        id="misIdFetch"
                         placeholder="Enter your MIS ID"
                         value={misIdToFetch}
                         onChange={(e) => setMisIdToFetch(e.target.value)}
+                        autoComplete="off"
                       />
                       <Button type="button" onClick={prefillData} disabled={isPrefilling || !misIdToFetch}>
                         {isPrefilling ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
@@ -520,7 +522,6 @@ export default function ProfileSetupPage() {
                 <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
             </DialogFooter>
         </DialogContent>
-    </Dialog>
     </>
   );
 }
