@@ -591,7 +591,7 @@ export function GrantManagement({ project, user, onUpdate }: GrantManagementProp
                           </TableHeader>
                           <TableBody>
                             {phase.transactions?.map((transaction) => {
-                                const canEdit = (isPI || isCoPi) && phase.status === 'Disbursed';
+                                const canEditOrDelete = (isPI || isCoPi) && phase.status === 'Disbursed';
                                 return (
                                   <TableRow key={transaction.id}>
                                     <TableCell>{format(parseISO(transaction.dateOfTransaction), "dd/MM/yyyy")}</TableCell>
@@ -622,10 +622,10 @@ export function GrantManagement({ project, user, onUpdate }: GrantManagementProp
                                     {(isPI || isCoPi || isAdmin) && (
                                         <TableCell className="text-right">
                                             <div className="flex items-center justify-end gap-1">
-                                                {canEdit && (
+                                                {canEditOrDelete && (
                                                     <Button variant="ghost" size="icon" onClick={() => { setCurrentPhaseId(phase.id); setEditingTransaction(transaction); setIsTransactionOpen(true); }}><Edit className="h-4 w-4" /></Button>
                                                 )}
-                                                <Button variant="ghost" size="icon" onClick={() => setTransactionToDelete({ phaseId: phase.id, transaction })} disabled={!canEdit}><Trash2 className="h-4 w-4 text-destructive" /></Button>
+                                                <Button variant="ghost" size="icon" onClick={() => setTransactionToDelete({ phaseId: phase.id, transaction })} disabled={!canEditOrDelete}><Trash2 className="h-4 w-4 text-destructive" /></Button>
                                             </div>
                                         </TableCell>
                                     )}
