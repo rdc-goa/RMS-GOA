@@ -1,4 +1,4 @@
-# Research & Development Portal - Parul University Goa
+# Research & Development Portal Parul University Goa
 
 This is a comprehensive, full-stack web application designed to streamline and manage the entire research lifecycle at Parul University. It serves as a central hub for faculty, evaluators, and administrators to handle Intramural (IMR) and Extramural (EMR) research projects, user management, and grant tracking.
 
