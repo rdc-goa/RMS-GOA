@@ -312,7 +312,7 @@ export default function SignupPage() {
                 <Logo />
               </div>
               <CardTitle className="text-2xl font-bold">Create an Account</CardTitle>
-              <CardDescription>Join the Parul University Research Projects Portal.</CardDescription>
+              <CardDescription>Join the Parul University Goa Research Projects Portal.</CardDescription>
             </CardHeader>
             <CardContent>
               {showEmailForm && (
@@ -438,7 +438,7 @@ export default function SignupPage() {
       </main>
       <footer className="flex flex-col gap-2 sm:flex-row py-6 w-full shrink-0 items-center px-4 md:px-6 border-t">
         <p className="text-xs text-muted-foreground">
-          &copy; {new Date().getFullYear()} Parul University. All rights reserved.
+          &copy; {new Date().getFullYear()} Parul University Goa. All rights reserved.
         </p>
         <nav className="sm:ml-auto flex gap-4 sm:gap-6">
           <Link className="text-xs hover:underline underline-offset-4" href="/help">

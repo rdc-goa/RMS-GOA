@@ -62,7 +62,7 @@ export async function GET(request: NextRequest) {
 
                   <p style="margin-top:30px; color:#aaaaaa;">Thank you,</p>
                   <p style="color:#aaaaaa;">Research & Development Cell Team</p>
-                  <p style="color:#aaaaaa;">Parul University</p>
+                  <p style="color:#aaaaaa;">Parul University Goa</p>
                 </div>
               `,
           from: 'default'

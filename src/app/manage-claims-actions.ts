@@ -32,7 +32,7 @@ const EMAIL_STYLES = {
   footer: ` 
     <p style="color:#b0bec5; margin-top: 30px;">Best Regards,</p>
     <p style="color:#b0bec5;">Research & Development Cell Team,</p>
-    <p style="color:#b0bec5;">Parul University</p>
+    <p style="color:#b0bec5;">Parul University Goa</p>
     <hr style="border-top: 1px solid #4f5b62; margin-top: 20px;">
     <p style="font-size:10px; color:#999999; text-align:center; margin-top:10px;">
         This is a system generated automatic email. If you feel this is an error, please report at the earliest.
@@ -85,7 +85,7 @@ export async function markPaymentsCompleted(claimIds: string[]): Promise<{ succe
                 <p style="color:#e0e0e0;">
                     The approved amount of <strong style="color:#ffffff;">₹${claim.finalApprovedAmount?.toLocaleString('en-IN') || 'N/A'}</strong> has been disbursed to your registered bank account.
                 </p>
-                <p style="color:#e0e0e0;">Thank you for your contribution to research at Parul University.</p>
+                <p style="color:#e0e0e0;">Thank you for your contribution to research at Parul University Goa.</p>
                 ${EMAIL_STYLES.footer}
             </div>
         `;

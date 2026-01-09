@@ -332,7 +332,7 @@ export async function calculateConferenceIncentive(
       let maxReimbursement = 0;
   
       const isPuConference =
-        (organizerName || "").toLowerCase().includes("parul university") ||
+        (organizerName || "").toLowerCase().includes("parul university goa") ||
         (conferenceName || "").toLowerCase().includes("picet");
   
       if (isPuConference) {

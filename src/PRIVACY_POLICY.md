@@ -12,7 +12,7 @@ The words of which the initial letter is capitalized have meanings defined under
 For the purposes of this Privacy Policy:
 
 - **Account** means a unique account created for You to access our Service or parts of our Service.
-- **University** (referred to as either "the University", "We", "Us" or "Our" in this Agreement) refers to Parul University.
+- **University** (referred to as either "the University", "We", "Us" or "Our" in this Agreement) refers to Parul University Goa.
 - **Service** refers to the Research & Development Portal website.
 - **Personal Data** is any information that relates to an identified or identifiable individual.
 - **You** means the individual accessing or using the Service, or the company, or other legal entity on behalf of which such individual is accessing or using the Service, as applicable.

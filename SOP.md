@@ -1,6 +1,6 @@
 # Standard Operating Procedures (SOP) - R&D Projects Portal
 
-This document outlines the standard operating procedures for various administrative and faculty roles within the Parul University Research & Development Projects Portal.
+This document outlines the standard operating procedures for various administrative and faculty roles within the Parul University Goa Research & Development Projects Portal.
 
 ## Table of Contents
 1.  [Faculty (Standard User)](#1-faculty-standard-user)

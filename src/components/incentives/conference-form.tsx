@@ -261,7 +261,7 @@ export function ConferenceForm() {
           if (!snapshot.empty) {
               const lastPuConferenceClaim = snapshot.docs
                   .map(doc => doc.data() as IncentiveClaim)
-                  .find(claim => claim.organizerName?.toLowerCase().includes('parul university') || claim.conferenceName?.toLowerCase().includes('picet'));
+                  .find(claim => claim.organizerName?.toLowerCase().includes(' goa') || claim.conferenceName?.toLowerCase().includes('picet'));
 
               if (lastPuConferenceClaim) {
                   const lastClaimDate = parseISO(lastPuConferenceClaim.submissionDate);

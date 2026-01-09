@@ -1,6 +1,6 @@
 # Research & Development Portal Parul University Goa
 
-This is a comprehensive, full-stack web application designed to streamline and manage the entire research lifecycle at Parul University. It serves as a central hub for faculty, evaluators, and administrators to handle Intramural (IMR) and Extramural (EMR) research projects, user management, and grant tracking.
+This is a comprehensive, full-stack web application designed to streamline and manage the entire research lifecycle at Parul University Goa. It serves as a central hub for faculty, evaluators, and administrators to handle Intramural (IMR) and Extramural (EMR) research projects, user management, and grant tracking.
 
 The portal is built with a modern tech stack, leveraging the power of Next.js for the frontend and backend, Firebase for its powerful suite of backend services, and Google's Genkit for integrating cutting-edge AI features.
 
