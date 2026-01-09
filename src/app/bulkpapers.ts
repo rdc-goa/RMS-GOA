@@ -26,7 +26,7 @@ const EMAIL_STYLES = {
       background-image:
         radial-gradient(at 5% 95%, hsla(0,70%,40%,0.25) 0px, transparent 50%),
         radial-gradient(at 95% 95%, hsla(0,80%,50%,0.25) 0px, transparent 50%),
-        linear-gradient(135deg, #0f2027, #203a43);
+        linear-gradient(135deg, #0f2027,rgb(67, 32, 32));
       background-attachment:fixed;
       color:#ffffff;
       font-family:Arial, sans-serif;

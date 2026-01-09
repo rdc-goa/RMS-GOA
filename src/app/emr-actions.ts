@@ -42,7 +42,7 @@ const EMAIL_STYLES = {
       background-image:
         radial-gradient(at 5% 95%, hsla(0,70%,40%,0.25) 0px, transparent 50%),
         radial-gradient(at 95% 95%, hsla(0,80%,50%,0.25) 0px, transparent 50%),
-        linear-gradient(135deg, #0f2027, #203a43);
+        linear-gradient(135deg, #0f2027,rgb(67, 32, 32));
       background-attachment:fixed;
       color:#ffffff;
       font-family:Arial, sans-serif;
@@ -927,19 +927,35 @@ export async function announceEmrCall(callId: string): Promise<{ success: boolea
     }
 
     emailHtml += `
-        <p style="margin-top: 20px; text-align: center; display: flex; justify-content: center; align-items: center; gap: 10px;">
-          <a href="https://rndprojects.goa.paruluniversity.ac.in/login" style="background-color: #64B5F6; color: white; padding: 10px 15px; text-decoration: none; border-radius: 5px;">
-            View Full Details on the Portal
-          </a>
+    <p style="margin-top: 20px; text-align: center; display: flex; justify-content: center; align-items: center; gap: 10px;">
+      <a href="https://rndprojects.goa.paruluniversity.ac.in/login"
+         style="
+           background-color:#b71c1c;
+           color:#ffffff;
+           padding:10px 16px;
+           text-decoration:none;
+           border-radius:5px;
+           font-weight:500;
+         ">
+        View Full Details on the Portal
+      </a>
+  `
+  if (call.detailsUrl) {
+    emailHtml += `
+      <a href="${call.detailsUrl}"
+         style="
+           background-color:transparent;
+           border:1px solid #90a4ae;
+           color:#cfd8dc;
+           padding:10px 16px;
+           text-decoration:none;
+           border-radius:5px;
+           font-weight:500;
+         ">
+        Learn More on Funding Agency Website
+      </a>
     `
-
-    if (call.detailsUrl) {
-      emailHtml += `
-          <a href="${call.detailsUrl}" style="background-color: transparent; border: 1px solid #64B5F6; color: #64B5F6; padding: 10px 15px; text-decoration: none; border-radius: 5px;">
-            Learn More on Funding Agency Website
-          </a>
-      `
-    }
+  }  
 
     emailHtml += `
         </p>

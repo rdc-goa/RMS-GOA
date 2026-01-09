@@ -254,8 +254,20 @@ export async function getAllUsers(): Promise<User[]> {
 }
 
 const EMAIL_STYLES = {
-  background:
-    'style="background: linear-gradient(135deg, #0f2027, #203a43, #ff0000); color:#ffffff; font-family:Arial, sans-serif; padding:20px; border-radius:8px;"',
+  background: `
+  style="
+    background-color:#0f2027;
+    background-image:
+      radial-gradient(at 5% 95%, hsla(0,70%,40%,0.25) 0px, transparent 50%),
+      radial-gradient(at 95% 95%, hsla(0,80%,50%,0.25) 0px, transparent 50%),
+      linear-gradient(135deg, #0f2027,rgb(67, 32, 32));
+    background-attachment:fixed;
+    color:#ffffff;
+    font-family:Arial, sans-serif;
+    padding:20px;
+    border-radius:8px;
+  "
+`,
   logo: '<div style="text-align:center; margin-bottom:20px;"><img src="https://lhdlkrfbkon55i6u.public.blob.vercel-storage.com/Pu%20Goa%20White.png" alt="RDC Logo" style="max-width:300px; height:auto;" /></div>',
   footer: ` 
     <p style="color:#b0bec5; margin-top: 30px;">Best Regards,</p>
