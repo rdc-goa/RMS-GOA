@@ -51,14 +51,33 @@ const EMAIL_STYLES = {
     "
   `,
   logo: '<div style="text-align:center; margin-bottom:20px;"><img src="https://lhdlkrfbkon55i6u.public.blob.vercel-storage.com/Pu%20Goa%20White.png" alt="RDC Logo" style="max-width:300px; height:auto;" /></div>',
-  footer: ` 
-    <p style="color:#b0bec5; margin-top: 30px;">Best Regards,</p>
-    <p style="color:#b0bec5;">Research & Development Cell Team,</p>
-    <p style="color:#b0bec5;">Parul University Goa</p>
-    <hr style="border-top: 1px solid #4f5b62; margin-top: 20px;">
-    <p style="font-size:10px; color:#999999; text-align:center; margin-top:10px;">
-        This is a system generated automatic email. If you feel this is an error, please report at the earliest.
-    </p>`
+  footer: `
+  <div
+    style="
+      margin-top:30px;
+      padding-top:20px;
+      border-top:1px solid #4f5b62;
+      color:#cfd8dc;
+    "
+  >
+    <p style="color:#cfd8dc;">Best Regards,</p>
+    <p style="color:#cfd8dc;">Research & Development Cell Team,</p>
+    <p style="color:#cfd8dc;">Parul University Goa</p>
+
+    <p
+      style="
+        font-size:10px;
+        color:#9ea7ad;
+        text-align:center;
+        margin-top:15px;
+      "
+    >
+      This is a system generated automatic email. If you feel this is an error,
+      please report at the earliest.
+    </p>
+  </div>
+`
+
 };
 
 
@@ -911,16 +930,53 @@ export async function announceEmrCall(callId: string): Promise<{ success: boolea
     const emailAttachments = (call.attachments || []).map((att) => ({ filename: att.name, path: att.url }))
 
     let emailHtml = `
-      <div ${EMAIL_STYLES.background}>
+    <div ${EMAIL_STYLES.background}>
+      <div
+        style="
+          background-color:#1e2a32;
+          color:#ffffff;
+          padding:20px;
+          border-radius:10px;
+        "
+      >
         ${EMAIL_STYLES.logo}
-        <h2 style="color: #ffffff; text-align: center;">New Funding Opportunity: ${call.title}</h2>
-        <p style="color:#e0e0e0;">A new funding call from <strong style="color:#ffffff;">${call.agency}</strong> has been posted on the  PU Goa Research Projects Portal.</p>
-        <div style="padding: 15px; border: 1px solid #4f5b62; border-radius: 8px; margin-top: 20px; background-color:#2c3e50;">
-          <div style="color:#e0e0e0;" class="prose prose-sm">${call.description || "No description provided."}</div>
-          <p style="color:#e0e0e0;"><strong>Register Interest By:</strong> ${formatInTimeZone(call.interestDeadline, timeZone, "PPpp (z)")}</p>
-          <p style="color:#e0e0e0;"><strong>Agency Deadline:</strong> ${formatInTimeZone(call.applyDeadline, timeZone, "PP (z)")}</p>
+  
+        <h2 style="color:#ffffff; text-align:center; margin-top:10px;">
+          New Funding Opportunity: ${call.title}
+        </h2>
+  
+        <p style="color:#e0e0e0;">
+          A new funding call from
+          <strong style="color:#ffffff;">${call.agency}</strong>
+          has been posted on the PU Goa Research Projects Portal.
+        </p>
+  
+        <div
+          style="
+            padding:15px;
+            border:1px solid #4f5b62;
+            border-radius:8px;
+            margin-top:20px;
+            background-color:#263845;
+            color:#e0e0e0;
+          "
+        >
+          <div style="color:#e0e0e0;">
+            ${call.description || "No description provided."}
+          </div>
+  
+          <p style="color:#e0e0e0;">
+            <strong style="color:#ffffff;">Register Interest By:</strong>
+            ${formatInTimeZone(call.interestDeadline, timeZone, "PPpp (z)")}
+          </p>
+  
+          <p style="color:#e0e0e0;">
+            <strong style="color:#ffffff;">Agency Deadline:</strong>
+            ${formatInTimeZone(call.applyDeadline, timeZone, "PP (z)")}
+          </p>
         </div>
-    `
+  `
+  
 
     if (emailAttachments.length > 0) {
       emailHtml += `<p style="color:#e0e0e0; margin-top: 20px;">Please find the relevant documents attached to this email.</p>`
