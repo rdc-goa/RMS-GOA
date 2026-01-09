@@ -78,22 +78,6 @@ const goaInstitutes = [
     "University Office"
 ];
 
-const institutes = [
-    "Ahmedabad Homoeopathic Medical College", "Ahmedabad Physiotherapy College",
-    "College of Agriculture", "Parul Institute of Allied & Healthcare Sciences", "Faculty of Library & Information Science",
-    "Institute of Pharmaceutical Sciences", "Jawaharlal Nehru Homoeopathic Medical College", "Parul College of Pharmacy & Research",
-    "Parul Institute of Applied Sciences (Ahmedabad Campus)", "Parul Institute of Applied Sciences (Vadodara Campus)", "Parul Institute of Architecture & Research",
-    "Parul Institute of Arts", "Parul Institute of Ayurveda", "Parul Institute of Ayurveda & Research", "Parul Institute of Business Administration",
-    "Parul Institute of Commerce", "Parul Institute of Computer Application", "Parul Institute of Design", "Parul Institute of Engineering & Technology",
-    "Parul Institute of Engineering & Technology (Diploma Studies)", "Parul Institute of Fine Arts", "Parul Institute of Homeopathy & Research",
-    "Parul Institute of Hotel Management & Catering Technology", "Parul Institute of Law", "Parul Institute of Management", "Parul Institute of Management & Research",
-    "Parul Institute of Medical Sciences & Research", "Parul Institute of Nursing", "Parul Institute of Performing Arts",
-    "Parul Institute of Pharmaceutical Education & Research", "Parul Institute of Pharmacy", "Parul Institute of Pharmacy & Research",
-    "Parul Institute of Physiotherapy", "Parul Institute of Physiotherapy and Research", "Parul Institute of Social Work", "Parul Institute of Technology",
-    "Parul Institute of Technology-Diploma studies", "Parul Institute of Vocational Education", "Parul Medical Institute & Hospital", "Parul Polytechnic Institute", "Parul Institute of Public Health",
-    "Parul Sevashram Hospital", "Rajkot Homoeopathic Medical College", "RDC", "School of Pharmacy", "University Office", "Parul Aarogya Seva Mandal",
-];
-
 const fileToDataUrl = (file: File): Promise<string> => {
     return new Promise((resolve, reject) => {
         const reader = new FileReader();
@@ -522,6 +506,7 @@ export default function ProfileSetupPage() {
                 <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
             </DialogFooter>
         </DialogContent>
+    </Dialog>
     </>
   );
 }
