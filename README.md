@@ -4,7 +4,7 @@ This is a comprehensive, full-stack web application designed to streamline and m
 
 The portal is built with a modern tech stack, leveraging the power of Next.js for the frontend and backend, Firebase for its powerful suite of backend services, and Google's Genkit for integrating cutting-edge AI features.
 
-## ✨ Key Feature
+## ✨ Key Features
 
 ### 1. Role-Based Access Control (RBAC)
 The portal provides a tailored experience for each user role, ensuring users only see what's relevant to them.
