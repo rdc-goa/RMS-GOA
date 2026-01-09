@@ -36,8 +36,20 @@ async function logActivity(level: LogLevel, message: string, context: Record<str
 }
 
 const EMAIL_STYLES = {
-  background:
-    'style="background: linear-gradient(135deg, #0f2027, #203a43, #ff0000); color:#ffffff; font-family:Arial, sans-serif; padding:20px; border-radius:8px;"',
+  background: `
+    style="
+      background-color:#0f2027;
+      background-image:
+        radial-gradient(at 5% 95%, hsla(0,70%,40%,0.25) 0px, transparent 50%),
+        radial-gradient(at 95% 95%, hsla(0,80%,50%,0.25) 0px, transparent 50%),
+        linear-gradient(135deg, #0f2027, #203a43);
+      background-attachment:fixed;
+      color:#ffffff;
+      font-family:Arial, sans-serif;
+      padding:20px;
+      border-radius:8px;
+    "
+  `,
   logo: '<div style="text-align:center; margin-bottom:20px;"><img src="https://lhdlkrfbkon55i6u.public.blob.vercel-storage.com/Pu%20Goa%20White.png" alt="RDC Logo" style="max-width:300px; height:auto;" /></div>',
   footer: ` 
     <p style="color:#b0bec5; margin-top: 30px;">Best Regards,</p>
@@ -46,8 +58,9 @@ const EMAIL_STYLES = {
     <hr style="border-top: 1px solid #4f5b62; margin-top: 20px;">
     <p style="font-size:10px; color:#999999; text-align:center; margin-top:10px;">
         This is a system generated automatic email. If you feel this is an error, please report at the earliest.
-    </p>`,
-}
+    </p>`
+};
+
 
 // Function to convert Excel serial date number to JS Date
 function excelDateToJSDate(serial: number) {
@@ -915,7 +928,7 @@ export async function announceEmrCall(callId: string): Promise<{ success: boolea
 
     emailHtml += `
         <p style="margin-top: 20px; text-align: center; display: flex; justify-content: center; align-items: center; gap: 10px;">
-          <a href="https://rndprojects.paruluniversity.ac.in/login" style="background-color: #64B5F6; color: white; padding: 10px 15px; text-decoration: none; border-radius: 5px;">
+          <a href="https://rndprojects.goa.paruluniversity.ac.in/login" style="background-color: #64B5F6; color: white; padding: 10px 15px; text-decoration: none; border-radius: 5px;">
             View Full Details on the Portal
           </a>
     `
