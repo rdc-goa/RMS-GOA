@@ -23,8 +23,8 @@ async function logActivity(level: 'INFO' | 'WARNING' | 'ERROR', message: string,
 
 const EMAIL_STYLES = {
   background:
-    'style="background: linear-gradient(135deg, #0f2027, #203a43, #2c5364); color:#ffffff; font-family:Arial, sans-serif; padding:20px; border-radius:8px;"',
-  logo: '<div style="text-align:center; margin-bottom:20px;"><img src="https://pinxoxpbufq92wb4.public.blob.vercel-storage.com/RDC-PU-LOGO-WHITE.png" alt="RDC Logo" style="max-width:300px; height:auto;" /></div>',
+    'style="background: linear-gradient(135deg, #0f2027, #203a43, #ff0000); color:#ffffff; font-family:Arial, sans-serif; padding:20px; border-radius:8px;"',
+  logo: '<div style="text-align:center; margin-bottom:20px;"><img src="https://lhdlkrfbkon55i6u.public.blob.vercel-storage.com/Pu%20Goa%20White.png" alt="RDC Logo" style="max-width:300px; height:auto;" /></div>',
   footer: ` 
     <p style="color:#b0bec5; margin-top: 30px;">Best Regards,</p>
     <p style="color:#b0bec5;">Research & Development Cell Team,</p>
