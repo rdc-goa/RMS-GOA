@@ -71,11 +71,13 @@ export async function fetchScienceDirectData(
 
     // Affiliation check requires a different approach with this API
     let isPuNameInPublication = false;
-    const affiliations = entry?.affiliation;
+    let affiliations = entry?.affiliation;
+    if (affiliations && !Array.isArray(affiliations)) {
+        affiliations = [affiliations];
+    }
+    
     if (Array.isArray(affiliations)) {
         isPuNameInPublication = affiliations.some((affil: any) => affil['affilname']?.toLowerCase().includes('parul'));
-    } else if (affiliations && affiliations['affilname']) {
-        isPuNameInPublication = (affiliations['affilname'] || '').toLowerCase().includes('parul');
     }
 
     let printIssn: string | undefined = entry["prism:issn"];
