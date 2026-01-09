@@ -877,7 +877,7 @@ export async function createFundingCall(
 
 export async function announceEmrCall(callId: string): Promise<{ success: boolean; error?: string }> {
   try {
-    const vadodaraEmail = process.env.ALL_STAFF_EMAIL_VADODARA;
+    const vadodaraEmail = process.env.ALL_STAFF_EMAIL;
 
     if (!vadodaraEmail) {
       return {
