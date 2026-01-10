@@ -1,4 +1,5 @@
 
+
 'use server';
 
 import { adminDb } from '@/lib/admin';
@@ -25,7 +26,7 @@ const EMAIL_STYLES = {
       background-color:#0f2027;
       background-image:
         radial-gradient(at 5% 95%, hsla(0,70%,40%,0.25) 0px, transparent 50%),
-        radial-gradient(at 95% 95%, hsla(0,80%,50%,0.25) 0px, transparent 50%),
+        radial-gradient(at 95% 95%, hsla(3, 80%, 56%, 0.25) 0px, transparent 50%),
         linear-gradient(135deg, #0f2027,rgb(67, 32, 32));
       background-attachment:fixed;
       color:#ffffff;
@@ -90,7 +91,11 @@ export async function addResearchPaper(
 
     // Determine the main author based on the "First Author" role
     const firstAuthor = authors.find(a => a.role === 'First Author' || a.role === 'First & Corresponding Author');
+    
+    // The owner of the record should be the user adding it, but we can also use a registered first author if available.
+    // Fallback to the user who initiated the action.
     const mainAuthorUid = firstAuthor?.uid || paperData.mainAuthorUid;
+
 
     if (!mainAuthorUid) {
         return { success: false, error: "A main author (either the creator or a designated First Author) is required." };
@@ -557,3 +562,4 @@ export async function manageCoAuthorRequest(
 }
 
     
+
