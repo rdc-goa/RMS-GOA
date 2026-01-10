@@ -21,7 +21,7 @@ import { useToast } from '@/hooks/use-toast'
 import { db } from '@/lib/config'
 import { collection, doc, getDoc, setDoc } from 'firebase/firestore'
 import type { User, IncentiveClaim, Author } from '@/types'
-import { uploadFileToServer } from '@/app/actions'
+import { uploadFileToServer } from '@/app/server-actions'
 import { fetchAdvancedScopusData } from "@/app/scopus-actions";
 import { fetchWosDataByUrl } from "@/app/wos-actions";
 import { fetchScienceDirectData } from "@/app/sciencedirect-actions";
@@ -374,8 +374,8 @@ export function ResearchPaperForm() {
       publicationType: '',
       indexType: undefined,
       doi: '',
-      scopusLink: 'https://www.scopus.com/pages/publications/',
-      wosLink: 'https://www.webofscience.com/wos/woscc/full-record/WOS:',
+      scopusLink: '',
+      wosLink: '',
       journalClassification: undefined,
       wosType: undefined,
       journalName: '',
