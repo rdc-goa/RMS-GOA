@@ -28,6 +28,7 @@ import { cn } from '@/lib/utils';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../ui/table';
 import Link from 'next/link';
 import { RadioGroup, RadioGroupItem } from '../ui/radio-group';
+import { fetchAndSaveScholarPublications } from '@/app/scholar-actions';
 
 
 function ProfileDetail({ label, value, icon: Icon }: { label: string; value?: string; icon: React.ElementType }) {
@@ -473,6 +474,7 @@ function EditBulkEmrDialog({ interest, isOpen, onOpenChange, onUpdate }: { inter
 export function ProfileClient({ user, projects, emrInterests: initialEmrInterests, fundingCalls, claims }: { user: User; projects: Project[], emrInterests: EmrInterest[], fundingCalls: FundingCall[], claims: IncentiveClaim[] }) {
     const [domain, setDomain] = useState<string | null>(user.researchDomain || null);
     const [loadingDomain, setLoadingDomain] = useState(false);
+    const [isFetchingScholar, setIsFetchingScholar] = useState(false);
     const [researchPapers, setResearchPapers] = useState<ResearchPaper[]>([]);
     const [emrInterests, setEmrInterests] = useState(initialEmrInterests);
     const [isAddEditDialogOpen, setIsAddEditDialogOpen] = useState(false);
@@ -500,6 +502,24 @@ export function ProfileClient({ user, projects, emrInterests: initialEmrInterest
         if (storedUser) { setSessionUser(JSON.parse(storedUser)); }
         fetchPapers();
     }, [user.uid]);
+
+    const handleScholarFetch = async () => {
+        setIsFetchingScholar(true);
+        toast({ title: 'Fetching Publications...', description: 'This may take a moment. Please wait.' });
+        try {
+            const result = await fetchAndSaveScholarPublications(user);
+            if (result.success) {
+                toast({ title: 'Success!', description: `${result.newPapersCount} new publications were imported.` });
+                fetchPapers(); // Re-fetch papers to show the new ones
+            } else {
+                toast({ title: 'Error', description: result.error || 'Failed to fetch publications.', variant: 'destructive' });
+            }
+        } catch (error: any) {
+            toast({ title: 'Error', description: error.message || 'An unexpected error occurred.', variant: 'destructive' });
+        } finally {
+            setIsFetchingScholar(false);
+        }
+    };
 
     useEffect(() => {
         const fetchDomain = async () => {
@@ -570,6 +590,7 @@ export function ProfileClient({ user, projects, emrInterests: initialEmrInterest
     };
     
     const isOwner = sessionUser?.uid === user.uid;
+    const isSuperAdmin = sessionUser?.role === 'Super-admin';
     const profileLink = user.campus === 'Goa' ? `/goa/${user.misId}` : `/profile/${user.misId}`;
 
     const StatItem = ({ value, label }: { value: number | string; label: string }) => (
@@ -635,7 +656,21 @@ export function ProfileClient({ user, projects, emrInterests: initialEmrInterest
                                 <ProfileDetail label="ORCID iD" value={user.orcidId} icon={BookCopy} />
                                 <ProfileDetail label="Scopus ID" value={user.scopusId} icon={BookCopy} />
                                 <ProfileDetail label="Vidwan ID" value={user.vidwanId} icon={BookCopy} />
-                                <ProfileDetail label="Google Scholar ID" value={user.googleScholarId} icon={BookCopy} />
+                                 <div className="flex items-center gap-3">
+                                    <div className="flex-shrink-0"><BookCopy className="h-5 w-5 text-muted-foreground" /></div>
+                                    <div>
+                                        <p className="text-sm font-medium">Google Scholar ID</p>
+                                        <div className="flex items-center gap-2">
+                                            <p className="text-sm text-muted-foreground">{user.googleScholarId || 'Not Provided'}</p>
+                                            {isSuperAdmin && user.googleScholarId && (
+                                                <Button size="sm" variant="outline" onClick={handleScholarFetch} disabled={isFetchingScholar}>
+                                                    {isFetchingScholar ? <Loader2 className="h-4 w-4 animate-spin"/> : <Download className="h-4 w-4"/>}
+                                                    <span className="ml-2">Fetch Papers</span>
+                                                </Button>
+                                            )}
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                         <div className="space-y-4 md:col-span-2">
