@@ -40,10 +40,10 @@ export async function fetchAndSaveScholarPublications(
 ): Promise<{ success: boolean; newPapersCount: number; error?: string }> {
     
     if (!SERP_API_KEY) {
-        console.error('SerpApi key is not configured.');
+        await logActivity('ERROR', 'SerpApi key is not configured.');
         return { success: false, newPapersCount: 0, error: 'Google Scholar integration is not configured on the server. Please ensure the SERP_API_KEY is in your .env.local file and restart the server.' };
     }
-    
+
     if (!user.googleScholarId) {
         return { success: false, newPapersCount: 0, error: 'User does not have a Google Scholar ID set.' };
     }
@@ -63,8 +63,8 @@ export async function fetchAndSaveScholarPublications(
             const data = await response.json();
             allArticles = allArticles.concat(data.articles || []);
             
-            // SerpApi pagination can be inconsistent. Ensure we have `serpapi_pagination` before accessing `next`.
-            nextPageUrl = data.serpapi_pagination ? data.serpapi_pagination.next : undefined;
+            // Check for next page in the pagination data
+            nextPageUrl = data.serpapi_pagination?.next;
         }
         
         await logActivity('INFO', 'Fetched Google Scholar data', { userId: user.uid, totalResults: allArticles.length });
@@ -115,7 +115,7 @@ export async function fetchAndSaveScholarPublications(
                 if (result.success) {
                     newPapersCount++;
                 } else {
-                    console.warn(`Failed to add paper "${article.title}":`, result.error);
+                    await logActivity('WARNING', 'Failed to add a single paper from Scholar fetch', { userId: user.uid, title: article.title, error: result.error });
                 }
             }
         }
