@@ -1,96 +1,183 @@
-
 'use server';
 
-import type { IncentiveClaim } from '@/types';
+type WoSAuthor = {
+  displayName?: string;
+  researcherId?: string;
+};
+
+type WoSRecord = {
+  uid?: string;
+  title?: { value?: string };
+  source?: {
+    sourceTitle?: string;
+    issn?: string[];
+    eissn?: string[];
+  };
+  identifiers?: {
+    doi?: string;
+    issn?: string[];
+  };
+  publicationInfo?: {
+    year?: number;
+    volume?: string;
+    issue?: string;
+    pages?: {
+      begin?: string;
+      end?: string;
+    };
+  };
+  names?: {
+    authors?: WoSAuthor[];
+  };
+  citations?: {
+    count?: number;
+    type?: string;
+  }[];
+  links?: {
+    record?: string;
+    citedReferences?: string;
+    relatedRecords?: string;
+  };
+};
 
 export async function fetchWosDataByUrl(
-  identifier: string, // Can be a URL or just a DOI
+  identifier: string,
   claimantName: string,
 ): Promise<{
-  success: boolean
-  data?: { 
-    paperTitle: string; 
-    journalName: string; 
-    totalAuthors: number;
+  success: boolean;
+  data?: {
+    paperTitle: string;
+    journalName: string;
     publicationYear: string;
-    relevantLink: string;
-   }
-  error?: string
-  claimantIsAuthor?: boolean
+    isPuNameInPublication?: boolean;
+    printIssn?: string;
+    electronicIssn?: string;
+    wosUrl?: string;
+    publicationType?: string;
+    
+  };
+  error?: string;
+  warning?: string;
+  claimantIsAuthor?: boolean;
 }> {
-  const apiKey = process.env.WOS_API_KEY
+  const apiKey = process.env.WOS_API_KEY;
+
   if (!apiKey) {
-    console.error("Web of Science API key is not configured.")
-    return { success: false, error: "Web of Science integration is not configured on the server." }
+    return {
+      success: false,
+      error: 'Web of Science API key is not configured on the server.',
+    };
   }
 
-  // Extract DOI from URL or use the identifier directly if it's a DOI
-  const doiMatch = identifier.match(/(10\.\d{4,9}\/[-._;()/:A-Z0-9]+)/i)
-  const doi = doiMatch ? doiMatch[1] : identifier;
+  const isWosUid = /^WOS:\d+$/i.test(identifier);
+  const doiMatch = identifier.match(/(10\.\d{4,9}\/[-._;()/:A-Z0-9]+)/i);
 
-  if (!doi) {
-    return { success: false, error: "Could not find a valid DOI in the provided link or input." }
+  let apiUrl: string;
+
+  if (isWosUid) {
+    apiUrl =
+      `https://api.clarivate.com/apis/wos-starter/v1/documents/${identifier}`;
+  } else if (doiMatch) {
+    apiUrl =
+      `https://api.clarivate.com/apis/wos-starter/v1/documents` +
+      `?q=DO=${encodeURIComponent(doiMatch[1])}&limit=1`;
+  } else {
+    return {
+      success: false,
+      error: 'Identifier must be a valid DOI or Web of Science UID.',
+    };
   }
-  
-  const wosApiUrl = `https://api.clarivate.com/apis/wos-starter/v1/documents?q=DO=${encodeURIComponent(doi)}`
 
   try {
-    const response = await fetch(wosApiUrl, {
+    const response = await fetch(apiUrl, {
       headers: {
-        "X-ApiKey": apiKey,
-        Accept: "application/json",
+        'X-ApiKey': apiKey,
+        Accept: 'application/json;charset=UTF-8',
       },
-    })
+    });
 
     if (!response.ok) {
-      const errorData = await response.json()
-      const errorMessage = errorData?.message || "Failed to fetch data from Web of Science."
-      return { success: false, error: `WoS API Error: ${errorMessage}` }
+      let message = 'Failed to fetch data from Web of Science.';
+      try {
+        const err = await response.json();
+        message =
+          err?.error?.details ||
+          err?.error?.message ||
+          err?.message ||
+          message;
+      } catch {}
+      return { success: false, error: `WoS API Error: ${message}` };
     }
 
-    const data = await response.json()
-    const record = data?.data?.[0]
+    const payload = await response.json();
+    const record: WoSRecord | undefined =
+      isWosUid ? payload : payload?.hits?.[0];
 
     if (!record) {
-      return { success: false, error: "No matching record found in Web of Science for the provided DOI." }
+      return {
+        success: false,
+        error: 'No matching record found in Web of Science.',
+      };
     }
 
-    const paperTitle = record.title || ""
-    const journalName = record.source?.title || ""
-    const publicationYear = record.publication_year ? String(record.publication_year) : new Date().getFullYear().toString();
-    const relevantLink = `https://doi.org/${doi}`;
+    const paperTitle = record.title?.value ?? '';
+    const journalName = record.source?.sourceTitle ?? '';
+    const publicationYear = record.publicationInfo?.year
+      ? String(record.publicationInfo.year)
+      : '';
 
-    const authors = record.authors
-    const authorList = Array.isArray(authors) ? authors : authors ? [authors] : []
-    const totalAuthors = authorList.length
+    const printIssn =
+      record.source?.issn?.[0] ?? record.identifiers?.issn?.[0];
 
-    const nameParts = claimantName.trim().toLowerCase().split(/\s+/)
-    const claimantLastName = nameParts.pop() || "---"
+    const electronicIssn = record.source?.eissn?.[0];
 
-    const isClaimantAnAuthor = authorList.some((author: any) => {
-      const wosFullName = (author.name || "").toLowerCase()
-      // WoS format is "Lastname, F." or "Lastname, Firstname"
-      if (wosFullName.includes(",")) {
-        const [wosLastName] = wosFullName.split(",").map((p: string) => p.trim())
-        return wosLastName === claimantLastName
+    const authors = record.names?.authors ?? [];
+
+    const claimantParts = claimantName.trim().toLowerCase().split(/\s+/);
+    const claimantLastName = claimantParts.pop() ?? '';
+    const claimantFirstInitial = claimantParts[0]?.charAt(0) ?? '';
+
+    const claimantIsAuthor = authors.some((author) => {
+      const name = author.displayName?.toLowerCase() ?? '';
+      if (!name || !claimantLastName) return false;
+      if (name.includes(',')) {
+        const [last, first] = name.split(',').map(p => p.trim());
+        return (
+          last === claimantLastName &&
+          (!claimantFirstInitial ||
+            first?.startsWith(claimantFirstInitial))
+        );
       }
-      // Fallback for "Firstname Lastname" format
-      return wosFullName.includes(claimantLastName)
-    })
+      return name.includes(claimantLastName);
+    });
+
+    const isPuNameInPublication = authors.some((author) =>
+      author.displayName?.toLowerCase().includes('parul'),
+    );
+
 
     return {
       success: true,
       data: {
         paperTitle,
         journalName,
-        totalAuthors,
         publicationYear,
-        relevantLink
+        isPuNameInPublication,
+        printIssn,
+        electronicIssn,
+        wosUrl: record.links?.record,
+        publicationType: 'Journal Article',
+   
       },
-      claimantIsAuthor: isClaimantAnAuthor,
-    }
-  } catch (error: any) {
-    console.error("Error calling Web of Science API:", error)
-    return { success: false, error: error.message || "An unexpected error occurred while fetching WoS data." }
+      claimantIsAuthor,
+    
+    };
+  } catch (err: any) {
+    return {
+      success: false,
+      error:
+        err?.message ||
+        'An unexpected error occurred while fetching Web of Science data.',
+    };
   }
 }

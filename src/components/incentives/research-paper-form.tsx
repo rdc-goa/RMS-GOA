@@ -1,4 +1,5 @@
 
+
 "use client"
 
 import { useForm, useFieldArray } from "react-hook-form"
@@ -20,7 +21,7 @@ import { useToast } from '@/hooks/use-toast'
 import { db } from '@/lib/config'
 import { collection, doc, getDoc, setDoc } from 'firebase/firestore'
 import type { User, IncentiveClaim, Author } from '@/types'
-import { uploadFileToServer } from '@/app/server-actions'
+import { uploadFileToServer } from '@/app/actions'
 import { fetchAdvancedScopusData } from "@/app/scopus-actions";
 import { fetchWosDataByUrl } from "@/app/wos-actions";
 import { fetchScienceDirectData } from "@/app/sciencedirect-actions";
@@ -48,11 +49,13 @@ const ACCEPTED_FILE_TYPES = ["application/pdf"]
 const researchPaperSchema = z
   .object({
     publicationType: z.string({ required_error: "Please select a publication type." }),
-    indexType: z.enum(["wos", "scopus", "both", "sci"]).optional(),
-    doi: z.string().min(5, 'A valid DOI is required to fetch data.').optional().or(z.literal('')),
+    indexType: z.enum(["wos", "scopus", "both", "sci", "other"]).optional(),
+    doi: z.string().optional().or(z.literal('')),
+    wosAccessionNumber: z.string().optional().or(z.literal('')),
+    relevantLink: z.string().optional().or(z.literal('')),
     scopusLink: z.string().url("Please enter a valid URL.").optional().or(z.literal("")),
     wosLink: z.string().url("Please enter a valid URL.").optional().or(z.literal("")),
-    journalClassification: z.enum(["Q1", "Q2", "Q3", "Q4", "Nature/Science/Lancet", "Top 1% Journals"]).optional(),
+    journalClassification: z.enum(["Q1", "Q2", "Q3", "Q4", "Nature/Science/Lancet", "Top 1% Journals"], { required_error: 'Journal Classification (Q-rating) is required for Scopus/WoS indexed papers.' }),
     wosType: z.enum(["SCIE", "SSCI", "A&HCI"]).optional(),
     journalName: z.string().min(3, "Journal name is required."),
     journalWebsite: z.string().url("Please enter a valid URL.").optional().or(z.literal("")),
@@ -66,7 +69,7 @@ const researchPaperSchema = z
     publicationProof: z.any().optional(),
     isPuNameInPublication: z
       .boolean()
-      .refine((val) => val === true, { message: "PU name must be present in the publication for an incentive." }),
+      .refine((val) => val === true, { message: "PU Goa name must be present in the publication for an incentive." }),
     wasApcPaidByUniversity: z.boolean().default(false),
     authorPosition: z.enum(['1st', '2nd', '3rd', '4th', '5th', '6th'], { required_error: 'Please select your author position.' }),
     authors: z
@@ -88,12 +91,39 @@ const researchPaperSchema = z
     puStudentNames: z.string().optional(),
     autoFetchedFields: z.array(z.string()).optional(),
   })
+   .refine(
+    (data) => {
+        if (data.indexType === 'other') {
+            return !!data.relevantLink && data.relevantLink.length > 5 && data.relevantLink.startsWith('https://');
+        }
+        return true;
+    }, {
+        message: 'A valid article link is required for "Other" indexing type.',
+        path: ['relevantLink'],
+    }
+   )
+  .refine(
+    (data) => {
+        // DOI is not required if the type is WoS and an accession number is provided
+        if (data.indexType === 'wos' && data.wosAccessionNumber) {
+            return true;
+        }
+        // For other scopus/wos/both types, DOI is required
+        if (data.indexType !== 'other') {
+            return !!data.doi && data.doi.length >= 5;
+        }
+        return true;
+    }, {
+        message: 'A valid DOI is required for this indexing type.',
+        path: ['doi'],
+    }
+   )
   .refine(
     (data) => {
       if (data.indexType === "wos" || data.indexType === "both") {
-        return !!data.wosType
+        return !!data.wosType;
       }
-      return true
+      return true;
     },
     { message: "For WoS or Both, you must select a WoS Type.", path: ["wosType"] },
   )
@@ -180,6 +210,7 @@ const indexTypeOptions = [
   { value: "scopus", label: "Scopus" },
   { value: "both", label: "Both" },
   { value: "sci", label: "SCI" },
+  { value: 'other', label: 'Other'},
 ]
 const journalClassificationOptions = [
     { value: 'Nature/Science/Lancet', label: 'Nature/Science/Lancet' },
@@ -294,6 +325,8 @@ function ReviewDetails({ data, onEdit }: { data: ResearchPaperFormValues; onEdit
                 {renderDetail("Journal Name", data.journalName)}
                 {renderDetail("Journal Website", data.journalWebsite)}
                 {renderDetail("DOI", data.doi)}
+                {renderDetail("WoS Accession No.", data.wosAccessionNumber)}
+                {renderDetail("Article Link", data.relevantLink)}
                 {renderDetail("Scopus URL", data.scopusLink)}
                 {renderDetail("WoS URL", data.wosLink)}
                 {renderDetail("Journal Classification", data.journalClassification)}
@@ -332,6 +365,7 @@ export function ResearchPaperForm() {
   const [externalAuthorRole, setExternalAuthorRole] = useState<Author['role']>('Co-Author');
   const [currentStep, setCurrentStep] = useState(1);
   const [isLoadingDraft, setIsLoadingDraft] = useState(true);
+  const [showWosAccession, setShowWosAccession] = useState(false);
 
 
   const form = useForm<ResearchPaperFormValues>({
@@ -340,8 +374,8 @@ export function ResearchPaperForm() {
       publicationType: '',
       indexType: undefined,
       doi: '',
-      scopusLink: '',
-      wosLink: '',
+      scopusLink: 'https://www.scopus.com/pages/publications/',
+      wosLink: 'https://www.webofscience.com/wos/woscc/full-record/WOS:',
       journalClassification: undefined,
       wosType: undefined,
       journalName: '',
@@ -370,7 +404,7 @@ export function ResearchPaperForm() {
   
   const formValues = form.watch();
   
-  const isPhdScholar = user?.designation === 'Ph.D Scholar';
+  const isPhdScholar = user?.designation === 'Ph.D. Scholar';
 
   const calculate = useCallback(async () => {
     if (!user || !user.faculty) return;
@@ -458,14 +492,15 @@ export function ResearchPaperForm() {
   }, [isSpecialFaculty]);
 
   const availableClassifications = useMemo(() => {
-      let options = journalClassificationOptions;
-      if (isPhdScholar) {
+    let options = journalClassificationOptions;
+    if (isPhdScholar) {
         options = options.filter(o => o.value === 'Q1' || o.value === 'Q2');
-      }
-      if (isSpecialFaculty && (indexType === "wos" || indexType === "both")) {
+    }
+    // Only filter for WoS if it's a special faculty, not for 'both'
+    if (isSpecialFaculty && indexType === "wos") {
         options = options.filter((o) => o.value === "Q1" || o.value === "Q2");
-      }
-      return options;
+    }
+    return options;
   }, [isSpecialFaculty, indexType, isPhdScholar]);
   
   const watchAuthors = form.watch('authors');
@@ -510,10 +545,14 @@ export function ResearchPaperForm() {
 
   const handleFetchData = async (source: 'scopus' | 'wos' | 'sciencedirect') => {
     const doi = form.getValues('doi');
-    if (!doi) {
-      toast({ variant: 'destructive', title: 'No DOI Provided', description: 'Please enter a DOI to fetch data.' });
+    const wosId = form.getValues('wosAccessionNumber');
+    let identifier = source === 'wos' ? (wosId || doi) : doi;
+
+    if (!identifier) {
+      toast({ variant: 'destructive', title: 'No Identifier Provided', description: `Please enter a DOI${source === 'wos' ? ' or WoS Accession Number' : ''} to fetch data.` });
       return;
     }
+
     if (!user) {
       toast({ variant: 'destructive', title: 'Not Logged In', description: 'Could not identify the claimant.' });
       return;
@@ -525,18 +564,21 @@ export function ResearchPaperForm() {
     try {
         let result;
         if (source === 'scopus') {
-            result = await fetchAdvancedScopusData(doi, user.name);
+            result = await fetchAdvancedScopusData(identifier, user.name);
         } else if (source === 'wos') {
-            result = await fetchWosDataByUrl(doi, user.name);
+            result = await fetchWosDataByUrl(identifier, user.name);
+            if (!result.success) {
+                setShowWosAccession(true); // Show fallback on failure
+            }
         } else {
-            result = await fetchScienceDirectData(doi, user.name);
+            result = await fetchScienceDirectData(identifier, user.name);
         }
 
         if (result.success && result.data) {
             const autoFetched: (keyof ResearchPaperFormValues)[] = [];
             
             Object.entries(result.data).forEach(([key, value]) => {
-                if (value !== undefined) {
+                if (value !== undefined && value !== null) {
                     form.setValue(key as keyof ResearchPaperFormValues, value, { shouldValidate: true });
                     autoFetched.push(key as keyof ResearchPaperFormValues);
                 }
@@ -557,9 +599,15 @@ export function ResearchPaperForm() {
 
         } else {
             toast({ variant: 'destructive', title: 'Error', description: result.error || `Failed to fetch data from ${source.toUpperCase()}.` });
+            if (source === 'wos') {
+                setShowWosAccession(true);
+            }
         }
     } catch (error: any) {
         toast({ variant: 'destructive', title: 'Error', description: error.message || 'An unexpected error occurred.' });
+        if (source === 'wos') {
+            setShowWosAccession(true);
+        }
     } finally {
         setIsFetching(false);
     }
@@ -855,57 +903,79 @@ export function ResearchPaperForm() {
                     </FormItem>
                   )}
                 />
+                 {indexType !== 'other' && (
+                    <FormField
+                        control={form.control}
+                        name="doi"
+                        render={({ field }) => (
+                            <FormItem>
+                            <FormLabel>DOI (Digital Object Identifier)</FormLabel>
+                            <div className="flex items-center gap-2">
+                                <FormControl>
+                                    <Input placeholder="Enter DOI (e.g., 10.1038/nature12345)" {...field} disabled={isSubmitting} />
+                                </FormControl>
+                                <Button type="button" variant="outline" onClick={() => handleFetchData('scopus')} disabled={isSubmitting || isFetching || !form.getValues('doi')} title="Fetch from Scopus"><Bot className="h-4 w-4" /> Scopus</Button>
+                                <Button type="button" variant="outline" onClick={() => handleFetchData('wos')} disabled={isSubmitting || isFetching || !form.getValues('doi')} title="Fetch from WoS"><Bot className="h-4 w-4" /> WoS</Button>
+                            </div>
+                            <FormDescription>This is the primary way we fetch and verify your publication details.</FormDescription>
+                            <FormMessage />
+                            </FormItem>
+                        )}
+                    />
+                 )}
                  <FormField
                   control={form.control}
-                  name="journalClassification"
+                  name="paperTitle"
                   render={({ field }) => (
-                    <FormItem className="space-y-3">
-                      <FormLabel>Q Rating of the Journal</FormLabel>
+                    <FormItem>
+                      <FormLabel>Title of the Paper published</FormLabel>
                       <FormControl>
-                        <RadioGroup
-                          onValueChange={field.onChange}
-                          value={field.value}
-                          className="flex flex-wrap items-center gap-x-6 gap-y-2"
-                          disabled={isSubmitting}
-                        >
-                          {availableClassifications.map((option) => (
-                            <FormItem key={option.value} className="flex items-center space-x-2 space-y-0">
-                              <FormControl>
-                                <RadioGroupItem value={option.value} />
-                              </FormControl>
-                              <FormLabel className="font-normal">{option.label}</FormLabel>
-                            </FormItem>
-                          ))}
-                        </RadioGroup>
+                        <Textarea placeholder="Enter the full title of your paper" {...field} disabled={isSubmitting} />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
                   )}
                 />
-                 <FormField
-                  control={form.control}
-                  name="doi"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>DOI (Digital Object Identifier)</FormLabel>
-                      <div className="flex items-center gap-2">
-                          <FormControl>
-                              <Input placeholder="Enter DOI (e.g., 10.1038/nature12345)" {...field} disabled={isSubmitting} />
-                          </FormControl>
-                          {indexType === 'sci' ? (
-                            <Button type="button" variant="outline" onClick={() => handleFetchData('sciencedirect')} disabled={isSubmitting || isFetching || !form.getValues('doi')} title="Fetch data from ScienceDirect"><Bot className="h-4 w-4" /> ScienceDirect</Button>
-                          ) : (
-                            <>
-                              <Button type="button" variant="outline" onClick={() => handleFetchData('scopus')} disabled={isSubmitting || isFetching || !form.getValues('doi')} title="Fetch data from Scopus"><Bot className="h-4 w-4" /> Scopus</Button>
-                              <Button type="button" variant="outline" onClick={() => handleFetchData('wos')} disabled={isSubmitting || isFetching || !form.getValues('doi')} title="Fetch data from Web of Science"><Bot className="h-4 w-4" /> WoS</Button>
-                            </>
-                          )}
-                      </div>
-                      <FormDescription>This is the primary way we fetch and verify your publication details.</FormDescription>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
+                 {(indexType === 'wos' || indexType === 'both') && showWosAccession && (
+                     <FormField
+                        control={form.control}
+                        name="wosAccessionNumber"
+                        render={({ field }) => (
+                            <FormItem>
+                                <FormLabel>Web of Science Accession Number</FormLabel>
+                                <div className="flex items-center gap-2">
+                                    <FormControl>
+                                        <Input placeholder="e.g., WOS:000581634500008" {...field} disabled={isSubmitting} />
+                                    </FormControl>
+                                    <Button type="button" variant="outline" onClick={() => handleFetchData('wos')} disabled={isSubmitting || isFetching || !form.getValues('wosAccessionNumber')} title="Fetch data from Web of Science"><Bot className="h-4 w-4" /> WoS</Button>
+                                </div>
+                                <FormDescription>
+                                  WOS URl can be found using this:{" "}
+                                  <a href="https://www.webofscience.com/wos/woscc/smart-search" target="_blank" rel="noopener noreferrer" className="underline">
+                                    https://www.webofscience.com/wos/woscc/smart-search
+                                  </a>
+                                </FormDescription>
+                                <FormMessage />
+                            </FormItem>
+                        )}
+                    />
+                 )}
+                 {indexType === 'other' && (
+                     <FormField
+                        control={form.control}
+                        name="relevantLink"
+                        render={({ field }) => (
+                            <FormItem>
+                            <FormLabel>Link for Article</FormLabel>
+                             <FormControl>
+                                <Input placeholder="https://www.journal.com/article/123" {...field} disabled={isSubmitting} />
+                             </FormControl>
+                            <FormDescription>Please provide a direct link to the published article.</FormDescription>
+                            <FormMessage />
+                            </FormItem>
+                        )}
+                    />
+                 )}
                 
                 {(indexType === 'scopus' || indexType === 'both') && (
                   <FormField
@@ -915,7 +985,7 @@ export function ResearchPaperForm() {
                       <FormItem>
                         <FormLabel>Scopus URL</FormLabel>
                         <FormControl>
-                            <Input placeholder="Enter full Scopus URL if DOI fetch fails" {...field} disabled={isSubmitting} />
+                            <Input placeholder="https://www.scopus.com/pages/publications/" {...field} disabled={isSubmitting} />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -931,13 +1001,38 @@ export function ResearchPaperForm() {
                       <FormItem>
                         <FormLabel>WoS URL</FormLabel>
                          <FormControl>
-                            <Input placeholder="Enter full WoS URL if DOI fetch fails" {...field} disabled={isSubmitting} />
+                            <Input placeholder="https://www.webofscience.com/wos/woscc/full-record/WOS:" {...field} disabled={isSubmitting} />
                          </FormControl>
+                        <FormDescription>
+                          WOS URL can be found using this:{" "}
+                          <a href="https://www.webofscience.com/wos/woscc/smart-search?embedded=0" target="_blank" rel="noopener noreferrer" className="underline">
+                            https://www.webofscience.com/wos/woscc/smart-search?embedded=0
+                          </a>
+                        </FormDescription>
                         <FormMessage />
                       </FormItem>
                     )}
                   />
                 )}
+
+                {(indexType === 'scopus' || indexType === 'wos' || indexType === 'both') && (
+                    <FormField
+                        control={form.control}
+                        name="journalClassification"
+                        render={({ field }) => (
+                            <FormItem className="space-y-3">
+                            <FormLabel>Journal Classification (Q-rating)</FormLabel>
+                            <FormControl>
+                                <RadioGroup onValueChange={field.onChange} value={field.value} className="flex flex-wrap items-center gap-x-6 gap-y-2" disabled={isSubmitting}>
+                                {availableClassifications.map((option) => (<FormItem key={option.value} className="flex items-center space-x-2 space-y-0"><FormControl><RadioGroupItem value={option.value} /></FormControl><FormLabel className="font-normal">{option.label}</FormLabel></FormItem>))}
+                                </RadioGroup>
+                            </FormControl>
+                            <FormMessage />
+                            </FormItem>
+                        )}
+                    />
+                )}
+
 
                 {(indexType === "wos" || indexType === "both") && (
                   <FormField
@@ -1027,19 +1122,6 @@ export function ResearchPaperForm() {
                       <FormLabel>Journal Website Link</FormLabel>
                       <FormControl>
                         <Input placeholder="https://www.examplejournal.com" {...field} disabled={isSubmitting} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <FormField
-                  control={form.control}
-                  name="paperTitle"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Title of the Paper published</FormLabel>
-                      <FormControl>
-                        <Textarea placeholder="Enter the full title of your paper" {...field} disabled={isSubmitting} />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -1182,7 +1264,7 @@ export function ResearchPaperForm() {
                             <SelectContent>{getAvailableRoles(form.getValues(`authors.${index}`)).map(role => (<SelectItem key={role} value={role}>{role}</SelectItem>))}</SelectContent>
                         </Select>
                         {field.email.toLowerCase() !== user?.email.toLowerCase() && (
-                          <Button type="button" variant="ghost" size="icon" className="h-9 w-9" onClick={() => remove(index)}><Trash2 className="h-4 w-4" /></Button>
+                          <Button type="button" variant="ghost" size="icon" className="h-9 w-9" onClick={() => removeAuthor(index)}><Trash2 className="h-4 w-4" /></Button>
                         )}
                       </div>
                     </div>
@@ -1192,7 +1274,7 @@ export function ResearchPaperForm() {
                         <FormLabel className="text-sm">Add Internal Co-Author</FormLabel>
                          <div className="relative">
                             <Input
-                                placeholder="Search by Co-Author's Name"
+                                placeholder="Search by Co-Author's Name or MIS ID"
                                 value={coPiSearchTerm}
                                 onChange={(e) => {
                                     setCoPiSearchTerm(e.target.value);
@@ -1291,7 +1373,7 @@ export function ResearchPaperForm() {
                     <FormItem className="flex flex-row items-center justify-between rounded-lg border p-4">
                       <div className="space-y-0.5">
                         <FormLabel className="text-base">
-                          Is "Parul University" name present in the publication?
+                          Is "Parul University Goa" name present in the publication?
                         </FormLabel>
                          <FormDescription>If not, the final incentive amount will be reduced by 50%.</FormDescription>
                       </div>
@@ -1400,7 +1482,7 @@ export function ResearchPaperForm() {
               </Button>
                <Button type="button" onClick={handleProceedToReview} disabled={isSubmitting || bankDetailsMissing || orcidOrMisIdMissing}>
                 Proceed to Review
-              </Button>
+            </Button>
             </CardFooter>
           </form>
         </Form>
