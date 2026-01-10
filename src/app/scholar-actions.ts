@@ -4,6 +4,7 @@
 import 'dotenv/config';
 import { adminDb } from '@/lib/admin';
 import type { User, Author, ResearchPaper } from '@/types';
+import { addResearchPaper } from '@/app/bulkpapers';
 
 const SERP_API_KEY = process.env.SERP_API_KEY;
 
@@ -62,7 +63,8 @@ export async function fetchAndSaveScholarPublications(
             const data = await response.json();
             allArticles = allArticles.concat(data.articles || []);
             
-            nextPageUrl = data.serpapi_pagination?.next;
+            // SerpApi pagination can be inconsistent. Ensure we have `serpapi_pagination` before accessing `next`.
+            nextPageUrl = data.serpapi_pagination ? data.serpapi_pagination.next : undefined;
         }
         
         await logActivity('INFO', 'Fetched Google Scholar data', { userId: user.uid, totalResults: allArticles.length });
@@ -85,7 +87,7 @@ export async function fetchAndSaveScholarPublications(
                 .get();
 
             if (existingPaperQuery.empty) {
-                // Paper doesn't exist, create it with full author list
+                // Paper doesn't exist, create it.
                 const authorNames = article.authors.split(', ').map(name => name.trim());
                 const authors: Author[] = authorNames.map((name, index) => {
                     const matchedUser = usersByName.get(name.toLowerCase());
@@ -99,23 +101,22 @@ export async function fetchAndSaveScholarPublications(
                     };
                 });
 
-                const firstAuthor = authors[0];
-                const mainAuthorUid = firstAuthor?.uid || 'unknown_scholar_author';
-                
-                const newPaperData: Omit<ResearchPaper, 'id'> = {
+                // The user importing is the main author for this DB record.
+                const paperData: Pick<ResearchPaper, 'title' | 'url' | 'mainAuthorUid' | 'authors' | 'journalName'> = {
                     title: article.title,
                     url: article.link,
-                    mainAuthorUid,
+                    mainAuthorUid: user.uid, // Correctly assign ownership to the current user
                     authors: authors,
-                    authorUids: authors.map(a => a.uid).filter((uid): uid is string => !!uid),
-                    authorEmails: authors.map(a => a.email.toLowerCase()),
                     journalName: article.publication || 'N/A',
-                    createdAt: new Date().toISOString(),
-                    updatedAt: new Date().toISOString(),
                 };
 
-                await adminDb.collection('papers').add(newPaperData);
-                newPapersCount++;
+                const result = await addResearchPaper(paperData);
+
+                if (result.success) {
+                    newPapersCount++;
+                } else {
+                    console.warn(`Failed to add paper "${article.title}":`, result.error);
+                }
             }
         }
         
