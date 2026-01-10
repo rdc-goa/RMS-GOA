@@ -1,11 +1,9 @@
 
-
 'use server';
 
 import 'dotenv/config';
 import { adminDb } from '@/lib/admin';
-import type { User, Author } from '@/types';
-import { addResearchPaper } from '@/app/bulkpapers';
+import type { User, Author, ResearchPaper } from '@/types';
 
 const SERP_API_KEY = process.env.SERP_API_KEY;
 
@@ -41,10 +39,10 @@ export async function fetchAndSaveScholarPublications(
 ): Promise<{ success: boolean; newPapersCount: number; error?: string }> {
     
     if (!SERP_API_KEY) {
-        await logActivity('ERROR', 'SerpApi key is not configured.');
+        console.error('SerpApi key is not configured.');
         return { success: false, newPapersCount: 0, error: 'Google Scholar integration is not configured on the server. Please ensure the SERP_API_KEY is in your .env.local file and restart the server.' };
     }
-
+    
     if (!user.googleScholarId) {
         return { success: false, newPapersCount: 0, error: 'User does not have a Google Scholar ID set.' };
     }
@@ -88,32 +86,36 @@ export async function fetchAndSaveScholarPublications(
 
             if (existingPaperQuery.empty) {
                 // Paper doesn't exist, create it with full author list
-                const authorNames = article.authors.split(', ');
+                const authorNames = article.authors.split(', ').map(name => name.trim());
                 const authors: Author[] = authorNames.map((name, index) => {
                     const matchedUser = usersByName.get(name.toLowerCase());
                     return {
                         uid: matchedUser?.uid || null,
                         email: matchedUser?.email || `${name.toLowerCase().replace(/\s+/g, '.')}@external.com`, // Placeholder email
                         name: name,
-                        role: index === 0 ? 'First Author' : 'Co-Author',
+                        role: index === 0 ? 'First Author' : 'Co-Author', // Assign role based on position
                         isExternal: !matchedUser,
                         status: 'approved',
                     };
                 });
+
+                const firstAuthor = authors[0];
+                const mainAuthorUid = firstAuthor?.uid || 'unknown_scholar_author';
                 
-                const addResult = await addResearchPaper({
+                const newPaperData: Omit<ResearchPaper, 'id'> = {
                     title: article.title,
                     url: article.link,
-                    mainAuthorUid: user.uid,
+                    mainAuthorUid,
                     authors: authors,
+                    authorUids: authors.map(a => a.uid).filter((uid): uid is string => !!uid),
+                    authorEmails: authors.map(a => a.email.toLowerCase()),
                     journalName: article.publication || 'N/A',
-                });
-                
-                if (addResult.success) {
-                    newPapersCount++;
-                } else {
-                    await logActivity('WARNING', 'Failed to add a single paper from Scholar fetch', { userId: user.uid, title: article.title, error: addResult.error });
-                }
+                    createdAt: new Date().toISOString(),
+                    updatedAt: new Date().toISOString(),
+                };
+
+                await adminDb.collection('papers').add(newPaperData);
+                newPapersCount++;
             }
         }
         
