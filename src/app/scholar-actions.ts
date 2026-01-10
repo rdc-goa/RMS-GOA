@@ -1,4 +1,5 @@
 
+
 'use server';
 
 import 'dotenv/config';
@@ -13,7 +14,7 @@ type ScholarArticle = {
   title: string;
   link: string;
   publication: string;
-  // other fields exist but we only need these
+  authors: string;
 };
 
 async function logActivity(level: 'INFO' | 'WARNING' | 'ERROR', message: string, context: Record<string, any> = {}) {
@@ -39,8 +40,6 @@ export async function fetchAndSaveScholarPublications(
     user: User,
 ): Promise<{ success: boolean; newPapersCount: number; error?: string }> {
     
-    console.log("Server-side check: SERP_API_KEY is", SERP_API_KEY ? "loaded" : "NOT loaded");
-
     if (!SERP_API_KEY) {
         await logActivity('ERROR', 'SerpApi key is not configured.');
         return { success: false, newPapersCount: 0, error: 'Google Scholar integration is not configured on the server. Please ensure the SERP_API_KEY is in your .env.local file and restart the server.' };
@@ -65,7 +64,6 @@ export async function fetchAndSaveScholarPublications(
             const data = await response.json();
             allArticles = allArticles.concat(data.articles || []);
             
-            // Check for next page in the pagination data
             nextPageUrl = data.serpapi_pagination?.next;
         }
         
@@ -74,35 +72,40 @@ export async function fetchAndSaveScholarPublications(
         if (allArticles.length === 0) {
             return { success: true, newPapersCount: 0 };
         }
+        
+        const allUsersSnapshot = await adminDb.collection('users').get();
+        const usersByName = new Map(allUsersSnapshot.docs.map(doc => [doc.data().name.toLowerCase(), doc.data() as User]));
 
-        // Process each article
         for (const article of allArticles) {
             if (!article.title || !article.link) {
                 continue; // Skip if essential data is missing
             }
             
-            // Check if a paper with this URL already exists for ANY author.
             const existingPaperQuery = await adminDb.collection('papers')
                 .where('url', '==', article.link)
                 .limit(1)
                 .get();
 
             if (existingPaperQuery.empty) {
-                // If the paper doesn't exist at all, add it with the current user as the main author.
-                const author: Author = {
-                    uid: user.uid,
-                    email: user.email,
-                    name: user.name,
-                    role: 'First Author', // Default role, user can edit later
-                    isExternal: false,
-                    status: 'approved'
-                };
+                // Paper doesn't exist, create it with full author list
+                const authorNames = article.authors.split(', ');
+                const authors: Author[] = authorNames.map((name, index) => {
+                    const matchedUser = usersByName.get(name.toLowerCase());
+                    return {
+                        uid: matchedUser?.uid || null,
+                        email: matchedUser?.email || `${name.toLowerCase().replace(/\s+/g, '.')}@external.com`, // Placeholder email
+                        name: name,
+                        role: index === 0 ? 'First Author' : 'Co-Author',
+                        isExternal: !matchedUser,
+                        status: 'approved',
+                    };
+                });
                 
                 const addResult = await addResearchPaper({
                     title: article.title,
                     url: article.link,
                     mainAuthorUid: user.uid,
-                    authors: [author],
+                    authors: authors,
                     journalName: article.publication || 'N/A',
                 });
                 
