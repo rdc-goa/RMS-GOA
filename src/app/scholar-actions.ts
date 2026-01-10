@@ -1,19 +1,18 @@
 
 'use server';
 
+import 'dotenv/config';
 import { adminDb } from '@/lib/admin';
 import type { User, Author } from '@/types';
 import { addResearchPaper } from '@/app/bulkpapers';
 
 const SERP_API_KEY = process.env.SERP_API_KEY;
 
-// Type definitions based on SerpApi's Google Scholar organic_results
-type ScholarResult = {
+// Type definitions based on SerpApi's Google Scholar Author API results
+type ScholarArticle = {
   title: string;
   link: string;
-  publication_info: {
-    summary: string;
-  };
+  publication: string;
   // other fields exist but we only need these
 };
 
@@ -40,20 +39,19 @@ export async function fetchAndSaveScholarPublications(
     user: User,
 ): Promise<{ success: boolean; newPapersCount: number; error?: string }> {
     
-    // Debugging line to check if the key is loaded on the server
     console.log("Server-side check: SERP_API_KEY is", SERP_API_KEY ? "loaded" : "NOT loaded");
 
     if (!SERP_API_KEY) {
         await logActivity('ERROR', 'SerpApi key is not configured.');
-        return { success: false, newPapersCount: 0, error: 'Google Scholar integration is not configured on the server. The server may need to be restarted to load the API key.' };
+        return { success: false, newPapersCount: 0, error: 'Google Scholar integration is not configured on the server. Please ensure the SERP_API_KEY is in your .env.local file and restart the server.' };
     }
 
     if (!user.googleScholarId) {
         return { success: false, newPapersCount: 0, error: 'User does not have a Google Scholar ID set.' };
     }
 
-    let allResults: ScholarResult[] = [];
-    let nextPageUrl = `https://serpapi.com/search.json?engine=google_scholar_author&author_id=${user.googleScholarId}&api_key=${SERP_API_KEY}`;
+    let allArticles: ScholarArticle[] = [];
+    let nextPageUrl: string | undefined = `https://serpapi.com/search.json?engine=google_scholar_author&author_id=${user.googleScholarId}&api_key=${SERP_API_KEY}&num=100`;
     let newPapersCount = 0;
 
     try {
@@ -65,33 +63,32 @@ export async function fetchAndSaveScholarPublications(
                 throw new Error(errorBody.error || 'Failed to fetch data from SerpApi.');
             }
             const data = await response.json();
-            allResults = allResults.concat(data.articles || []);
+            allArticles = allArticles.concat(data.articles || []);
             
-            // Check for next page
-            const pagination = data.serpapi_pagination;
-            nextPageUrl = pagination?.next;
+            // Check for next page in the pagination data
+            nextPageUrl = data.serpapi_pagination?.next;
         }
         
-        await logActivity('INFO', 'Fetched Google Scholar data', { userId: user.uid, totalResults: allResults.length });
+        await logActivity('INFO', 'Fetched Google Scholar data', { userId: user.uid, totalResults: allArticles.length });
 
-        // Check if any results were found
-        if (allResults.length === 0) {
+        if (allArticles.length === 0) {
             return { success: true, newPapersCount: 0 };
         }
 
         // Process each article
-        for (const article of allResults) {
+        for (const article of allArticles) {
             if (!article.title || !article.link) {
                 continue; // Skip if essential data is missing
             }
             
+            // Check if a paper with this URL already exists for ANY author.
             const existingPaperQuery = await adminDb.collection('papers')
                 .where('url', '==', article.link)
                 .limit(1)
                 .get();
 
             if (existingPaperQuery.empty) {
-                // If the paper doesn't exist, add it
+                // If the paper doesn't exist at all, add it with the current user as the main author.
                 const author: Author = {
                     uid: user.uid,
                     email: user.email,
@@ -106,7 +103,7 @@ export async function fetchAndSaveScholarPublications(
                     url: article.link,
                     mainAuthorUid: user.uid,
                     authors: [author],
-                    journalName: article.publication_info?.summary || 'N/A',
+                    journalName: article.publication || 'N/A',
                 });
                 
                 if (addResult.success) {
