@@ -40,9 +40,12 @@ export async function fetchAndSaveScholarPublications(
     user: User,
 ): Promise<{ success: boolean; newPapersCount: number; error?: string }> {
     
+    // Debugging line to check if the key is loaded on the server
+    console.log("Server-side check: SERP_API_KEY is", SERP_API_KEY ? "loaded" : "NOT loaded");
+
     if (!SERP_API_KEY) {
         await logActivity('ERROR', 'SerpApi key is not configured.');
-        return { success: false, newPapersCount: 0, error: 'Google Scholar integration is not configured on the server.' };
+        return { success: false, newPapersCount: 0, error: 'Google Scholar integration is not configured on the server. The server may need to be restarted to load the API key.' };
     }
 
     if (!user.googleScholarId) {
