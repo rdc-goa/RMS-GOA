@@ -96,27 +96,30 @@ export default function LoginPage() {
     } finally {
         setIsSubmitting(false);
     }
-}, [router, toast]);
+  }, [router, toast]);
 
 
-useEffect(() => {
-  if (typeof window !== 'undefined' && window.google) {
-    window.google.accounts.id.initialize({
-      client_id: process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || '',
-      callback: handleGoogleOneTap,
-    });
+  useEffect(() => {
+    const googleClientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
+    if (typeof window !== 'undefined' && window.google && googleClientId) {
+      window.google.accounts.id.initialize({
+        client_id: googleClientId,
+        callback: handleGoogleOneTap,
+      });
 
-    window.google.accounts.id.prompt((notification: any) => {
-      if (notification.isNotDisplayed()) {
-        console.log('One Tap prompt was not displayed:', notification.getNotDisplayedReason());
-      } else if (notification.isSkippedMoment()) {
-        console.log('One Tap prompt was skipped:', notification.getSkippedReason());
-      } else if (notification.isDismissedMoment()) {
-        console.log('One Tap prompt was dismissed:', notification.getDismissedReason());
-      }
-    });
-  }
-}, [handleGoogleOneTap]);
+      window.google.accounts.id.prompt((notification: any) => {
+        if (notification.isNotDisplayed()) {
+          console.log('One Tap prompt was not displayed:', notification.getNotDisplayedReason());
+        } else if (notification.isSkippedMoment()) {
+          console.log('One Tap prompt was skipped:', notification.getSkippedReason());
+        } else if (notification.isDismissedMoment()) {
+          console.log('One Tap prompt was dismissed:', notification.getDismissedReason());
+        }
+      });
+    } else {
+        console.warn("Google One Tap could not be initialized. Check Client ID or google script loading.")
+    }
+  }, [handleGoogleOneTap]);
 
 
   useEffect(() => {
@@ -528,3 +531,5 @@ useEffect(() => {
     </>
   )
 }
+
+  
