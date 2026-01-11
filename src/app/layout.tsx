@@ -1,5 +1,4 @@
 
-
 'use client';
 
 import type { Metadata } from 'next';
@@ -80,7 +79,6 @@ export default function RootLayout({
           dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData) }}
         />
       </Head>
-      <Script src="https://accounts.google.com/gsi/client" async defer />
       <body className={`${inter.variable} ${sourceCodePro.variable} font-sans`} suppressHydrationWarning>
         <ThemeProvider
           attribute="class"

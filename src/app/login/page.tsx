@@ -1,5 +1,4 @@
 
-
 "use client"
 
 import { useRouter } from "next/navigation"
@@ -34,16 +33,13 @@ import {
   linkEmrInterestsToNewUser,
   linkEmrCoPiInterestsToNewUser,
   verifyLoginOtp,
+  signInWithGoogleCredential,
 } from "@/app/server-actions"
 import { Eye, EyeOff, Loader2 } from "lucide-react"
 import { OtpDialog } from "@/components/otp-dialog"
 import { Skeleton } from "@/components/ui/skeleton"
+import Script from "next/script"
 
-declare global {
-    interface Window {
-        handleCredentialResponse: (response: any) => void;
-    }
-}
 
 const loginSchema = z.object({
   email: z.string().email("Invalid email address."),
@@ -208,45 +204,68 @@ export default function LoginPage() {
 
 
   useEffect(() => {
+    const handleGoogleSignIn = async (response: any) => {
+        setIsSubmitting(true);
+        try {
+            const result = await signInWithGoogleCredential(response.credential);
+            if (!result.success || !result.user) {
+                throw new Error(result.error || "Failed to verify Google credential.");
+            }
+            // Temporarily cast as FirebaseUser to satisfy processSignIn's type,
+            // as we know the essential properties (uid, email, displayName, photoURL) are there.
+            await processSignIn(result.user as FirebaseUser);
+        } catch (error: any) {
+            toast({
+                variant: "destructive",
+                title: "Sign In Failed",
+                description: error.message || "Could not sign in with Google. Please try again.",
+            });
+        } finally {
+            setIsSubmitting(false);
+        }
+    };
+
+    const initializeGsi = () => {
+        if (!window.google || !process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID) {
+            console.error("Google One Tap could not be initialized. Check Client ID or google script loading.");
+            return;
+        }
+        window.google.accounts.id.initialize({
+            client_id: process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID,
+            callback: handleGoogleSignIn,
+        });
+        window.google.accounts.id.renderButton(
+            document.getElementById("google-signin-button"),
+            { theme: "outline", size: "large", text: "signin_with", shape: "rectangular", logo_alignment: "left" }
+        );
+        window.google.accounts.id.prompt(); // Display the One Tap prompt
+    };
+
     const checkAuthAndSettings = async () => {
         const settings = await getSystemSettings();
         setAuthSettings({ email: true, google: true, ...settings.authMethods });
-
-        // Make the callback available globally
-        window.handleCredentialResponse = async (response: any) => {
-            setIsSubmitting(true);
-            try {
-                // Here we call the existing `signInWithGoogleCredential` server action,
-                // but since we're in a client component, we'd need to adapt it or call a new one.
-                // For now, we'll process the sign-in directly.
-                // A better approach would be to move this logic into a server action.
-                const userCredential = await signInWithPopup(auth, new GoogleAuthProvider());
-                await processSignIn(userCredential.user);
-            } catch (error: any) {
-                toast({
-                    variant: "destructive",
-                    title: "Sign In Failed",
-                    description: error.message || "Could not sign in with Google. Please try again.",
-                });
-            } finally {
-                setIsSubmitting(false);
-            }
-        };
-
+        
+        // This handles automatic redirection if the user is already logged in
         const unsubscribe = onAuthStateChanged(auth, (user) => {
             if (user) {
                 router.replace('/dashboard');
             } else {
                 setLoading(false);
+                // If Google script is already loaded, initialize, otherwise the script's onLoad will.
+                if (window.google) {
+                    initializeGsi();
+                }
             }
         });
-        return () => {
-            unsubscribe();
-            // Clean up the global function when the component unmounts
-            delete window.handleCredentialResponse;
-        }
+        return () => unsubscribe();
     };
+
+    // Assign the callback to the window object so the script can find it
+    // @ts-ignore
+    window.initializeGsi = initializeGsi;
+
     checkAuthAndSettings();
+
   }, [router, toast]);
 
 
@@ -304,55 +323,6 @@ export default function LoginPage() {
       setIsSubmitting(false)
     }
   }
-
-  const handleGoogleSignIn = async () => {
-    setIsSubmitting(true)
-    const provider = new GoogleAuthProvider()
-    try {
-      const result = await signInWithPopup(auth, provider)
-      const firebaseUser = result.user
-      const email = firebaseUser.email
-
-      if (!email) {
-        throw new Error("No email found in Google account")
-      }
-
-      const domainCheck = await isEmailDomainAllowed(email)
-
-      if (email && /^\d+$/.test(email.split("@")[0]) && email !== "rathipranav07@gmail.com") {
-        await signOut(auth)
-        toast({
-          variant: "destructive",
-          title: "Access Denied",
-          description: "Access is for faculty members only. Student accounts are not permitted.",
-        })
-        setIsSubmitting(false)
-        return
-      }
-
-      if (!domainCheck.allowed) {
-        await signOut(auth)
-        toast({
-          variant: "destructive",
-          title: "Access Denied",
-          description: "Access is restricted to authorized university domains.",
-        })
-        setIsSubmitting(false)
-        return
-      }
-
-      await processSignIn(firebaseUser)
-    } catch (error: any) {
-      console.error("Google Sign-in error:", error)
-      toast({
-        variant: "destructive",
-        title: "Sign In Failed",
-        description: error.message || "Could not sign in with Google. Please try again.",
-      })
-    } finally {
-      setIsSubmitting(false)
-    }
-  }
   
   if (loading) {
     return (
@@ -368,12 +338,13 @@ export default function LoginPage() {
 
   return (
     <>
-      <div id="g_id_onload"
-        data-client_id={process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID}
-        data-context="signin"
-        data-callback="handleCredentialResponse"
-        data-itp_support="true">
-      </div>
+      <Script src="https://accounts.google.com/gsi/client" async defer onLoad={() => {
+          // @ts-ignore
+          if (window.initializeGsi) {
+            // @ts-ignore
+            window.initializeGsi();
+          }
+      }} />
       <div className="flex flex-col min-h-screen bg-background dark:bg-transparent">
         <main className="flex-1 flex min-h-screen items-center justify-center bg-muted/40 p-4">
           <div className="w-full max-w-md">
@@ -462,15 +433,7 @@ export default function LoginPage() {
                 )}
                 
                 {showGoogleButton && (
-                    <div
-                        className="g_id_signin"
-                        data-type="standard"
-                        data-shape="rectangular"
-                        data-theme="outline"
-                        data-text="signin_with"
-                        data-size="large"
-                        data-logo_alignment="left"
-                    ></div>
+                   <div id="google-signin-button" className="flex justify-center"></div>
                 )}
 
                  {!showEmailForm && !showGoogleButton && (
