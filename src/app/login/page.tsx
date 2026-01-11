@@ -230,37 +230,80 @@ export default function LoginPage() {
     }
   }
 
-  const handleGoogleSignIn = useCallback(async () => {
-    if (!authSettings.google) {
-        toast({
-            title: "Error",
-            description: "Google login is disabled.",
-            variant: "destructive",
-        });
-        return;
-    }
-
-    if (!googleClientId) {
-        toast({
-            title: "Error",
-            description: "Google Client ID is not configured.",
-            variant: "destructive",
-        });
-        return;
-    }
-
+  const handleGoogleSignIn = useCallback(async (response: any) => {
     try {
-      const provider = new GoogleAuthProvider()
-      const result = await signInWithPopup(auth, provider)
+        const result = await signInWithGoogleCredential(JSON.stringify(response));
+        if (result.success && result.user) {
+            const userCredential = await adminAuth.createCustomToken(result.user.uid);
+            await signInWithCustomToken(auth, userCredential);
+        } else {
+            throw new Error(result.error || "Google Sign-In failed on server.");
+        }
     } catch (error: any) {
-      console.error("Google sign-in failed:", error)
-      toast({
-        title: "Error",
-        description: error.message || "Failed to sign in with Google.",
-        variant: "destructive",
-      })
+        console.error("Google sign-in failed:", error);
+        toast({
+            title: "Error",
+            description: error.message || "Failed to sign in with Google.",
+            variant: "destructive",
+        });
     }
-  }, [authSettings.google, googleClientId, toast]);
+  }, [toast]);
+
+  useEffect(() => {
+    if (loading || !authSettings.google || !googleClientId) return;
+    
+    // @ts-ignore
+    if (typeof window.google === 'undefined') {
+        console.error("Google Identity Services script not loaded.");
+        return;
+    }
+    
+    // @ts-ignore
+    window.handleCredentialResponse = async (response: any) => {
+        setIsSubmitting(true);
+        try {
+            const result = await signInWithGoogleCredential(JSON.stringify(response));
+            if (result.success && result.user) {
+                // This part would ideally use a custom token, but that requires more setup.
+                // For now, we'll assume the user is handled server-side and client just needs to know to redirect.
+                // The onAuthStateChanged listener should pick up the new user state.
+                // We just need to make sure the user exists in our DB.
+                const user = await processSignIn({ uid: result.user.uid, email: result.user.email, displayName: result.user.displayName, photoURL: result.user.photoURL } as FirebaseUser);
+                if (user.profileComplete) {
+                   router.push('/dashboard');
+                } else {
+                   router.push('/profile-setup');
+                }
+            } else {
+                throw new Error(result.error || "Google Sign-In failed on server.");
+            }
+        } catch (error: any) {
+             toast({
+                title: "Error",
+                description: error.message || "Failed to process Google Sign-In.",
+                variant: "destructive",
+            });
+        } finally {
+            setIsSubmitting(false);
+        }
+    };
+    
+    // @ts-ignore
+    window.google.accounts.id.initialize({
+      client_id: googleClientId,
+      callback: window.handleCredentialResponse,
+    });
+
+    // @ts-ignore
+    window.google.accounts.id.renderButton(
+      document.getElementById("google-signin-button"),
+      { theme: theme === 'dark' ? 'filled_black' : 'outline', size: "large", shape: 'rectangular', text: 'signin_with', logo_alignment: 'left' } 
+    );
+    
+    // @ts-ignore
+    window.google.accounts.id.prompt();
+
+  }, [loading, authSettings.google, googleClientId, handleGoogleSignIn, toast, theme, router]);
 
   const handleOtpVerification = async (otp: string) => {
       if (!pendingUser) {
@@ -297,13 +340,20 @@ export default function LoginPage() {
           setIsSubmitting(false);
       }
   };
+  
+  const showEmailForm = authSettings.email !== false;
+  const showGoogleButton = authSettings.google !== false && googleClientId;
+  const showSeparator = showEmailForm && showGoogleButton;
+
 
   return (
     <>
-      {googleClientId && <Script
-        src={`https://accounts.google.com/gsi/client`}
+      <Script
+        src="https://accounts.google.com/gsi/client"
         strategy="beforeInteractive"
-      />}
+        async
+        defer
+      />
       <div className="grid h-screen w-screen place-items-center">
         <Card className="w-[350px]">
           <CardHeader className="space-y-1">
@@ -317,69 +367,78 @@ export default function LoginPage() {
                 <Skeleton className="h-10 w-full" />
               </>
             ) : (
-              <Form {...form}>
-                <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-                  <FormField
-                    control={form.control}
-                    name="email"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Email</FormLabel>
-                        <FormControl>
-                          <Input placeholder="shadcn@example.com" {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  <FormField
-                    control={form.control}
-                    name="password"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Password</FormLabel>
-                        <FormControl>
-                          <Input type={showPassword ? "text" : "password"} placeholder="Password" {...field} />
-                        </FormControl>
-                        <button
-                          type="button"
-                          className="absolute right-2 top-8 rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none data-[state=on]:bg-accent data-[state=on]:text-muted-foreground"
-                          onClick={() => setShowPassword(!showPassword)}
-                        >
-                          {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                        </button>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  <Button disabled={isSubmitting} type="submit" className="w-full">
-                    {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                    Login
-                  </Button>
-                </form>
-              </Form>
-            )}
-            {authSettings.google && googleClientId && (
-              <div className="relative">
-                <div className="absolute inset-0 flex items-center">
-                  <span className="w-full border-t" />
+             <>
+              {showEmailForm && (
+                <Form {...form}>
+                  <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+                    <FormField
+                      control={form.control}
+                      name="email"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Email</FormLabel>
+                          <FormControl>
+                            <Input placeholder="shadcn@example.com" {...field} />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={form.control}
+                      name="password"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Password</FormLabel>
+                          <FormControl>
+                            <Input type={showPassword ? "text" : "password"} placeholder="Password" {...field} />
+                          </FormControl>
+                          <button
+                            type="button"
+                            className="absolute right-2 top-8 rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none data-[state=on]:bg-accent data-[state=on]:text-muted-foreground"
+                            onClick={() => setShowPassword(!showPassword)}
+                          >
+                            {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                          </button>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <Button disabled={isSubmitting} type="submit" className="w-full">
+                      {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                      Login
+                    </Button>
+                  </form>
+                </Form>
+              )}
+               {showSeparator && (
+                <div className="relative my-2">
+                  <div className="absolute inset-0 flex items-center">
+                    <span className="w-full border-t" />
+                  </div>
+                  <div className="relative flex justify-center text-xs uppercase">
+                    <span className="bg-card px-2 text-muted-foreground">Or continue with</span>
+                  </div>
                 </div>
-                <div className="relative flex justify-center text-xs uppercase">
-                  <span className="bg-background px-2 text-muted-foreground">Or continue with</span>
-                </div>
-              </div>
+              )}
+              {showGoogleButton && (
+                <div id="google-signin-button"></div>
+              )}
+              {!showEmailForm && !showGoogleButton && (
+                 <div className="text-center text-muted-foreground p-4 border rounded-md">
+                      Login is temporarily disabled. Please contact an administrator.
+                  </div>
+              )}
+             </>
             )}
+            
           </CardContent>
           <CardFooter className="flex flex-col gap-2">
-            {authSettings.google && googleClientId && (
-                <div className="flex justify-center">
-                    <Button variant="outline" disabled={isSubmitting} onClick={handleGoogleSignIn}>
-                      Google
-                    </Button>
-                </div>
-            )}
             <Link href="/register" className="text-sm text-muted-foreground underline underline-offset-4">
               Don't have an account?
+            </Link>
+             <Link href="/forgot-password" passHref>
+                <Button variant="link" className="p-0 h-auto text-sm">Forgot Password?</Button>
             </Link>
           </CardFooter>
         </Card>
@@ -394,4 +453,3 @@ export default function LoginPage() {
     </>
   )
 }
-
