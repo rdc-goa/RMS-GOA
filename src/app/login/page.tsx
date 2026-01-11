@@ -21,7 +21,7 @@ import {
   type User as FirebaseUser,
   onAuthStateChanged,
 } from "firebase/auth"
-import { doc, getDoc, setDoc, collection, addDoc } from "firebase/firestore"
+import { doc, getDoc, setDoc } from "firebase/firestore"
 import type { User, SystemSettings } from "@/types"
 import { useState, useEffect, useCallback } from "react"
 import { useTheme } from "next-themes"
@@ -35,6 +35,7 @@ import {
   linkEmrCoPiInterestsToNewUser,
   verifyLoginOtp,
   signInWithGoogleCredential,
+  linkPapersToNewUser,
 } from "@/app/server-actions"
 import { Eye, EyeOff, Loader2 } from "lucide-react"
 import { OtpDialog } from "@/components/otp-dialog"
@@ -72,6 +73,7 @@ export default function LoginPage() {
   const [pendingUser, setPendingUser] = useState<LoginFormValues | null>(null);
   const [loading, setLoading] = useState(true);
   const [authSettings, setAuthSettings] = useState<SystemSettings['authMethods']>({ email: true, google: true });
+  const [googleClientId, setGoogleClientId] = useState<string | null>(null);
 
   const form = useForm<LoginFormValues>({
     resolver: zodResolver(loginSchema),
@@ -135,6 +137,7 @@ export default function LoginPage() {
         misId: userDataFromExcel.misId || '',
         profileComplete,
         allowedModules: getDefaultModulesForRole(role, designation),
+        hasCompletedTutorial: false, // Ensure this is set for new users
       }
     }
 
@@ -162,27 +165,17 @@ export default function LoginPage() {
     await logLogin(user.uid, user.email);
 
     try {
-      const result = await linkHistoricalData(user)
-      if (result.success && result.count > 0) {
-        console.log(`Successfully linked ${result.count} historical projects for user ${user.email}.`)
-      }
+        const { count: imrCount } = await linkHistoricalData(user);
+        const { count: emrCount } = await linkEmrInterestsToNewUser(user.uid, user.email);
+        await linkPapersToNewUser(user.uid, user.email);
+        await linkEmrCoPiInterestsToNewUser(user.uid, user.email);
 
-      const emrResult = await linkEmrInterestsToNewUser(user.uid, user.email)
-      if (emrResult.success && emrResult.count > 0) {
-        console.log(`Successfully linked ${emrResult.count} EMR interests for user ${user.email}.`)
-      }
+        if (imrCount > 0 || emrCount > 0) {
+             sessionStorage.setItem('postSetupInfo', JSON.stringify({ imr: imrCount, emr: emrCount }));
+        }
 
-      const emrCoPiResult = await linkEmrCoPiInterestsToNewUser(user.uid, user.email)
-      if (emrCoPiResult.success && emrCoPiResult.count > 0) {
-        console.log(`Successfully linked ${emrCoPiResult.count} EMR Co-PI interests for new user ${user.email}.`);
-      }
-
-
-      if (!result.success) {
-        console.error("Failed to link historical projects:", result.error)
-      }
     } catch (e) {
-      console.error("Error calling linkHistoricalData action:", e)
+      console.error("Error calling linking actions:", e)
     }
 
     if (typeof window !== "undefined") {
@@ -206,15 +199,15 @@ export default function LoginPage() {
 
 
   useEffect(() => {
-    const handleGoogleSignIn = async (response: any) => {
+    // Expose the callback to the global scope
+    // @ts-ignore
+    window.handleGoogleSignIn = async (response: any) => {
         setIsSubmitting(true);
         try {
-            const result = await signInWithGoogleCredential(response.credential);
+            const result = await signInWithGoogleCredential(JSON.stringify(response));
             if (!result.success || !result.user) {
                 throw new Error(result.error || "Failed to verify Google credential.");
             }
-            // Temporarily cast as FirebaseUser to satisfy processSignIn's type,
-            // as we know the essential properties (uid, email, displayName, photoURL) are there.
             await processSignIn(result.user as FirebaseUser);
         } catch (error: any) {
             toast({
@@ -227,44 +220,22 @@ export default function LoginPage() {
         }
     };
 
-    const initializeGsi = () => {
-        if (!window.google || !process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID) {
-            console.error("Google One Tap could not be initialized. Check Client ID or google script loading.");
-            return;
-        }
-        window.google.accounts.id.initialize({
-            client_id: process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID,
-            callback: handleGoogleSignIn,
-        });
-        window.google.accounts.id.renderButton(
-            document.getElementById("google-signin-button"),
-            { theme: theme === 'dark' ? 'filled_black' : 'outline', size: "large", text: "signin_with", shape: "rectangular", logo_alignment: "left" }
-        );
-        window.google.accounts.id.prompt(); // Display the One Tap prompt
-    };
-
     const checkAuthAndSettings = async () => {
         const settings = await getSystemSettings();
         setAuthSettings({ email: true, google: true, ...settings.authMethods });
         
-        // This handles automatic redirection if the user is already logged in
+        const clientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
+        setGoogleClientId(clientId || null);
+
         const unsubscribe = onAuthStateChanged(auth, (user) => {
             if (user) {
                 router.replace('/dashboard');
             } else {
                 setLoading(false);
-                // If Google script is already loaded, initialize, otherwise the script's onLoad will.
-                if (window.google) {
-                    initializeGsi();
-                }
             }
         });
         return () => unsubscribe();
     };
-
-    // Assign the callback to the window object so the script can find it
-    // @ts-ignore
-    window.initializeGsi = initializeGsi;
 
     checkAuthAndSettings();
 
@@ -335,18 +306,12 @@ export default function LoginPage() {
   }
   
   const showEmailForm = authSettings.email !== false;
-  const showGoogleButton = authSettings.google !== false;
+  const showGoogleButton = authSettings.google !== false && googleClientId;
   const showSeparator = showEmailForm && showGoogleButton;
 
   return (
     <>
-      <Script src="https://accounts.google.com/gsi/client" async defer onLoad={() => {
-          // @ts-ignore
-          if (window.initializeGsi) {
-            // @ts-ignore
-            window.initializeGsi();
-          }
-      }} />
+      {showGoogleButton && <Script src="https://accounts.google.com/gsi/client" async defer />}
       <div className="flex flex-col min-h-screen bg-background dark:bg-transparent">
         <main className="flex-1 flex min-h-screen items-center justify-center bg-muted/40 p-4">
           <div className="w-full max-w-md">
@@ -434,8 +399,30 @@ export default function LoginPage() {
                     </div>
                 )}
                 
+                {showGoogleButton ? (
+                   <div id="g_id_onload"
+                        data-client_id={googleClientId!}
+                        data-callback="handleGoogleSignIn"
+                        data-context="signin"
+                        data-ux_mode="popup"
+                    ></div>
+                ) : authSettings.google && !googleClientId ? (
+                  <div className="text-center text-destructive p-4 border border-destructive/50 rounded-md bg-destructive/10">
+                      Google Sign-In is misconfigured. Administrator: Please set the `NEXT_PUBLIC_GOOGLE_CLIENT_ID` in your environment variables.
+                  </div>
+                ) : null}
+
                 {showGoogleButton && (
-                   <div id="google-signin-button" className="flex justify-center"></div>
+                     <div
+                        id="g_id_signin"
+                        className="g_id_signin"
+                        data-type="standard"
+                        data-shape="rectangular"
+                        data-theme={theme === 'dark' ? 'filled_black' : 'outline'}
+                        data-text="signin_with"
+                        data-size="large"
+                        data-logo_alignment="left"
+                    ></div>
                 )}
 
                  {!showEmailForm && !showGoogleButton && (
