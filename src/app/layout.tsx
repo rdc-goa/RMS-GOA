@@ -54,47 +54,65 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  if (!isFirebaseInitialized) {
+    const router = useRouter();
+    if (!isFirebaseInitialized) {
+        return (
+        <html lang="en" suppressHydrationWarning>
+            <body className={`${inter.variable} ${sourceCodePro.variable} font-sans`} suppressHydrationWarning>
+            <ThemeProvider
+                attribute="class"
+                defaultTheme="dark"
+                enableSystem
+                disableTransitionOnChange
+            >
+                <FirebaseNotConfigured />
+            </ThemeProvider>
+            </body>
+        </html>
+        );
+    }
+
+    const handleGoogleSignIn = async (response: any) => {
+        const result = await signInWithGoogleCredential(JSON.stringify(response));
+        if (result.success) {
+            router.push('/dashboard');
+        } else {
+            console.error("Google Sign-In failed:", result.error);
+        }
+    };
+
+
     return (
-      <html lang="en" suppressHydrationWarning>
+        <html lang="en" suppressHydrationWarning>
+        <Head>
+            <script
+            type="application/ld+json"
+            dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData) }}
+            />
+            <script
+                dangerouslySetInnerHTML={{
+                    __html: `
+                    window.handleGoogleSignIn = ${handleGoogleSignIn.toString()};
+                    `,
+                }}
+            />
+        </Head>
         <body className={`${inter.variable} ${sourceCodePro.variable} font-sans`} suppressHydrationWarning>
-          <ThemeProvider
+            <ThemeProvider
             attribute="class"
             defaultTheme="dark"
             enableSystem
             disableTransitionOnChange
-          >
-            <FirebaseNotConfigured />
-          </ThemeProvider>
+            >
+            <FirebaseProvider firebaseApp={app} auth={auth} firestore={db}>
+                <AuthInitializer>
+                {children}
+                </AuthInitializer>
+            </FirebaseProvider>
+            <Toaster />
+            </ThemeProvider>
+            <Analytics />
         </body>
-      </html>
+        </html>
     );
-  }
-
-  return (
-    <html lang="en" suppressHydrationWarning>
-       <Head>
-        <script
-          type="application/ld+json"
-          dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData) }}
-        />
-      </Head>
-      <body className={`${inter.variable} ${sourceCodePro.variable} font-sans`} suppressHydrationWarning>
-        <ThemeProvider
-          attribute="class"
-          defaultTheme="dark"
-          enableSystem
-          disableTransitionOnChange
-        >
-          <FirebaseProvider firebaseApp={app} auth={auth} firestore={db}>
-            <AuthInitializer>
-              {children}
-            </AuthInitializer>
-          </FirebaseProvider>
-          <Toaster />
-        </ThemeProvider>
-        <Analytics />
-      </body>
-    </html>
-  );
 }

@@ -198,33 +198,16 @@ export default function LoginPage() {
   }
 
   useEffect(() => {
-    // Expose the callback to the global scope
-    // @ts-ignore
-    window.handleGoogleSignIn = async (response: any) => {
-        setIsSubmitting(true);
-        try {
-            const result = await signInWithGoogleCredential(JSON.stringify(response));
-            if (!result.success || !result.user) {
-                throw new Error(result.error || "Failed to verify Google credential.");
-            }
-            await processSignIn(result.user as FirebaseUser);
-        } catch (error: any) {
-            toast({
-                variant: "destructive",
-                title: "Sign In Failed",
-                description: error.message || "Could not sign in with Google. Please try again.",
-            });
-        } finally {
-            setIsSubmitting(false);
-        }
-    };
-
     const checkAuthAndSettings = async () => {
         const settings = await getSystemSettings();
         setAuthSettings({ email: true, google: true, ...settings.authMethods });
         
         const clientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
-        setGoogleClientId(clientId || null);
+        if (clientId) {
+            setGoogleClientId(clientId);
+        } else {
+            console.error("Google Client ID is missing. Google Sign-In will not be available.");
+        }
 
         const unsubscribe = onAuthStateChanged(auth, (user) => {
             if (user) {
@@ -238,7 +221,7 @@ export default function LoginPage() {
 
     checkAuthAndSettings();
 
-  }, [router, toast]);
+  }, [router]);
 
 
   const handleSuccessfulOtp = async (otp: string) => {
@@ -310,6 +293,7 @@ export default function LoginPage() {
 
   return (
     <>
+      <Script src="https://accounts.google.com/gsi/client" async defer />
       <div className="flex flex-col min-h-screen bg-background dark:bg-transparent">
         <main className="flex-1 flex min-h-screen items-center justify-center bg-muted/40 p-4">
           <div className="w-full max-w-md">
@@ -397,20 +381,14 @@ export default function LoginPage() {
                     </div>
                 )}
                 
-                {showGoogleButton ? (
-                   <div id="g_id_onload"
+                {showGoogleButton && (
+                  <>
+                    <div id="g_id_onload"
                         data-client_id={googleClientId!}
                         data-callback="handleGoogleSignIn"
                         data-context="signin"
                         data-ux_mode="popup"
                     ></div>
-                ) : authSettings.google && !googleClientId ? (
-                  <div className="text-center text-destructive p-4 border border-destructive/50 rounded-md bg-destructive/10">
-                      Google Sign-In is misconfigured. Administrator: Please set the `NEXT_PUBLIC_GOOGLE_CLIENT_ID` in your environment variables.
-                  </div>
-                ) : null}
-
-                {showGoogleButton && (
                      <div
                         id="g_id_signin"
                         className="g_id_signin"
@@ -421,7 +399,9 @@ export default function LoginPage() {
                         data-size="large"
                         data-logo_alignment="left"
                     ></div>
+                  </>
                 )}
+
 
                  {!showEmailForm && !showGoogleButton && (
                     <div className="text-center text-muted-foreground p-4 border rounded-md">
@@ -470,5 +450,3 @@ export default function LoginPage() {
     </>
   )
 }
-
-    
