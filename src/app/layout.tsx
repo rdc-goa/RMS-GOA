@@ -55,6 +55,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
     const router = useRouter();
+
     if (!isFirebaseInitialized) {
         return (
         <html lang="en" suppressHydrationWarning>
@@ -72,29 +73,12 @@ export default function RootLayout({
         );
     }
 
-    const handleGoogleSignIn = async (response: any) => {
-        const result = await signInWithGoogleCredential(JSON.stringify(response));
-        if (result.success) {
-            router.push('/dashboard');
-        } else {
-            console.error("Google Sign-In failed:", result.error);
-        }
-    };
-
-
     return (
         <html lang="en" suppressHydrationWarning>
         <Head>
             <script
             type="application/ld+json"
             dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData) }}
-            />
-            <script
-                dangerouslySetInnerHTML={{
-                    __html: `
-                    window.handleGoogleSignIn = ${handleGoogleSignIn.toString()};
-                    `,
-                }}
             />
         </Head>
         <body className={`${inter.variable} ${sourceCodePro.variable} font-sans`} suppressHydrationWarning>

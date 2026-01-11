@@ -15,9 +15,6 @@ import Link from "next/link"
 import { auth, db } from "@/lib/config"
 import {
   signInWithEmailAndPassword,
-  GoogleAuthProvider,
-  signInWithPopup,
-  signOut,
   type User as FirebaseUser,
   onAuthStateChanged,
 } from "firebase/auth"
@@ -73,7 +70,7 @@ export default function LoginPage() {
   const [pendingUser, setPendingUser] = useState<LoginFormValues | null>(null);
   const [loading, setLoading] = useState(true);
   const [authSettings, setAuthSettings] = useState<SystemSettings['authMethods']>({ email: true, google: true });
-  const [googleClientId, setGoogleClientId] = useState<string | null>(null);
+  const [googleClientId, setGoogleClientId] = useState<string | null>(process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || null);
 
   const form = useForm<LoginFormValues>({
     resolver: zodResolver(loginSchema),
@@ -198,34 +195,10 @@ export default function LoginPage() {
   }
 
   useEffect(() => {
-    // Expose the callback to the global scope
-    // @ts-ignore
-    window.handleGoogleSignIn = async (response: any) => {
-        setIsSubmitting(true);
-        try {
-            const result = await signInWithGoogleCredential(JSON.stringify(response));
-            if (!result.success || !result.user) {
-                throw new Error(result.error || "Failed to verify Google credential.");
-            }
-            await processSignIn(result.user as FirebaseUser);
-        } catch (error: any) {
-            toast({
-                variant: "destructive",
-                title: "Sign In Failed",
-                description: error.message || "Could not sign in with Google. Please try again.",
-            });
-        } finally {
-            setIsSubmitting(false);
-        }
-    };
-
     const checkAuthAndSettings = async () => {
         const settings = await getSystemSettings();
         setAuthSettings({ email: true, google: true, ...settings.authMethods });
         
-        const clientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
-        setGoogleClientId(clientId || null);
-
         const unsubscribe = onAuthStateChanged(auth, (user) => {
             if (user) {
                 router.replace('/dashboard');
@@ -238,7 +211,66 @@ export default function LoginPage() {
 
     checkAuthAndSettings();
 
-  }, [router, toast]);
+    if (!googleClientId) {
+      console.error("Google Client ID is missing. The 'Sign in with Google' button will not be displayed. Please set NEXT_PUBLIC_GOOGLE_CLIENT_ID in your environment variables.");
+    }
+    
+    // Dynamically load the Google Identity script
+    const script = document.createElement('script');
+    script.src = 'https://accounts.google.com/gsi/client';
+    script.async = true;
+    script.defer = true;
+    script.onload = () => {
+      if (!window.google || !googleClientId) {
+        console.error('Google script loaded but window.google is not available or Client ID is missing.');
+        return;
+      }
+
+      window.google.accounts.id.initialize({
+        client_id: googleClientId,
+        callback: handleCredentialResponse,
+      });
+
+      const buttonParent = document.getElementById('google-signin-button');
+      if (buttonParent) {
+        window.google.accounts.id.renderButton(buttonParent, {
+          theme: theme === 'dark' ? 'filled_black' : 'outline',
+          size: 'large',
+          text: 'signin_with',
+          shape: 'rectangular',
+          logo_alignment: 'left',
+        });
+      }
+      
+      window.google.accounts.id.prompt();
+    };
+    
+    document.body.appendChild(script);
+
+    return () => {
+      document.body.removeChild(script);
+    };
+
+  }, [router, toast, googleClientId, theme]);
+
+  const handleCredentialResponse = async (response: any) => {
+    setIsSubmitting(true);
+    try {
+      const result = await signInWithGoogleCredential(JSON.stringify(response));
+      if (!result.success || !result.user) {
+        throw new Error(result.error || "Failed to verify Google credential.");
+      }
+      await processSignIn(result.user as FirebaseUser);
+    } catch (error: any) {
+      toast({
+        variant: "destructive",
+        title: "Sign In Failed",
+        description: error.message || "Could not sign in with Google. Please try again.",
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
 
 
   const handleSuccessfulOtp = async (otp: string) => {
@@ -398,30 +430,12 @@ export default function LoginPage() {
                 )}
                 
                 {showGoogleButton ? (
-                   <div id="g_id_onload"
-                        data-client_id={googleClientId!}
-                        data-callback="handleGoogleSignIn"
-                        data-context="signin"
-                        data-ux_mode="popup"
-                    ></div>
+                    <div id="google-signin-button" className="flex justify-center"></div>
                 ) : authSettings.google && !googleClientId ? (
                   <div className="text-center text-destructive p-4 border border-destructive/50 rounded-md bg-destructive/10">
                       Google Sign-In is misconfigured. Administrator: Please set the `NEXT_PUBLIC_GOOGLE_CLIENT_ID` in your environment variables.
                   </div>
                 ) : null}
-
-                {showGoogleButton && (
-                     <div
-                        id="g_id_signin"
-                        className="g_id_signin"
-                        data-type="standard"
-                        data-shape="rectangular"
-                        data-theme={theme === 'dark' ? 'filled_black' : 'outline'}
-                        data-text="signin_with"
-                        data-size="large"
-                        data-logo_alignment="left"
-                    ></div>
-                )}
 
                  {!showEmailForm && !showGoogleButton && (
                     <div className="text-center text-muted-foreground p-4 border rounded-md">
@@ -470,5 +484,3 @@ export default function LoginPage() {
     </>
   )
 }
-
-    
