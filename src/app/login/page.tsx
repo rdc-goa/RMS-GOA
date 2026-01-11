@@ -24,6 +24,7 @@ import {
 import { doc, getDoc, setDoc, collection, addDoc } from "firebase/firestore"
 import type { User, SystemSettings } from "@/types"
 import { useState, useEffect, useCallback } from "react"
+import { useTheme } from "next-themes"
 import { getDefaultModulesForRole } from "@/lib/modules"
 import {
   linkHistoricalData,
@@ -64,6 +65,7 @@ async function logLogin(uid: string, email: string) {
 export default function LoginPage() {
   const router = useRouter()
   const { toast } = useToast()
+  const { theme } = useTheme()
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [showPassword, setShowPassword] = useState(false)
   const [isOtpOpen, setIsOtpOpen] = useState(false)
@@ -236,7 +238,7 @@ export default function LoginPage() {
         });
         window.google.accounts.id.renderButton(
             document.getElementById("google-signin-button"),
-            { theme: "outline", size: "large", text: "signin_with", shape: "rectangular", logo_alignment: "left" }
+            { theme: theme === 'dark' ? 'filled_black' : 'outline', size: "large", text: "signin_with", shape: "rectangular", logo_alignment: "left" }
         );
         window.google.accounts.id.prompt(); // Display the One Tap prompt
     };
@@ -266,7 +268,7 @@ export default function LoginPage() {
 
     checkAuthAndSettings();
 
-  }, [router, toast]);
+  }, [router, toast, theme]);
 
 
   const handleSuccessfulOtp = async (otp: string) => {
