@@ -94,359 +94,304 @@ export default function LoginPage() {
         user.name = firebaseUser.displayName
       }
     } else {
-      const staffRes = await fetch(`/api/get-staff-data?email=${firebaseUser.email!}`)
-      const staffResult = await staffRes.json()
-
-      let userDataFromExcel: Partial<User> = {}
-      let role: User["role"] = "faculty"
-      let designation: User["designation"] = "faculty"
-      let profileComplete = false
-
-      const domainCheck = await isEmailDomainAllowed(firebaseUser.email!)
-
-      if (staffResult.success) {
-        userDataFromExcel = staffResult.data
-        const userType = staffResult.data.type
-
-        if (userType === "CRO") {
-          role = "CRO"
-          designation = "CRO"
-          profileComplete = true
-        } else if (userType === "Institutional") {
-          role = "faculty"
-          designation = "Principal"
-          profileComplete = true
+      const staffRes = await fetch(`/api/get-staff-data?email=${firebaseUser.email}`)
+      if (staffRes.ok) {
+        const staff = await staffRes.json()
+        user = {
+          uid: firebaseUser.uid,
+          email: firebaseUser.email,
+          name: firebaseUser.displayName || staff.firstName + ' ' + staff.lastName,
+          role: staff.role || 'user',
+          modules: getDefaultModulesForRole(staff.role || 'user'),
+          emrId: staff.emrId || null,
         }
-      } else if (domainCheck.isCro) {
-        role = "CRO"
-        designation = "CRO"
-        profileComplete = true
-      }
 
-      user = {
-        uid: firebaseUser.uid,
-        name: userDataFromExcel.name || firebaseUser.displayName || firebaseUser.email!.split("@")[0],
-        email: firebaseUser.email!,
-        role,
-        designation,
-        campus: 'Goa',
-        faculty: userDataFromExcel.faculty || domainCheck.croFaculty || '',
-        institute: userDataFromExcel.institute || '',
-        department: userDataFromExcel.department || '',
-        phoneNumber: userDataFromExcel.phoneNumber || '',
-        misId: userDataFromExcel.misId || '',
-        profileComplete,
-        allowedModules: getDefaultModulesForRole(role, designation),
-        hasCompletedTutorial: false, // Ensure this is set for new users
+        await setDoc(userDocRef, user)
+        toast({
+          title: "Welcome!",
+          description: "Your account has been created."
+        })
+
+        await linkHistoricalData(firebaseUser.uid, firebaseUser.email)
+        if (staff.emrId) {
+          await linkEmrInterestsToNewUser(firebaseUser.uid, staff.emrId)
+          await linkEmrCoPiInterestsToNewUser(firebaseUser.uid, staff.emrId)
+          await linkPapersToNewUser(firebaseUser.uid, staff.emrId)
+        }
+      } else {
+        user = {
+          uid: firebaseUser.uid,
+          email: firebaseUser.email,
+          name: firebaseUser.displayName || firebaseUser.email.split("@")[0],
+          role: "user",
+          modules: getDefaultModulesForRole("user"),
+        }
+
+        await setDoc(userDocRef, user)
+        toast({
+          title: "Welcome!",
+          description: "Your account has been created."
+        })
       }
     }
 
-    if (firebaseUser.photoURL) {
-      user.photoURL = firebaseUser.photoURL
-    }
-
-    if (!user.allowedModules || user.allowedModules.length === 0) {
-      user.allowedModules = getDefaultModulesForRole(user.role, user.designation)
-    }
-    
-    const systemSettings = await getSystemSettings();
-    const approverSetting = systemSettings.incentiveApprovers?.find(a => a.email.toLowerCase() === user.email.toLowerCase());
-    
-    if (approverSetting) {
-        const approverModule = `incentive-approver-${approverSetting.stage}`;
-        if (!user.allowedModules?.includes(approverModule)) {
-            user.allowedModules = [...(user.allowedModules || []), approverModule, 'incentive-approvals'];
-        }
-    }
-
-
-    await setDoc(userDocRef, user, { merge: true })
-    
-    await logLogin(user.uid, user.email);
-
-    try {
-        const { count: imrCount } = await linkHistoricalData(user);
-        const { count: emrCount } = await linkEmrInterestsToNewUser(user.uid, user.email);
-        await linkPapersToNewUser(user.uid, user.email);
-        await linkEmrCoPiInterestsToNewUser(user.uid, user.email);
-
-        if (imrCount > 0 || emrCount > 0) {
-             sessionStorage.setItem('postSetupInfo', JSON.stringify({ imr: imrCount, emr: emrCount }));
-        }
-
-    } catch (e) {
-      console.error("Error calling linking actions:", e)
-    }
-
-    if (typeof window !== "undefined") {
-      localStorage.setItem("user", JSON.stringify(user))
-    }
-
-    if (user.profileComplete) {
-      toast({
-        title: "Login Successful",
-        description: "Redirecting to your dashboard...",
-      })
-      router.push("/dashboard")
-    } else {
-      toast({
-        title: "Profile Setup Required",
-        description: "Please complete your profile to continue.",
-      })
-      router.push("/profile-setup")
-    }
+    await logLogin(firebaseUser.uid, firebaseUser.email);
+    return user
   }
 
   useEffect(() => {
-    const checkAuthAndSettings = async () => {
+    const fetchSettings = async () => {
+      setLoading(true);
+      try {
         const settings = await getSystemSettings();
-        setAuthSettings({ email: true, google: true, ...settings.authMethods });
-        
-        const clientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
-        if (clientId) {
-            setGoogleClientId(clientId);
-        } else {
-            console.error("Google Client ID is missing. Google Sign-In will not be available.");
-        }
-
-        const unsubscribe = onAuthStateChanged(auth, (user) => {
-            if (user) {
-                router.replace('/dashboard');
-            } else {
-                setLoading(false);
-            }
+        setAuthSettings(settings?.authMethods || { email: true, google: true });
+        setGoogleClientId(settings?.googleClientId || null);
+      } catch (error) {
+        console.error("Failed to fetch system settings:", error);
+        toast({
+          title: "Error",
+          description: "Failed to load system settings.",
+          variant: "destructive",
         });
-        return () => unsubscribe();
+      } finally {
+        setLoading(false);
+      }
     };
 
-    checkAuthAndSettings();
+    fetchSettings();
+  }, [toast]);
 
-  }, [router]);
-
-
-  const handleSuccessfulOtp = async (otp: string) => {
-    if (!pendingUser) return;
-    setIsSubmitting(true);
-    try {
-        const otpResult = await verifyLoginOtp(pendingUser.email, otp);
-        if (!otpResult.success) {
-            throw new Error(otpResult.error || "Invalid OTP");
-        }
-        
-        const userCredential = await signInWithEmailAndPassword(auth, pendingUser.email, pendingUser.password);
-        setIsOtpOpen(false);
-        await processSignIn(userCredential.user);
-    } catch (error: any) {
-        toast({
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+      if (firebaseUser) {
+        const user = await processSignIn(firebaseUser)
+        if (user) {
+          router.push("/")
+        } else {
+          toast({
+            title: "Error",
+            description: "Failed to process sign-in.",
             variant: "destructive",
-            title: "Verification Failed",
-            description: error.message || "An error occurred.",
-        });
-    } finally {
-        setIsSubmitting(false);
-    }
-  };
+          })
+        }
+      }
+    })
 
-  const onEmailSubmit = async (data: LoginFormValues) => {
+    return () => unsubscribe()
+  }, [router, toast])
+
+  async function onSubmit(data: LoginFormValues) {
     setIsSubmitting(true)
     try {
-      const settings = await getSystemSettings()
-      
-      if (settings.is2faEnabled && data.email !== "vicepresident_86@paruluniversity.ac.in") {
-        setPendingUser(data);
-        const otpResult = await sendLoginOtp(data.email);
-        if (otpResult.success) {
-          setIsOtpOpen(true);
-        } else {
-          throw new Error(otpResult.error || "Failed to send OTP.");
-        }
-      } else {
-        const userCredential = await signInWithEmailAndPassword(auth, data.email, data.password)
-        await processSignIn(userCredential.user)
+      if (!authSettings.email) {
+        toast({
+          title: "Error",
+          description: "Email login is disabled.",
+          variant: "destructive",
+        })
+        return;
       }
+
+      const domainAllowed = await isEmailDomainAllowed(data.email);
+      if (!domainAllowed) {
+          toast({
+              title: "Error",
+              description: "This email domain is not allowed.",
+              variant: "destructive",
+          });
+          return;
+      }
+
+      if (process.env.NEXT_PUBLIC_ENABLE_OTP === "true") {
+          const otpResult = await sendLoginOtp(data.email);
+          if (otpResult.success) {
+              setPendingUser(data);
+              setIsOtpOpen(true);
+          } else {
+              toast({
+                  title: "Error",
+                  description: otpResult.error || "Failed to send OTP.",
+                  variant: "destructive",
+              });
+          }
+      } else {
+          const userCredential = await signInWithEmailAndPassword(auth, data.email, data.password);
+      }
+
     } catch (error: any) {
-      console.error("Login error:", error)
+      console.error("Login failed:", error)
       toast({
+        title: "Error",
+        description: error.message || "Invalid credentials.",
         variant: "destructive",
-        title: "Login Failed",
-        description:
-          error.code === "auth/invalid-credential"
-            ? "Invalid email or password."
-            : error.message || "An unknown error occurred.",
       })
     } finally {
       setIsSubmitting(false)
     }
   }
-  
-  if (loading) {
-    return (
-        <div className="flex flex-col min-h-screen items-center justify-center">
-            <Loader2 className="h-12 w-12 animate-spin text-primary" />
-        </div>
-    )
-  }
-  
-  const showEmailForm = authSettings.email !== false;
-  const showGoogleButton = authSettings.google !== false && googleClientId;
-  const showSeparator = showEmailForm && showGoogleButton;
+
+  const handleGoogleSignIn = useCallback(async () => {
+    if (!authSettings.google) {
+        toast({
+            title: "Error",
+            description: "Google login is disabled.",
+            variant: "destructive",
+        });
+        return;
+    }
+
+    if (!googleClientId) {
+        toast({
+            title: "Error",
+            description: "Google Client ID is not configured.",
+            variant: "destructive",
+        });
+        return;
+    }
+
+    try {
+      const provider = new GoogleAuthProvider()
+      const result = await signInWithPopup(auth, provider)
+    } catch (error: any) {
+      console.error("Google sign-in failed:", error)
+      toast({
+        title: "Error",
+        description: error.message || "Failed to sign in with Google.",
+        variant: "destructive",
+      })
+    }
+  }, [authSettings.google, googleClientId, toast]);
+
+  const handleOtpVerification = async (otp: string) => {
+      if (!pendingUser) {
+          toast({
+              title: "Error",
+              description: "No pending user found.",
+              variant: "destructive",
+          });
+          setIsOtpOpen(false);
+          return;
+      }
+
+      setIsSubmitting(true);
+      try {
+          const verificationResult = await verifyLoginOtp(pendingUser.email, otp);
+          if (verificationResult.success) {
+              const userCredential = await signInWithEmailAndPassword(auth, pendingUser.email, pendingUser.password);
+              setIsOtpOpen(false);
+          } else {
+              toast({
+                  title: "Error",
+                  description: verificationResult.error || "Invalid OTP.",
+                  variant: "destructive",
+              });
+          }
+      } catch (error: any) {
+          console.error("OTP verification failed:", error);
+          toast({
+              title: "Error",
+              description: error.message || "Failed to verify OTP.",
+              variant: "destructive",
+          });
+      } finally {
+          setIsSubmitting(false);
+      }
+  };
 
   return (
     <>
-      <Script src="https://accounts.google.com/gsi/client" async defer />
-      <div className="flex flex-col min-h-screen bg-background dark:bg-transparent">
-        <main className="flex-1 flex min-h-screen items-center justify-center bg-muted/40 p-4">
-          <div className="w-full max-w-md">
-            <Card className="shadow-xl animate-in fade-in-0 zoom-in-95 duration-500">
-              <CardHeader className="text-center">
-                <div className="mx-auto mb-6 flex justify-center">
-                  <Logo />
-                </div>
-                <CardTitle className="text-2xl font-bold">Welcome Back!</CardTitle>
-                <CardDescription>Sign in to access the Research Projects Portal.</CardDescription>
-              </CardHeader>
-              <CardContent>
-                {showEmailForm && (
-                  <Form {...form}>
-                    <form onSubmit={form.handleSubmit(onEmailSubmit)} className="space-y-4">
-                      <FormField
-                        control={form.control}
-                        name="email"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>University Email</FormLabel>
-                            <FormControl>
-                              <Input placeholder="your.name@paruluniversity.ac.in" {...field} disabled={isSubmitting} />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                      <FormField
-                        control={form.control}
-                        name="password"
-                        render={({ field }) => (
-                          <FormItem>
-                            <div className="flex items-center justify-between">
-                              <FormLabel>Password</FormLabel>
-                            </div>
-                            <FormControl>
-                              <div className="relative">
-                                <Input
-                                  type={showPassword ? "text" : "password"}
-                                  placeholder="••••••••"
-                                  {...field}
-                                  disabled={isSubmitting}
-                                />
-                                <Button
-                                  type="button"
-                                  variant="ghost"
-                                  size="icon"
-                                  className="absolute right-1 top-1/2 h-7 w-7 -translate-y-1/2 text-muted-foreground"
-                                  onClick={() => setShowPassword(!showPassword)}
-                                >
-                                  {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                                </Button>
-                              </div>
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                      <Button type="submit" className="w-full" disabled={isSubmitting}>
-                        {isSubmitting ? "Signing In..." : "Sign In"}
-                      </Button>
-                    </form>
-                  </Form>
-                )}
-                
-                {showEmailForm && (
-                    <div className="mt-4 text-center">
-                      <Link href="/forgot-password" passHref>
-                        <Button variant="link" className="p-0 h-auto text-xs">
-                          Forgot password?
-                        </Button>
-                      </Link>
-                    </div>
-                )}
-                
-                {showSeparator && (
-                    <div className="relative my-6">
-                      <div className="absolute inset-0 flex items-center">
-                        <span className="w-full border-t" />
-                      </div>
-                      <div className="relative flex justify-center text-xs uppercase">
-                        <span className="bg-card px-2 text-muted-foreground">Or continue with</span>
-                      </div>
-                    </div>
-                )}
-                
-                {showGoogleButton && (
-                  <>
-                    <div id="g_id_onload"
-                        data-client_id={googleClientId!}
-                        data-callback="handleGoogleSignIn"
-                        data-context="signin"
-                        data-ux_mode="popup"
-                    ></div>
-                     <div
-                        id="g_id_signin"
-                        className="g_id_signin"
-                        data-type="standard"
-                        data-shape="rectangular"
-                        data-theme={theme === 'dark' ? 'filled_black' : 'outline'}
-                        data-text="signin_with"
-                        data-size="large"
-                        data-logo_alignment="left"
-                    ></div>
-                  </>
-                )}
-
-
-                 {!showEmailForm && !showGoogleButton && (
-                    <div className="text-center text-muted-foreground p-4 border rounded-md">
-                        Login is temporarily disabled. Please contact an administrator.
-                    </div>
-                 )}
-
-              </CardContent>
-              <CardFooter className="justify-center text-sm">
-                <p className="text-muted-foreground">Don't have an account?&nbsp;</p>
-                <Link href="/signup" passHref>
-                  <Button variant="link" className="p-0 h-auto">
-                    Sign Up
+      {googleClientId && <Script
+        src={`https://accounts.google.com/gsi/client`}
+        strategy="beforeInteractive"
+      />}
+      <div className="grid h-screen w-screen place-items-center">
+        <Card className="w-[350px]">
+          <CardHeader className="space-y-1">
+            <CardTitle className="text-2xl text-center"><Logo /></CardTitle>
+            <CardDescription className="text-center">Enter your email and password to login</CardDescription>
+          </CardHeader>
+          <CardContent className="grid gap-4">
+            {loading ? (
+              <>
+                <Skeleton className="h-10 w-full" />
+                <Skeleton className="h-10 w-full" />
+              </>
+            ) : (
+              <Form {...form}>
+                <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+                  <FormField
+                    control={form.control}
+                    name="email"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Email</FormLabel>
+                        <FormControl>
+                          <Input placeholder="shadcn@example.com" {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="password"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Password</FormLabel>
+                        <FormControl>
+                          <Input type={showPassword ? "text" : "password"} placeholder="Password" {...field} />
+                        </FormControl>
+                        <button
+                          type="button"
+                          className="absolute right-2 top-8 rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none data-[state=on]:bg-accent data-[state=on]:text-muted-foreground"
+                          onClick={() => setShowPassword(!showPassword)}
+                        >
+                          {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                        </button>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <Button disabled={isSubmitting} type="submit" className="w-full">
+                    {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                    Login
                   </Button>
-                </Link>
-              </CardFooter>
-            </Card>
-          </div>
-        </main>
-        <footer className="flex flex-col gap-2 sm:flex-row py-6 w-full shrink-0 items-center px-4 md:px-6 border-t">
-          <p className="text-xs text-muted-foreground">
-            &copy; {new Date().getFullYear()} Parul University. All rights reserved.
-          </p>
-          <nav className="sm:ml-auto flex gap-4 sm:gap-6">
-            <Link className="text-xs hover:underline underline-offset-4" href="/help">
-              Help
+                </form>
+              </Form>
+            )}
+            {authSettings.google && googleClientId && (
+              <div className="relative">
+                <div className="absolute inset-0 flex items-center">
+                  <span className="w-full border-t" />
+                </div>
+                <div className="relative flex justify-center text-xs uppercase">
+                  <span className="bg-background px-2 text-muted-foreground">Or continue with</span>
+                </div>
+              </div>
+            )}
+          </CardContent>
+          <CardFooter className="flex flex-col gap-2">
+            {authSettings.google && googleClientId && (
+                <div className="flex justify-center">
+                    <Button variant="outline" disabled={isSubmitting} onClick={handleGoogleSignIn}>
+                      Google
+                    </Button>
+                </div>
+            )}
+            <Link href="/register" className="text-sm text-muted-foreground underline underline-offset-4">
+              Don't have an account?
             </Link>
-            <Link className="text-xs hover:underline underline-offset-4" href="/terms-of-use">
-              Terms of Service
-            </Link>
-            <Link className="text-xs hover:underline underline-offset-4" href="/privacy-policy">
-              Privacy
-            </Link>
-          </nav>
-        </footer>
+          </CardFooter>
+        </Card>
       </div>
-      {pendingUser && (
-        <OtpDialog
-          isOpen={isOtpOpen}
+      <OtpDialog
+          open={isOtpOpen}
           onOpenChange={setIsOtpOpen}
-          email={pendingUser.email}
-          onVerify={handleSuccessfulOtp}
-          isVerifying={isSubmitting}
-        />
-      )}
+          onVerify={handleOtpVerification}
+          loading={isSubmitting}
+          email={pendingUser?.email || ''}
+      />
     </>
   )
 }
+
