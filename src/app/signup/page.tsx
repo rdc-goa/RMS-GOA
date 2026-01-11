@@ -34,6 +34,7 @@ import {
   isEmailDomainAllowed,
   linkEmrCoPiInterestsToNewUser,
   getSystemSettings,
+  signInWithGoogleCredential,
 } from "@/app/server-actions"
 import { Eye, EyeOff, Loader2 } from "lucide-react"
 
@@ -98,7 +99,7 @@ export default function SignupPage() {
     return domainCheck.allowed
   }
 
-  const processNewUser = async (firebaseUser: FirebaseUser) => {
+  const processNewUser = async (firebaseUser: Partial<FirebaseUser> & { uid: string; email: string; }) => {
     const userDocRef = doc(db, "users", firebaseUser.uid)
     const userDocSnap = await getDoc(userDocRef)
 
@@ -167,6 +168,7 @@ export default function SignupPage() {
       profileComplete,
       allowedModules: getDefaultModulesForRole(role, designation),
       hasCompletedTutorial: false,
+      photoURL: firebaseUser.photoURL || '',
     }
 
     if (firebaseUser.photoURL) {
@@ -258,26 +260,18 @@ export default function SignupPage() {
     const provider = new GoogleAuthProvider()
     try {
       const result = await signInWithPopup(auth, provider)
-      const firebaseUser = result.user
-      const email = firebaseUser.email
-
-      if (!email) {
-        throw new Error("No email found in Google account")
+      const credential = GoogleAuthProvider.credentialFromResult(result);
+      if (credential) {
+          const credentialString = JSON.stringify(credential);
+          const serverResult = await signInWithGoogleCredential(credentialString);
+          if (serverResult.success && serverResult.user) {
+              await processNewUser(serverResult.user);
+          } else {
+              throw new Error(serverResult.error || "Server-side Google sign-in failed.");
+          }
+      } else {
+          throw new Error("Could not get credential from Google sign-in.");
       }
-
-      const isValidDomain = await validateEmailDomain(email)
-      if (!isValidDomain) {
-        await signOut(auth)
-        toast({
-          variant: "destructive",
-          title: "Access Denied",
-          description: "This email domain is not authorized for portal access, or student accounts are not permitted.",
-        })
-        setIsSubmitting(false)
-        return
-      }
-
-      await processNewUser(firebaseUser)
     } catch (error: any) {
       console.error("Google Sign-up error:", error)
       toast({

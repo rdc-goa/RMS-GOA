@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import type { Metadata } from 'next';
@@ -11,6 +12,7 @@ import { isFirebaseInitialized, app, auth, db } from '@/lib/config';
 import { AuthInitializer } from '@/components/AuthInitializer';
 import { Analytics } from '@vercel/analytics/react';
 import { FirebaseProvider } from '@/components/providers/FirebaseProvider';
+import Head from 'next/head';
 
 const inter = Inter({ subsets: ['latin'], variable: '--font-inter' });
 const sourceCodePro = Source_Code_Pro({ subsets: ['latin'], variable: '--font-source-code-pro' });
@@ -68,12 +70,13 @@ export default function RootLayout({
 
   return (
     <html lang="en" suppressHydrationWarning>
-       <head>
+       <Head>
         <script
           type="application/ld+json"
           dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData) }}
         />
-      </head>
+        <script src="https://accounts.google.com/gsi/client" async defer></script>
+      </Head>
       <body className={`${inter.variable} ${sourceCodePro.variable} font-sans`} suppressHydrationWarning>
         <ThemeProvider
           attribute="class"

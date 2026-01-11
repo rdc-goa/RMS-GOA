@@ -24,7 +24,7 @@ import {
 } from "firebase/auth"
 import { doc, getDoc, setDoc, collection, addDoc } from "firebase/firestore"
 import type { User, SystemSettings } from "@/types"
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { getDefaultModulesForRole } from "@/lib/modules"
 import {
   linkHistoricalData,
@@ -34,6 +34,7 @@ import {
   linkEmrInterestsToNewUser,
   linkEmrCoPiInterestsToNewUser,
   verifyLoginOtp,
+  signInWithGoogleCredential,
 } from "@/app/server-actions"
 import { Eye, EyeOff, Loader2 } from "lucide-react"
 import { OtpDialog } from "@/components/otp-dialog"
@@ -76,6 +77,47 @@ export default function LoginPage() {
       password: "",
     },
   });
+
+  const handleGoogleOneTap = useCallback(async (response: any) => {
+    setIsSubmitting(true);
+    try {
+        const result = await signInWithGoogleCredential(response.credential);
+        if (result.success && result.user) {
+            await processSignIn(result.user as FirebaseUser);
+        } else {
+            throw new Error(result.error || "Failed to sign in with Google.");
+        }
+    } catch (error: any) {
+        toast({
+            variant: "destructive",
+            title: "Sign In Failed",
+            description: error.message || "Could not sign in with Google. Please try again.",
+        });
+    } finally {
+        setIsSubmitting(false);
+    }
+}, [router, toast]);
+
+
+useEffect(() => {
+  if (typeof window !== 'undefined' && window.google) {
+    window.google.accounts.id.initialize({
+      client_id: process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || '',
+      callback: handleGoogleOneTap,
+    });
+
+    window.google.accounts.id.prompt((notification: any) => {
+      if (notification.isNotDisplayed()) {
+        console.log('One Tap prompt was not displayed:', notification.getNotDisplayedReason());
+      } else if (notification.isSkippedMoment()) {
+        console.log('One Tap prompt was skipped:', notification.getSkippedReason());
+      } else if (notification.isDismissedMoment()) {
+        console.log('One Tap prompt was dismissed:', notification.getDismissedReason());
+      }
+    });
+  }
+}, [handleGoogleOneTap]);
+
 
   useEffect(() => {
     const checkAuthAndSettings = async () => {
