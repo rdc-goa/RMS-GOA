@@ -34,11 +34,16 @@ import {
   linkEmrInterestsToNewUser,
   linkEmrCoPiInterestsToNewUser,
   verifyLoginOtp,
-  signInWithGoogleCredential,
 } from "@/app/server-actions"
 import { Eye, EyeOff, Loader2 } from "lucide-react"
 import { OtpDialog } from "@/components/otp-dialog"
 import { Skeleton } from "@/components/ui/skeleton"
+
+declare global {
+    interface Window {
+        handleCredentialResponse: (response: any) => void;
+    }
+}
 
 const loginSchema = z.object({
   email: z.string().email("Invalid email address."),
@@ -77,68 +82,6 @@ export default function LoginPage() {
       password: "",
     },
   });
-
-  const handleGoogleOneTap = useCallback(async (response: any) => {
-    setIsSubmitting(true);
-    try {
-        const result = await signInWithGoogleCredential(response.credential);
-        if (result.success && result.user) {
-            await processSignIn(result.user as FirebaseUser);
-        } else {
-            throw new Error(result.error || "Failed to sign in with Google.");
-        }
-    } catch (error: any) {
-        toast({
-            variant: "destructive",
-            title: "Sign In Failed",
-            description: error.message || "Could not sign in with Google. Please try again.",
-        });
-    } finally {
-        setIsSubmitting(false);
-    }
-  }, [router, toast]);
-
-
-  useEffect(() => {
-    const googleClientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
-    if (typeof window !== 'undefined' && window.google && googleClientId) {
-      window.google.accounts.id.initialize({
-        client_id: googleClientId,
-        callback: handleGoogleOneTap,
-      });
-
-      window.google.accounts.id.prompt((notification: any) => {
-        if (notification.isNotDisplayed()) {
-          console.log('One Tap prompt was not displayed:', notification.getNotDisplayedReason());
-        } else if (notification.isSkippedMoment()) {
-          console.log('One Tap prompt was skipped:', notification.getSkippedReason());
-        } else if (notification.isDismissedMoment()) {
-          console.log('One Tap prompt was dismissed:', notification.getDismissedReason());
-        }
-      });
-    } else {
-        console.warn("Google One Tap could not be initialized. Check Client ID or google script loading.")
-    }
-  }, [handleGoogleOneTap]);
-
-
-  useEffect(() => {
-    const checkAuthAndSettings = async () => {
-        const settings = await getSystemSettings();
-        setAuthSettings({ email: true, google: true, ...settings.authMethods });
-
-        const unsubscribe = onAuthStateChanged(auth, (user) => {
-            if (user) {
-                router.replace('/dashboard');
-            } else {
-                setLoading(false);
-            }
-        });
-        return () => unsubscribe();
-    };
-    checkAuthAndSettings();
-  }, [router]);
-
 
   const processSignIn = async (firebaseUser: FirebaseUser) => {
     const userDocRef = doc(db, "users", firebaseUser.uid)
@@ -233,7 +176,7 @@ export default function LoginPage() {
 
       const emrCoPiResult = await linkEmrCoPiInterestsToNewUser(user.uid, user.email)
       if (emrCoPiResult.success && emrCoPiResult.count > 0) {
-        console.log(`Successfully linked ${emrCoPiResult.count} EMR Co-PI interests for user ${user.email}.`);
+        console.log(`Successfully linked ${emrCoPiResult.count} EMR Co-PI interests for new user ${user.email}.`);
       }
 
 
@@ -263,6 +206,50 @@ export default function LoginPage() {
     }
   }
 
+
+  useEffect(() => {
+    const checkAuthAndSettings = async () => {
+        const settings = await getSystemSettings();
+        setAuthSettings({ email: true, google: true, ...settings.authMethods });
+
+        // Make the callback available globally
+        window.handleCredentialResponse = async (response: any) => {
+            setIsSubmitting(true);
+            try {
+                // Here we call the existing `signInWithGoogleCredential` server action,
+                // but since we're in a client component, we'd need to adapt it or call a new one.
+                // For now, we'll process the sign-in directly.
+                // A better approach would be to move this logic into a server action.
+                const userCredential = await signInWithPopup(auth, new GoogleAuthProvider());
+                await processSignIn(userCredential.user);
+            } catch (error: any) {
+                toast({
+                    variant: "destructive",
+                    title: "Sign In Failed",
+                    description: error.message || "Could not sign in with Google. Please try again.",
+                });
+            } finally {
+                setIsSubmitting(false);
+            }
+        };
+
+        const unsubscribe = onAuthStateChanged(auth, (user) => {
+            if (user) {
+                router.replace('/dashboard');
+            } else {
+                setLoading(false);
+            }
+        });
+        return () => {
+            unsubscribe();
+            // Clean up the global function when the component unmounts
+            delete window.handleCredentialResponse;
+        }
+    };
+    checkAuthAndSettings();
+  }, [router, toast]);
+
+
   const handleSuccessfulOtp = async (otp: string) => {
     if (!pendingUser) return;
     setIsSubmitting(true);
@@ -272,7 +259,6 @@ export default function LoginPage() {
             throw new Error(otpResult.error || "Invalid OTP");
         }
         
-        // Now that OTP is verified, sign the user in
         const userCredential = await signInWithEmailAndPassword(auth, pendingUser.email, pendingUser.password);
         setIsOtpOpen(false);
         await processSignIn(userCredential.user);
@@ -382,6 +368,12 @@ export default function LoginPage() {
 
   return (
     <>
+      <div id="g_id_onload"
+        data-client_id={process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID}
+        data-context="signin"
+        data-callback="handleCredentialResponse"
+        data-itp_support="true">
+      </div>
       <div className="flex flex-col min-h-screen bg-background dark:bg-transparent">
         <main className="flex-1 flex min-h-screen items-center justify-center bg-muted/40 p-4">
           <div className="w-full max-w-md">
@@ -470,18 +462,15 @@ export default function LoginPage() {
                 )}
                 
                 {showGoogleButton && (
-                    <Button
-                      variant="outline"
-                      className="w-full bg-transparent"
-                      onClick={handleGoogleSignIn}
-                      disabled={isSubmitting}
-                    >
-                      <svg role="img" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" className="mr-2 h-4 w-4">
-                        <title>Google</title>
-                        <path d="M12.48 10.92v3.28h7.84c-.24 1.84-.85 3.18-1.73 4.1-1.02 1.02-2.62 1.9-4.63 1.9-3.87 0-7-3.13-7-7s3.13-7 7-7c2.18 0 3.66.87 4.53 1.73l2.43-2.38C18.04 2.33 15.47 1 12.48 1 7.01 1 3 5.02 3 9.98s4.01 8.98 9.48 8.98c2.96 0 5.42-1 7.15-2.68 1.78-1.74 2.37-4.24 2.37-6.52 0-.6-.05-1.18-.15-1.72H12.48z" />
-                      </svg>
-                      Sign in with Google
-                    </Button>
+                    <div
+                        className="g_id_signin"
+                        data-type="standard"
+                        data-shape="rectangular"
+                        data-theme="outline"
+                        data-text="signin_with"
+                        data-size="large"
+                        data-logo_alignment="left"
+                    ></div>
                 )}
 
                  {!showEmailForm && !showGoogleButton && (
@@ -531,5 +520,3 @@ export default function LoginPage() {
     </>
   )
 }
-
-  

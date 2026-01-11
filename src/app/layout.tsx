@@ -13,6 +13,10 @@ import { AuthInitializer } from '@/components/AuthInitializer';
 import { Analytics } from '@vercel/analytics/react';
 import { FirebaseProvider } from '@/components/providers/FirebaseProvider';
 import Head from 'next/head';
+import Script from 'next/script';
+import { signInWithGoogleCredential } from './server-actions';
+import { useRouter } from 'next/navigation';
+
 
 const inter = Inter({ subsets: ['latin'], variable: '--font-inter' });
 const sourceCodePro = Source_Code_Pro({ subsets: ['latin'], variable: '--font-source-code-pro' });
@@ -75,8 +79,8 @@ export default function RootLayout({
           type="application/ld+json"
           dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData) }}
         />
-        <script src="https://accounts.google.com/gsi/client" async defer></script>
       </Head>
+      <Script src="https://accounts.google.com/gsi/client" async defer />
       <body className={`${inter.variable} ${sourceCodePro.variable} font-sans`} suppressHydrationWarning>
         <ThemeProvider
           attribute="class"

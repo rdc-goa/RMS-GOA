@@ -34,7 +34,6 @@ import {
   isEmailDomainAllowed,
   linkEmrCoPiInterestsToNewUser,
   getSystemSettings,
-  signInWithGoogleCredential,
 } from "@/app/server-actions"
 import { Eye, EyeOff, Loader2 } from "lucide-react"
 
@@ -256,32 +255,21 @@ export default function SignupPage() {
   }
 
   const handleGoogleSignUp = async () => {
-    setIsSubmitting(true)
-    const provider = new GoogleAuthProvider()
+    setIsSubmitting(true);
+    const provider = new GoogleAuthProvider();
     try {
-      const result = await signInWithPopup(auth, provider)
-      const credential = GoogleAuthProvider.credentialFromResult(result);
-      if (credential) {
-          const credentialString = JSON.stringify(credential);
-          const serverResult = await signInWithGoogleCredential(credentialString);
-          if (serverResult.success && serverResult.user) {
-              await processNewUser(serverResult.user);
-          } else {
-              throw new Error(serverResult.error || "Server-side Google sign-in failed.");
-          }
-      } else {
-          throw new Error("Could not get credential from Google sign-in.");
-      }
+        const result = await signInWithPopup(auth, provider);
+        await processNewUser(result.user);
     } catch (error: any) {
-      console.error("Google Sign-up error:", error)
-      toast({
-        variant: "destructive",
-        title: "Sign Up Failed",
-        description: error.message || "Could not sign up with Google. Please try again.",
-      })
-      setIsSubmitting(false)
+        console.error("Google Sign-up error:", error);
+        toast({
+            variant: "destructive",
+            title: "Sign Up Failed",
+            description: error.message || "Could not sign up with Google. Please try again.",
+        });
+        setIsSubmitting(false);
     }
-  }
+  };
   
   if (loading) {
     return (
@@ -400,18 +388,15 @@ export default function SignupPage() {
                 </div>
               )}
               {showGoogleButton && (
-                <Button
-                  variant="outline"
-                  className="w-full bg-transparent"
-                  onClick={handleGoogleSignUp}
-                  disabled={isSubmitting}
-                >
-                  <svg role="img" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" className="mr-2 h-4 w-4">
-                    <title>Google</title>
-                    <path d="M12.48 10.92v3.28h7.84c-.24 1.84-.85 3.18-1.73 4.1-1.02 1.02-2.62 1.9-4.63 1.9-3.87 0-7-3.13-7-7s3.13-7 7-7c2.18 0 3.66.87 4.53 1.73l2.43-2.38C18.04 2.33 15.47 1 12.48 1 7.01 1 3 5.02 3 9.98s4.01 8.98 9.48 8.98c2.96 0 5.42-1 7.15-2.68 1.78-1.74 2.37-4.24 2.37-6.52 0-.6-.05-1.18-.15-1.72H12.48z" />
-                  </svg>
-                  Sign up with Google
-                </Button>
+                <div
+                    className="g_id_signin"
+                    data-type="standard"
+                    data-shape="rectangular"
+                    data-theme="outline"
+                    data-text="signup_with"
+                    data-size="large"
+                    data-logo_alignment="left"
+                ></div>
               )}
                {!showEmailForm && !showGoogleButton && (
                   <div className="text-center text-muted-foreground p-4 border rounded-md">
