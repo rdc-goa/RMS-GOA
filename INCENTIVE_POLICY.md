@@ -1,4 +1,4 @@
-# Research Incentive Policy - Calculation Logic.
+# Research Incentive Policy - Calculation Logic    
 
 This document outlines the specific calculation logic and rules applied by the R&D Portal when determining the incentive amount for various research claims.
 
