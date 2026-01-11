@@ -1,3 +1,4 @@
+
 # Research & Development Portal Parul University Goa
 
 This is a comprehensive, full-stack web application designed to streamline and manage the entire research lifecycle at Parul University Goa. It serves as a central hub for faculty, evaluators, and administrators to handle Intramural (IMR) and Extramural (EMR) research projects, user management, and grant tracking.
@@ -53,7 +54,7 @@ A dedicated module to manage the lifecycle of externally funded research opportu
 -   **UI Components:** [ShadCN UI](https://ui.shadcn.com/)
 -   **AI Toolkit:** [Google Genkit](https://firebase.google.com/docs/genkit)
 -   **Database:** [Cloud Firestore](https://firebase.google.com/docs/firestore)
--   **Authentication:** [Firebase Authentication](https://firebase.google.com/docs/auth)
+-   **Authentication:** [Firebase Authentication](https://firebase.google.com/docs/auth) with Google One Tap
 -   **File Storage:** [Cloud Storage for Firebase](https://firebase.google.com/docs/storage)
 -   **Deployment:** [Firebase App Hosting](https://firebase.google.com/docs/hosting)
 -   **Email Service:** [Nodemailer](https://nodemailer.com/) with Gmail
@@ -113,6 +114,16 @@ FIREBASE_CLIENT_EMAIL="[client_email_from_json]"
 FIREBASE_PRIVATE_KEY="[private_key_from_json]"
 ```
 
+#### Google Sign-In (Client-Side)
+- Go to the [Google Cloud Console Credentials page](https://console.cloud.google.com/apis/credentials).
+- Find your "OAuth 2.0 Client ID" for your web application.
+- Copy the **Client ID**.
+
+```env
+# .env.local
+NEXT_PUBLIC_GOOGLE_CLIENT_ID="[YOUR_GOOGLE_OAUTH_CLIENT_ID]"
+```
+
 #### Email Service (Nodemailer)
 -   You'll need a Gmail account and an "App Password".
 -   Go to your **Google Account** -> **Security** -> **2-Step Verification** (must be enabled).
@@ -143,6 +154,22 @@ npm run dev
 ```
 
 The application should now be running at [http://localhost:9002](http://localhost:9002).
+
+## 🚑 Troubleshooting
+
+### Google Sign-In Error: `401: invalid_client`
+
+This is a common configuration error. It almost always means your Google OAuth Client ID is not correctly configured for the address you are running the app from.
+
+1.  **Go to the Google Cloud Console Credentials page:** [https://console.cloud.google.com/apis/credentials](https://console.cloud.google.com/apis/credentials).
+2.  **Select your Project** from the dropdown at the top of the page.
+3.  Find your OAuth 2.0 Client ID under the "OAuth 2.0 Client IDs" section and click on its name to edit it.
+4.  **Add Authorized JavaScript Origins:** Under the "Authorized JavaScript origins" section, click **"+ ADD URI"**.
+    -   For local development, add `http://localhost:9002`.
+    -   If you are using a different port, add `http://localhost:<YOUR_PORT>`.
+    -   For your deployed production site, add its full URL (e.g., `https://your-app-name.web.app`).
+5.  **Click Save**. It may take a few minutes for the changes to apply.
+6.  **Restart your local development server** after making these changes.
 
 ## 📁 Project Structure
 
