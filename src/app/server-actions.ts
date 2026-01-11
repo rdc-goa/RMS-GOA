@@ -31,6 +31,8 @@ import Docxtemplater from "docxtemplater"
 import { awardInitialGrant, addGrantPhase, updatePhaseStatus } from "./grant-actions"
 import { generateSanctionOrder } from "./document-actions"
 import { put } from '@vercel/blob';
+import { OAuth2Client } from 'google-auth-library';
+
 
 // --- Centralized Logging Service ---
 export async function logActivity(level: 'INFO' | 'WARNING' | 'ERROR', message: string, context: Record<string, any> = {}) {
@@ -1846,6 +1848,18 @@ export async function sendErrorEmail(
         return { success: false };
     }
 }
-    
 
+export async function signInWithGoogleCredential(credentialString: string): Promise<{ success: boolean; user?: any; error?: string }> {
+    try {
+        const credential = JSON.parse(credentialString);
+        const user = await adminAuth.verifyIdToken(credential.idToken);
+        const { uid, email, name, picture } = user;
+        return {
+            success: true,
+            user: { uid, email, displayName: name, photoURL: picture },
+        };
+    } catch (error: any) {
+        return { success: false, error: error.message || "Failed to verify Google credential." };
+    }
+}
     
