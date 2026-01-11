@@ -1,7 +1,7 @@
 
 'use server'
 
-import { adminDb, adminStorage } from "@/lib/admin"
+import { adminAuth, adminDb, adminStorage } from "@/lib/admin"
 import { FieldValue } from "firebase-admin/firestore"
 import admin from "firebase-admin"
 import type {
@@ -1852,7 +1852,7 @@ export async function sendErrorEmail(
 export async function signInWithGoogleCredential(credentialString: string): Promise<{ success: boolean; user?: any; error?: string }> {
     try {
         const credential = JSON.parse(credentialString);
-        const user = await adminAuth.verifyIdToken(credential.idToken);
+        const user = await adminAuth.verifyIdToken(credential.credential);
         const { uid, email, name, picture } = user;
         return {
             success: true,
@@ -1862,4 +1862,6 @@ export async function signInWithGoogleCredential(credentialString: string): Prom
         return { success: false, error: error.message || "Failed to verify Google credential." };
     }
 }
+    
+
     

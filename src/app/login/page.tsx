@@ -21,7 +21,7 @@ import {
   type User as FirebaseUser,
   onAuthStateChanged,
 } from "firebase/auth"
-import { doc, getDoc, setDoc } from "firebase/firestore"
+import { doc, getDoc, setDoc, addDoc, collection } from "firebase/firestore"
 import type { User, SystemSettings } from "@/types"
 import { useState, useEffect, useCallback } from "react"
 import { useTheme } from "next-themes"
@@ -197,7 +197,6 @@ export default function LoginPage() {
     }
   }
 
-
   useEffect(() => {
     // Expose the callback to the global scope
     // @ts-ignore
@@ -239,7 +238,7 @@ export default function LoginPage() {
 
     checkAuthAndSettings();
 
-  }, [router, toast, theme]);
+  }, [router, toast]);
 
 
   const handleSuccessfulOtp = async (otp: string) => {
@@ -311,7 +310,6 @@ export default function LoginPage() {
 
   return (
     <>
-      {showGoogleButton && <Script src="https://accounts.google.com/gsi/client" async defer />}
       <div className="flex flex-col min-h-screen bg-background dark:bg-transparent">
         <main className="flex-1 flex min-h-screen items-center justify-center bg-muted/40 p-4">
           <div className="w-full max-w-md">
@@ -472,3 +470,5 @@ export default function LoginPage() {
     </>
   )
 }
+
+    
