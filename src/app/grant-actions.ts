@@ -230,7 +230,7 @@ export async function addTransaction(
     isGstRegistered: boolean;
     gstNumber?: string;
     description?: string;
-    invoiceDataUrl: string;
+    invoiceUrl: string;
     invoiceFileName: string;
   }
 ): Promise<{ success: boolean; error?: string; updatedProject?: Project }> {
@@ -259,17 +259,6 @@ export async function addTransaction(
       return { success: false, error: "Phase not found." };
     }
 
-    let invoiceUrl: string | undefined;
-    if (transactionData.invoiceDataUrl) {
-      const path = `invoices/${projectId}/${phaseId}/${new Date().toISOString()}-${transactionData.invoiceFileName}`;
-      const result = await uploadFileToServer(transactionData.invoiceDataUrl, path);
-
-      if (!result.success || !result.url) {
-        throw new Error(result.error || "Invoice upload failed");
-      }
-      invoiceUrl = result.url;
-    }
-
     const newTransaction: Transaction = {
       id: new Date().toISOString() + Math.random(),
       phaseId: phaseId,
@@ -279,7 +268,7 @@ export async function addTransaction(
       isGstRegistered: transactionData.isGstRegistered,
       gstNumber: transactionData.gstNumber,
       description: transactionData.description || "",
-      invoiceUrl: invoiceUrl,
+      invoiceUrl: transactionData.invoiceUrl,
     };
 
     const updatedPhases = project.grant.phases.map((phase, index) => {
@@ -322,7 +311,7 @@ export async function updateTransaction(
       isGstRegistered: boolean;
       gstNumber?: string;
       description?: string;
-      invoiceDataUrl?: string;
+      invoiceUrl?: string;
       invoiceFileName?: string;
     }
   ): Promise<{ success: boolean; error?: string; updatedProject?: Project }> {
@@ -354,7 +343,7 @@ export async function updateTransaction(
       const existingTransaction = project.grant.phases[phaseIndex].transactions![transactionIndex];
       let newInvoiceUrl = existingTransaction.invoiceUrl;
 
-      if (transactionData.invoiceDataUrl && transactionData.invoiceFileName) {
+      if (transactionData.invoiceUrl && transactionData.invoiceFileName) {
         // A new file was uploaded, replace the old one
         if (existingTransaction.invoiceUrl) {
             try {
@@ -366,12 +355,7 @@ export async function updateTransaction(
             }
         }
         
-        const path = `invoices/${projectId}/${phaseId}/${new Date().toISOString()}-${transactionData.invoiceFileName}`;
-        const result = await uploadFileToServer(transactionData.invoiceDataUrl, path);
-        if (!result.success || !result.url) {
-          throw new Error(result.error || "New invoice upload failed");
-        }
-        newInvoiceUrl = result.url;
+        newInvoiceUrl = transactionData.invoiceUrl;
       }
   
       const updatedTransaction: Transaction = {

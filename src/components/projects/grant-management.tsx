@@ -13,6 +13,7 @@ import { useToast } from "@/hooks/use-toast"
 import { addGrantPhase, addTransaction, updatePhaseStatus, deleteTransaction, updateTransaction } from "@/app/grant-actions"
 import { generateInstallmentOfficeNoting } from "@/app/document-actions"
 import React, { useState, useEffect } from "react"
+import { useAuth } from "@/components/providers/FirebaseProvider"
 import {
   DollarSign,
   Banknote,
@@ -56,7 +57,6 @@ import { Alert, AlertDescription, AlertTitle } from "../ui/alert"
 import Link from "next/link"
 import { Badge } from "../ui/badge"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "../ui/dropdown-menu"
-import { uploadFileToServer } from "@/app/server-actions"
 import { format, parseISO } from "date-fns"
 
 
@@ -66,17 +66,30 @@ interface GrantManagementProps {
   onUpdate: (updatedProject: Project) => void
 }
 
-const fileToDataUrl = (file: File): Promise<string> => {
-    return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(reader.result as string);
-        reader.onerror = error => reject(error);
-        reader.readAsDataURL(file);
+const uploadFileToApi = async (file: File, authToken: string): Promise<string> => {
+    const formData = new FormData();
+    formData.append("file", file);
+
+    const response = await fetch("/api/upload", {
+        method: "POST",
+        headers: {
+            "Authorization": `Bearer ${authToken}`,
+        },
+        body: formData,
     });
+
+    if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || "Failed to upload file");
+    }
+
+    const result = await response.json();
+    return result.file.uploadedUrl;
 };
 
 export function GrantManagement({ project, user, onUpdate }: GrantManagementProps) {
   const { toast } = useToast()
+  const auth = useAuth()
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isAddPhaseOpen, setIsAddPhaseOpen] = useState(false)
   const [isTransactionOpen, setIsTransactionOpen] = useState(false)
@@ -274,16 +287,22 @@ export function GrantManagement({ project, user, onUpdate }: GrantManagementProp
     setIsSubmitting(true);
     
     try {
-        let invoiceDataUrl: string | undefined = editingTransaction?.invoiceUrl;
+        let invoiceUrl: string | undefined = editingTransaction?.invoiceUrl;
         let invoiceFileName: string | undefined = 'existing_invoice.pdf';
         const invoiceFile = values.invoice?.[0];
 
         if (invoiceFile) {
-            invoiceDataUrl = await fileToDataUrl(invoiceFile);
+            // Get auth token and upload file using the API route
+            const token = await auth.currentUser?.getIdToken();
+            if (!token) {
+                throw new Error("User authentication failed. Please log in again.");
+            }
+            
+            invoiceUrl = await uploadFileToApi(invoiceFile, token);
             invoiceFileName = invoiceFile.name;
         }
 
-        if (!invoiceDataUrl) {
+        if (!invoiceUrl) {
             throw new Error("Invoice file is required.");
         }
         
@@ -294,7 +313,7 @@ export function GrantManagement({ project, user, onUpdate }: GrantManagementProp
             isGstRegistered: values.isGstRegistered,
             gstNumber: values.gstNumber,
             description: values.description,
-            invoiceDataUrl,
+            invoiceUrl,
             invoiceFileName,
         };
         
