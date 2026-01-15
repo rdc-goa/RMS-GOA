@@ -9,11 +9,9 @@ import { ThemeProvider } from '@/components/providers/theme-provider';
 import { Toaster } from '@/components/ui/toaster';
 import { isFirebaseInitialized, app, auth, db } from '@/lib/config';
 import { AuthInitializer } from '@/components/AuthInitializer';
-import { Analytics } from '@vercel/analytics/react';
 import { FirebaseProvider } from '@/components/providers/FirebaseProvider';
 import Head from 'next/head';
 import Script from 'next/script';
-import { signInWithGoogleCredential } from './server-actions';
 import { useRouter } from 'next/navigation';
 
 
@@ -95,7 +93,6 @@ export default function RootLayout({
             </FirebaseProvider>
             <Toaster />
             </ThemeProvider>
-            <Analytics />
         </body>
         </html>
     );

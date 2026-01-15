@@ -1851,14 +1851,31 @@ export async function sendErrorEmail(
 
 export async function signInWithGoogleCredential(credentialString: string): Promise<{ success: boolean; user?: any; error?: string }> {
     try {
-        const credential = JSON.parse(credentialString);
-        const user = await adminAuth.verifyIdToken(credential.credential);
+      const credential = JSON.parse(credentialString);
+      // Log received credential shape for debugging (mask sensitive token parts)
+      try {
+        const hasCredential = !!credential?.credential;
+        const credPreview = hasCredential && typeof credential.credential === 'string'
+          ? `${credential.credential.slice(0, 10)}...${credential.credential.slice(-10)}`
+          : null;
+        console.info('[Auth] signInWithGoogleCredential received payload', {
+          hasCredential,
+          keys: Object.keys(credential || {}),
+          credPreview,
+        });
+      } catch (logErr) {
+        console.warn('[Auth] could not log credential preview', logErr);
+      }
+
+      console.log('Google credential received, verifying...');
+      const user = await adminAuth.verifyIdToken(credential.credential);
         const { uid, email, name, picture } = user;
         return {
             success: true,
             user: { uid, email, displayName: name, photoURL: picture },
         };
     } catch (error: any) {
+     console.error('Google credential verification error:', error.message);
         return { success: false, error: error.message || "Failed to verify Google credential." };
     }
 }
