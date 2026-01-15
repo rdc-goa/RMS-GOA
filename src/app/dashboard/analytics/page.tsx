@@ -356,7 +356,6 @@ export default function AnalyticsPage() {
       .filter(claim => (claim.finalApprovedAmount || 0) > 0)
       .reduce((acc, claim) => {
         const type = claim.claimType;
-        const amount = claim.finalApprovedAmount || 0;
         acc[type] = (acc[type] || 0) + amount;
         return acc;
       }, {} as Record<string, number>);
@@ -434,7 +433,7 @@ export default function AnalyticsPage() {
             </Select>
         )}
       </PageHeader>
-      <div className="mt-8 grid gap-6 md:grid-cols-2 lg:grid-cols-4">
+      <div className="mt-8 grid gap-6 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
         <Card>
             <CardHeader>
                 <CardTitle>Daily Active Users</CardTitle>
@@ -464,7 +463,7 @@ export default function AnalyticsPage() {
                 <p className="text-xs text-muted-foreground">Across {incentiveClaims.filter(c => c.finalApprovedAmount).length} claims</p>
             </CardContent>
         </Card>
-        <Card className="lg:col-span-2">
+        <Card className="sm:col-span-2">
           <CardHeader className="flex flex-row items-center justify-between">
             <div>
               <CardTitle>Project Status Distribution</CardTitle>
@@ -492,7 +491,7 @@ export default function AnalyticsPage() {
           </CardContent>
         </Card>
       </div>
-       <div className="mt-8 grid gap-6 md:grid-cols-1 lg:grid-cols-3">
+       <div className="mt-8 grid gap-6 grid-cols-1 lg:grid-cols-3">
         <Card className="lg:col-span-2">
           <CardHeader>
             <div className="flex flex-col sm:flex-row justify-between items-start gap-2">
@@ -582,7 +581,7 @@ export default function AnalyticsPage() {
           </CardContent>
         </Card>
       </div>
-       <div className="mt-8 grid gap-6 md:grid-cols-1 lg:grid-cols-2">
+       <div className="mt-8 grid gap-6 grid-cols-1 lg:grid-cols-2">
         <Card>
           <CardHeader>
             <div className="flex flex-col sm:flex-row justify-between items-start gap-2">

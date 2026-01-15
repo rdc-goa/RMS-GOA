@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
@@ -40,6 +41,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Separator } from '@/components/ui/separator';
+import { FieldPath } from 'firebase/firestore';
 
 const CLAIM_TYPES = ['Research Papers', 'Patents', 'Conference Presentations', 'Books', 'Membership of Professional Bodies', 'Seed Money for APC'];
 type SortableKeys = keyof Pick<IncentiveClaim, 'userName' | 'paperTitle' | 'submissionDate' | 'status' | 'claimType'>;
@@ -386,16 +388,16 @@ export default function ManageIncentiveClaimsPage() {
         </div>
       </PageHeader>
       <div className="mt-8">
-        <div className="flex items-center justify-between py-4 gap-4">
-            <div className="flex items-center gap-2">
+        <div className="flex flex-col sm:flex-row items-center justify-between py-4 gap-4">
+            <div className="flex flex-col sm:flex-row w-full sm:w-auto items-center gap-2">
               <Input
                   placeholder="Filter by claimant, title, or Claim ID..."
                   value={searchTerm}
                   onChange={(event) => setSearchTerm(event.target.value)}
-                  className="max-w-sm"
+                  className="w-full sm:max-w-sm"
               />
               <Select value={claimTypeFilter} onValueChange={setClaimTypeFilter}>
-                  <SelectTrigger className="w-[240px]">
+                  <SelectTrigger className="w-full sm:w-[240px]">
                       <SelectValue placeholder="Filter by claim type" />
                   </SelectTrigger>
                   <SelectContent>
@@ -407,19 +409,19 @@ export default function ManageIncentiveClaimsPage() {
               </Select>
             </div>
             {activeTab === 'pending-bank' && selectedClaims.length > 0 && (
-                <div className="flex items-center gap-2">
-                    <Button onClick={() => setIsGenerateSheetOpen(true)} disabled={eligibleForPaymentSheet.length === 0 || isUpdating}>
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full sm:w-auto">
+                    <Button onClick={() => setIsGenerateSheetOpen(true)} disabled={eligibleForPaymentSheet.length === 0 || isUpdating} className="w-full sm:w-auto">
                         Generate Payment Sheet ({eligibleForPaymentSheet.length})
                     </Button>
-                    <Button onClick={handleDownloadNotings} disabled={isDownloadingNotings}>
+                    <Button onClick={handleDownloadNotings} disabled={isDownloadingNotings} className="w-full sm:w-auto">
                         {isDownloadingNotings ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
                         Download Notings ({selectedClaims.length})
                     </Button>
-                    <Button onClick={handleSubmitToAccounts} disabled={isUpdating || !selectedClaims.every(id => allClaims.find(c => c.id === id)?.status === 'Accepted')}>
+                    <Button onClick={handleSubmitToAccounts} disabled={isUpdating || !selectedClaims.every(id => allClaims.find(c => c.id === id)?.status === 'Accepted')} className="w-full sm:w-auto">
                         {isUpdating ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
                         Submit to Accounts
                     </Button>
-                    <Button onClick={handleMarkPaymentCompleted} disabled={isUpdating || !selectedClaims.every(id => allClaims.find(c => c.id === id)?.status === 'Submitted to Accounts')}>
+                    <Button onClick={handleMarkPaymentCompleted} disabled={isUpdating || !selectedClaims.every(id => allClaims.find(c => c.id === id)?.status === 'Submitted to Accounts')} className="w-full sm:w-auto">
                         {isUpdating ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
                         Mark as Payment Completed
                     </Button>
@@ -427,7 +429,7 @@ export default function ManageIncentiveClaimsPage() {
             )}
         </div>
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-            <TabsList className="grid w-full grid-cols-4">
+            <TabsList className="grid w-full grid-cols-2 sm:grid-cols-4">
                 <TabsTrigger value="pending">Pending ({tabClaims.pending.length})</TabsTrigger>
                 <TabsTrigger value="pending-bank">Pending for Bank ({tabClaims['pending-bank'].length})</TabsTrigger>
                 <TabsTrigger value="approved">Approved ({tabClaims.approved.length})</TabsTrigger>

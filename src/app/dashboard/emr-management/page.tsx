@@ -10,7 +10,7 @@ import { collection, query, orderBy, onSnapshot, where, getDocs, doc, updateDoc 
 import type { FundingCall, EmrInterest, User } from '@/types';
 import { useToast } from '@/hooks/use-toast';
 import { PageHeader } from '@/components/page-header';
-import { Card, CardContent, CardHeader } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardDescription, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
@@ -301,6 +301,62 @@ export default function EmrManagementOverviewPage() {
     }, [calls, interests, searchTerm]);
 
     const isSuperAdmin = user?.role === 'Super-admin';
+    
+    const renderTable = () => (
+        <Table>
+            <TableHeader>
+                <TableRow>
+                    <TableHead>Call Title</TableHead>
+                    <TableHead>Agency</TableHead>
+                    <TableHead>Registrations</TableHead>
+                    <TableHead className="hidden md:table-cell">Date Added</TableHead>
+                    <TableHead className="hidden sm:table-cell">Status</TableHead>
+                    <TableHead className="hidden md:table-cell">Announced</TableHead>
+                    <TableHead className="text-right">Actions</TableHead>
+                </TableRow>
+            </TableHeader>
+            <TableBody>
+                {filteredCalls.map(call => (
+                    <TableRow key={call.id}>
+                        <TableCell className="font-medium whitespace-normal">{call.title}</TableCell>
+                        <TableCell className="whitespace-normal">{call.agency}</TableCell>
+                        <TableCell>{interestCounts[call.id] || 0}</TableCell>
+                        <TableCell className="hidden md:table-cell">{format(parseISO(call.createdAt), 'PP')}</TableCell>
+                        <TableCell className="hidden sm:table-cell">{getStatusBadge(call)}</TableCell>
+                        <TableCell className="hidden md:table-cell">
+                            {call.isAnnounced ? <div className="flex items-center gap-1 text-green-600"><CheckCircle className="h-4 w-4" /> Yes</div> : <div className="flex items-center gap-1 text-muted-foreground"><XCircle className="h-4 w-4" /> No</div>}
+                        </TableCell>
+                        <TableCell className="text-right flex items-center justify-end gap-2">
+                            <Button asChild variant="outline" size="sm"><Link href={`/dashboard/emr-management/${call.id}`}><Eye className="mr-2 h-4 w-4" /> Manage</Link></Button>
+                            {isSuperAdmin && <Button variant="ghost" size="sm" onClick={() => { setSelectedCall(call); setIsAddEditDialogOpen(true); }}><Edit className="mr-2 h-4 w-4" /> Edit</Button>}
+                        </TableCell>
+                    </TableRow>
+                ))}
+            </TableBody>
+        </Table>
+    );
+
+    const renderCards = () => (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {filteredCalls.map(call => (
+                <Card key={call.id}>
+                    <CardHeader>
+                        <CardTitle className="text-base">{call.title}</CardTitle>
+                        <CardDescription>{call.agency}</CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-3 text-sm">
+                        <div><strong className="text-muted-foreground">Registrations:</strong> {interestCounts[call.id] || 0}</div>
+                        <div><strong className="text-muted-foreground">Status:</strong> {getStatusBadge(call)}</div>
+                        <div><strong className="text-muted-foreground">Added:</strong> {format(parseISO(call.createdAt), 'PP')}</div>
+                    </CardContent>
+                    <CardContent className="flex flex-col gap-2">
+                        <Button asChild variant="outline"><Link href={`/dashboard/emr-management/${call.id}`}><Eye className="mr-2 h-4 w-4" /> Manage</Link></Button>
+                        {isSuperAdmin && <Button variant="secondary" onClick={() => { setSelectedCall(call); setIsAddEditDialogOpen(true); }}><Edit className="mr-2 h-4 w-4" /> Edit Call</Button>}
+                    </CardContent>
+                </Card>
+            ))}
+        </div>
+    );
 
     if (!user || loading) {
         return (
@@ -347,59 +403,12 @@ export default function EmrManagementOverviewPage() {
                                 </CardHeader>
                                 <CardContent>
                                     {loading ? (
-                                        <div className="space-y-2">
-                                            <Skeleton className="h-10 w-full" />
-                                            <Skeleton className="h-10 w-full" />
-                                        </div>
+                                        <div className="space-y-2"><Skeleton className="h-10 w-full" /><Skeleton className="h-10 w-full" /></div>
                                     ) : filteredCalls.length > 0 ? (
-                                        <div className="overflow-x-auto">
-                                            <Table>
-                                                <TableHeader><TableRow>
-                                                    <TableHead>Call Title</TableHead>
-                                                    <TableHead>Agency</TableHead>
-                                                    <TableHead>Registrations</TableHead>
-                                                    <TableHead>Date Added</TableHead>
-                                                    <TableHead>Status</TableHead>
-                                                    <TableHead>Announced</TableHead>
-                                                    <TableHead className="text-right">Actions</TableHead>
-                                                </TableRow></TableHeader>
-                                                <TableBody>{filteredCalls.map(call => {
-                                                    const isClosed = isAfter(new Date(), parseISO(call.interestDeadline));
-                                                    return (
-                                                    <TableRow key={call.id}>
-                                                        <TableCell className="font-medium whitespace-normal">{call.title}</TableCell>
-                                                        <TableCell className="whitespace-normal">{call.agency}</TableCell>
-                                                        <TableCell>{interestCounts[call.id] || 0}</TableCell>
-                                                        <TableCell>{format(parseISO(call.createdAt), 'PP')}</TableCell>
-                                                        <TableCell>{getStatusBadge(call)}</TableCell>
-                                                        <TableCell>
-                                                            {call.isAnnounced ? (
-                                                                <div className="flex items-center gap-1 text-green-600"><CheckCircle className="h-4 w-4" /> Yes</div>
-                                                            ) : (
-                                                                <div className="flex items-center gap-1 text-muted-foreground"><XCircle className="h-4 w-4" /> No</div>
-                                                            )}
-                                                        </TableCell>
-                                                        <TableCell className="text-right flex items-center justify-end gap-2">
-                                                            <Button asChild variant="outline" size="sm">
-                                                                <Link href={`/dashboard/emr-management/${call.id}`}><Eye className="mr-2 h-4 w-4" /> Manage</Link>
-                                                            </Button>
-                                                            {isSuperAdmin && (
-                                                                <>
-                                                                <Button variant="ghost" size="sm" onClick={() => { setSelectedCall(call); setIsAddEditDialogOpen(true); }}>
-                                                                    <Edit className="mr-2 h-4 w-4" /> Edit
-                                                                </Button>
-                                                                 {!call.isAnnounced && !isClosed && (
-                                                                    <Button variant="secondary" size="sm" onClick={() => { setSelectedCall(call); setIsAnnounceDialogOpen(true); }}>
-                                                                        <Send className="mr-2 h-4 w-4" /> Announce
-                                                                    </Button>
-                                                                )}
-                                                                </>
-                                                            )}
-                                                        </TableCell>
-                                                    </TableRow>
-                                                )})}</TableBody>
-                                            </Table>
-                                        </div>
+                                        <>
+                                            <div className="hidden md:block">{renderTable()}</div>
+                                            <div className="block md:hidden">{renderCards()}</div>
+                                        </>
                                     ) : (
                                         <div className="text-center text-muted-foreground py-8">No funding calls have been created or match your search.</div>
                                     )}
