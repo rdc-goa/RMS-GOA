@@ -197,7 +197,7 @@ export default function SignupPage() {
       router.push("/profile-setup")
     }
   }
-
+  
   useEffect(() => {
     const handleCredentialResponse = async (response: any) => {
       setIsSubmitting(true);
@@ -217,7 +217,7 @@ export default function SignupPage() {
         setIsSubmitting(false);
       }
     };
-
+    
     const checkAuthAndSettings = async () => {
         const settings = await getSystemSettings();
         setAuthSettings({ email: true, google: true, ...settings.authMethods });
@@ -238,39 +238,43 @@ export default function SignupPage() {
       console.error("Google Client ID is missing.");
       return;
     }
-
+    
+    // Make the handler available globally for the script to call
     (window as any).handleCredentialResponse = handleCredentialResponse;
 
-    const script = document.createElement('script');
-    script.src = 'https://accounts.google.com/gsi/client';
-    script.async = true;
-    script.defer = true;
-    document.body.appendChild(script);
+    if (!document.getElementById('google-gsi-script')) {
+        const script = document.createElement('script');
+        script.id = 'google-gsi-script';
+        script.src = 'https://accounts.google.com/gsi/client';
+        script.async = true;
+        script.defer = true;
+        script.onload = () => {
+          if (!window.google) {
+            console.error('Google script loaded but window.google is not available.');
+            return;
+          }
 
-    script.onload = () => {
-      if (!window.google) return;
-      
-      window.google.accounts.id.initialize({
-        client_id: googleClientId,
-        callback: (window as any).handleCredentialResponse,
-      });
+          window.google.accounts.id.initialize({
+            client_id: googleClientId,
+            callback: (window as any).handleCredentialResponse,
+          });
 
-      const buttonParent = document.getElementById('google-signup-button');
-      if (buttonParent) {
-        window.google.accounts.id.renderButton(buttonParent, {
-          theme: theme === 'dark' ? 'filled_black' : 'outline',
-          size: 'large',
-          text: 'signup_with',
-          shape: 'rectangular',
-          logo_alignment: 'left',
-        });
-      }
-      
-      window.google.accounts.id.prompt();
-    };
+          const buttonParent = document.getElementById('google-signup-button');
+          if (buttonParent) {
+            window.google.accounts.id.renderButton(buttonParent, {
+              theme: theme === 'dark' ? 'filled_black' : 'outline',
+              size: 'large',
+              text: 'signup_with',
+              shape: 'rectangular',
+              logo_alignment: 'left',
+            });
+          }
+        };
+        document.body.appendChild(script);
+    }
     
     return () => {
-        document.body.removeChild(script);
+        // Cleanup the global callback function
         delete (window as any).handleCredentialResponse;
     };
   }, [router, toast, googleClientId, theme]);
@@ -424,7 +428,7 @@ export default function SignupPage() {
                   </form>
                 </Form>
               )}
-              {showSeparator && (
+               {showSeparator && (
                 <div className="relative my-6">
                   <div className="absolute inset-0 flex items-center">
                     <span className="w-full border-t" />
@@ -434,6 +438,7 @@ export default function SignupPage() {
                   </div>
                 </div>
               )}
+              
               {showGoogleButton && <div id="google-signup-button" className="flex justify-center"></div>}
                {!showEmailForm && !showGoogleButton && (
                   <div className="text-center text-muted-foreground p-4 border rounded-md">
