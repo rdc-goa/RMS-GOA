@@ -37,6 +37,7 @@ import {
 } from "@/app/server-actions"
 import { Eye, EyeOff, Loader2 } from "lucide-react"
 import { useTheme } from "next-themes"
+import Script from "next/script"
 
 const signupSchema = z
   .object({
@@ -197,27 +198,27 @@ export default function SignupPage() {
       router.push("/profile-setup")
     }
   }
-  
+
   useEffect(() => {
     const handleCredentialResponse = async (response: any) => {
-      setIsSubmitting(true);
-      try {
-        const result = await signInWithGoogleCredential(JSON.stringify(response));
-        if (!result.success || !result.user) {
-          throw new Error(result.error || "Failed to verify Google credential.");
+        setIsSubmitting(true);
+        try {
+            const result = await signInWithGoogleCredential(JSON.stringify(response));
+            if (!result.success || !result.user) {
+            throw new Error(result.error || "Failed to verify Google credential.");
+            }
+            await processNewUser(result.user as any);
+        } catch (error: any) {
+            toast({
+            variant: "destructive",
+            title: "Sign Up Failed",
+            description: error.message || "Could not sign up with Google. Please try again.",
+            });
+        } finally {
+            setIsSubmitting(false);
         }
-        await processNewUser(result.user as any);
-      } catch (error: any) {
-        toast({
-          variant: "destructive",
-          title: "Sign Up Failed",
-          description: error.message || "Could not sign up with Google. Please try again.",
-        });
-      } finally {
-        setIsSubmitting(false);
-      }
     };
-    
+
     const checkAuthAndSettings = async () => {
         const settings = await getSystemSettings();
         setAuthSettings({ email: true, google: true, ...settings.authMethods });
@@ -233,51 +234,16 @@ export default function SignupPage() {
     };
 
     checkAuthAndSettings();
+    if (!googleClientId) return;
 
-    if (!googleClientId) {
-      console.error("Google Client ID is missing.");
-      return;
+    if (window.google) {
+      window.google.accounts.id.initialize({
+        client_id: googleClientId,
+        callback: handleCredentialResponse,
+      });
+      window.google.accounts.id.prompt();
     }
-    
-    // Make the handler available globally for the script to call
-    (window as any).handleCredentialResponse = handleCredentialResponse;
-
-    if (!document.getElementById('google-gsi-script')) {
-        const script = document.createElement('script');
-        script.id = 'google-gsi-script';
-        script.src = 'https://accounts.google.com/gsi/client';
-        script.async = true;
-        script.defer = true;
-        script.onload = () => {
-          if (!window.google) {
-            console.error('Google script loaded but window.google is not available.');
-            return;
-          }
-
-          window.google.accounts.id.initialize({
-            client_id: googleClientId,
-            callback: (window as any).handleCredentialResponse,
-          });
-
-          const buttonParent = document.getElementById('google-signup-button');
-          if (buttonParent) {
-            window.google.accounts.id.renderButton(buttonParent, {
-              theme: theme === 'dark' ? 'filled_black' : 'outline',
-              size: 'large',
-              text: 'signup_with',
-              shape: 'rectangular',
-              logo_alignment: 'left',
-            });
-          }
-        };
-        document.body.appendChild(script);
-    }
-    
-    return () => {
-        // Cleanup the global callback function
-        delete (window as any).handleCredentialResponse;
-    };
-  }, [router, toast, googleClientId, theme]);
+  }, [router, toast, googleClientId]);
 
   const validateEmailDomain = async (email: string): Promise<boolean> => {
     if (email === "rathipranav07@gmail.com" || email === "vicepresident_86@paruluniversity.ac.in") {
@@ -336,6 +302,8 @@ export default function SignupPage() {
 
 
   return (
+    <>
+    <Script src="https://accounts.google.com/gsi/client" async defer />
     <div className="flex flex-col min-h-screen bg-background dark:bg-transparent">
       <main className="flex-1 flex min-h-screen items-center justify-center bg-muted/40 p-4">
         <div className="w-full max-w-md">
@@ -439,7 +407,16 @@ export default function SignupPage() {
                 </div>
               )}
               
-              {showGoogleButton && <div id="google-signup-button" className="flex justify-center"></div>}
+               {showGoogleButton && (
+                    <div
+                        id="g_id_onload"
+                        data-client_id={googleClientId}
+                        data-context="signup"
+                        data-login_uri={`${process.env.NEXT_PUBLIC_BASE_URL}/login`}
+                        data-callback="handleCredentialResponse"
+                        data-itp_support="true"
+                    ></div>
+                )}
                {!showEmailForm && !showGoogleButton && (
                   <div className="text-center text-muted-foreground p-4 border rounded-md">
                       Sign-up is temporarily disabled. Please contact an administrator.
@@ -474,5 +451,6 @@ export default function SignupPage() {
         </nav>
       </footer>
     </div>
+    </>
   )
 }
