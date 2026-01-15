@@ -239,13 +239,14 @@ export default function SignupPage() {
       return;
     }
 
-    // Assign the callback to the window object so Google's script can find it
     (window as any).handleCredentialResponse = handleCredentialResponse;
 
     const script = document.createElement('script');
     script.src = 'https://accounts.google.com/gsi/client';
     script.async = true;
     script.defer = true;
+    document.body.appendChild(script);
+
     script.onload = () => {
       if (!window.google) return;
       
@@ -264,13 +265,13 @@ export default function SignupPage() {
           logo_alignment: 'left',
         });
       }
+      
+      window.google.accounts.id.prompt();
     };
     
-    document.body.appendChild(script);
-
     return () => {
-      document.body.removeChild(script);
-      delete (window as any).handleCredentialResponse;
+        document.body.removeChild(script);
+        delete (window as any).handleCredentialResponse;
     };
   }, [router, toast, googleClientId, theme]);
 
