@@ -1,4 +1,3 @@
-
   'use client';
 
 import { useRouter } from 'next/navigation';
@@ -28,21 +27,39 @@ import { Combobox } from '@/components/ui/combobox';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from '@/components/ui/dialog';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 
-const profileSetupSchema = z.object({
+const profileSetupSchema = (userType: string | null) => z.object({
   name: z.string().min(2, 'A full name is required.'),
   faculty: z.string().min(1, 'Please select a faculty.'),
   institute: z.string().min(1, 'Please select an institute.'),
   department: z.string().optional(),
   designation: z.string().min(2, 'Designation is required.'),
-  misId: z.string().min(1, 'MIS ID is required.'),
+  misId: z.string().optional(),
   orcidId: z.string().optional(),
   scopusId: z.string().optional(),
   vidwanId: z.string().optional(),
   googleScholarId: z.string().optional(),
-  phoneNumber: z.string().min(10, 'A valid 10-digit phone number is required.').max(10, 'A valid 10-digit phone number is required.'),
+  phoneNumber: z.string().optional(),
+}).superRefine((data, ctx) => {
+    if (userType !== 'Institutional') {
+        if (!data.misId || data.misId.length < 1) {
+            ctx.addIssue({
+                code: z.ZodIssueCode.custom,
+                message: 'MIS ID is required.',
+                path: ['misId'],
+            });
+        }
+        if (!data.phoneNumber || !/^\d{10}$/.test(data.phoneNumber)) {
+            ctx.addIssue({
+                code: z.ZodIssueCode.custom,
+                message: 'A valid 10-digit phone number is required.',
+                path: ['phoneNumber'],
+            });
+        }
+    }
 });
 
-type ProfileSetupFormValues = z.infer<typeof profileSetupSchema>;
+
+type ProfileSetupFormValues = z.infer<ReturnType<typeof profileSetupSchema>>;
 
 
 const faculties = [
@@ -78,22 +95,6 @@ const goaInstitutes = [
     "University Office"
 ];
 
-const institutes = [
-    "Ahmedabad Homoeopathic Medical College", "Ahmedabad Physiotherapy College",
-    "College of Agriculture", "Parul Institute of Allied & Healthcare Sciences", "Faculty of Library & Information Science",
-    "Institute of Pharmaceutical Sciences", "Jawaharlal Nehru Homoeopathic Medical College", "Parul College of Pharmacy & Research",
-    "Parul Institute of Applied Sciences (Ahmedabad Campus)", "Parul Institute of Applied Sciences (Vadodara Campus)", "Parul Institute of Architecture & Research",
-    "Parul Institute of Arts", "Parul Institute of Ayurveda", "Parul Institute of Ayurveda & Research", "Parul Institute of Business Administration",
-    "Parul Institute of Commerce", "Parul Institute of Computer Application", "Parul Institute of Design", "Parul Institute of Engineering & Technology",
-    "Parul Institute of Engineering & Technology (Diploma Studies)", "Parul Institute of Fine Arts", "Parul Institute of Homeopathy & Research",
-    "Parul Institute of Hotel Management & Catering Technology", "Parul Institute of Law", "Parul Institute of Management", "Parul Institute of Management & Research",
-    "Parul Institute of Medical Sciences & Research", "Parul Institute of Nursing", "Parul Institute of Performing Arts",
-    "Parul Institute of Pharmaceutical Education & Research", "Parul Institute of Pharmacy", "Parul Institute of Pharmacy & Research",
-    "Parul Institute of Physiotherapy", "Parul Institute of Physiotherapy and Research", "Parul Institute of Social Work", "Parul Institute of Technology",
-    "Parul Institute of Technology-Diploma studies", "Parul Institute of Vocational Education", "Parul Medical Institute & Hospital", "Parul Polytechnic Institute", "Parul Institute of Public Health",
-    "Parul Sevashram Hospital", "Rajkot Homoeopathic Medical College", "RDC", "School of Pharmacy", "University Office", "Parul Aarogya Seva Mandal",
-];
-
 const fileToDataUrl = (file: File): Promise<string> => {
     return new Promise((resolve, reject) => {
         const reader = new FileReader();
@@ -119,7 +120,7 @@ export default function ProfileSetupPage() {
   const [isSelectionOpen, setIsSelectionOpen] = useState(false);
 
   const form = useForm<ProfileSetupFormValues>({
-    resolver: zodResolver(profileSetupSchema),
+    resolver: zodResolver(profileSetupSchema(userType)),
     defaultValues: {
       name: '',
       faculty: '',
@@ -143,13 +144,13 @@ export default function ProfileSetupPage() {
           const result = await res.json();
           
           if (result.success && result.data.length > 0) {
-              if (result.data.length > 1) { // This case is now less likely but kept for robustness
+              if (result.data.length > 1) { 
                   setFoundUsers(result.data);
                   setIsSelectionOpen(true);
               } else {
                   form.reset(result.data[0]);
                   setUserType(result.data[0].type);
-                  form.setValue("misId", misIdToFetch); // Ensure the searched MIS ID is set
+                  form.setValue("misId", misIdToFetch); 
                   toast({ title: 'Profile Pre-filled', description: 'Your information has been pre-filled. Please review and save.' });
               }
           } else {
@@ -187,13 +188,12 @@ export default function ProfileSetupPage() {
           setPreviewUrl(appUser.photoURL || null);
           form.setValue('name', appUser.name);
           
-          // Pre-fetch user type based on email to determine if MIS ID is needed.
           const staffRes = await fetch(`/api/get-staff-data?email=${appUser.email!}`);
           const staffResult = await staffRes.json();
-          if (staffResult.success) {
+          if (staffResult.success && staffResult.data.length > 0) {
               setUserType(staffResult.data[0]?.type || 'faculty');
           } else {
-              setUserType('faculty'); // Default to faculty if not found
+              setUserType('faculty');
           }
           
         } else {
@@ -241,7 +241,7 @@ export default function ProfileSetupPage() {
   if (!user) return;
   setIsSubmitting(true);
   try {
-    if (data.misId) {
+    if (data.misId && userType !== 'Institutional') {
       const misIdCheck = await checkMisIdExists(data.misId, user.uid, 'Goa');
       if (misIdCheck.exists) {
         form.setError("misId", {
@@ -432,26 +432,30 @@ export default function ProfileSetupPage() {
                   <FormField control={form.control} name="designation" render={({ field }) => (
                     <FormItem><FormLabel>Designation</FormLabel><FormControl><Input placeholder="e.g., Professor" {...field} /></FormControl><FormMessage /></FormItem>
                   )} />
-                  <FormField control={form.control} name="phoneNumber" render={({ field }) => (
-                    <FormItem><FormLabel>Phone Number</FormLabel><FormControl><Input type="tel" placeholder="e.g. 9876543210" {...field} /></FormControl><FormMessage /></FormItem>
-                  )} />
+                   {userType !== 'Institutional' && (
+                    <FormField control={form.control} name="phoneNumber" render={({ field }) => (
+                        <FormItem><FormLabel>Phone Number</FormLabel><FormControl><Input type="tel" placeholder="e.g. 9876543210" {...field} /></FormControl><FormMessage /></FormItem>
+                    )} />
+                   )}
                   
                   <Separator />
                   <h3 className="text-md font-semibold pt-2">Academic & Researcher IDs</h3>
                   
-                  <FormField
-                    control={form.control}
-                    name="misId"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>MIS ID</FormLabel>
-                        <FormControl>
-                          <Input placeholder="Your MIS ID" {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
+                   {userType !== 'Institutional' && (
+                    <FormField
+                        control={form.control}
+                        name="misId"
+                        render={({ field }) => (
+                        <FormItem>
+                            <FormLabel>MIS ID</FormLabel>
+                            <FormControl>
+                            <Input placeholder="Your MIS ID" {...field} />
+                            </FormControl>
+                            <FormMessage />
+                        </FormItem>
+                        )}
+                    />
+                   )}
                    <FormField control={form.control} name="orcidId" render={({ field }) => (
                       <FormItem>
                           <FormLabel>ORCID iD</FormLabel>
