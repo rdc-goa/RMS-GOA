@@ -39,16 +39,15 @@ export async function fetchAdvancedScopusData(
   }
 
   let apiUrl = '';
-  // Check if the identifier is a DOI
-  const doiMatch = identifier.match(/(10\.\d{4,9}\/[-._;()/:A-Z0-9]+)/i);
   const eidMatch = identifier.match(/eid=([^&]+)/);
+  const doiMatch = identifier.match(/(10\.\d{4,9}\/[-._;()/:A-Z0-9]+)/i);
 
-  if (doiMatch && doiMatch[1]) {
-    const doi = doiMatch[1];
-    apiUrl = `https://api.elsevier.com/content/abstract/doi/${encodeURIComponent(doi)}`;
-  } else if (eidMatch && eidMatch[1]) {
+  if (eidMatch && eidMatch[1]) {
     const eid = eidMatch[1];
     apiUrl = `https://api.elsevier.com/content/abstract/eid/${encodeURIComponent(eid)}`;
+  } else if (doiMatch && doiMatch[1]) {
+    const doi = doiMatch[1];
+    apiUrl = `https://api.elsevier.com/content/abstract/doi/${encodeURIComponent(doi)}`;
   } else {
     // Assume the identifier is a DOI if no other pattern matches
     apiUrl = `https://api.elsevier.com/content/abstract/doi/${encodeURIComponent(identifier)}`;
@@ -60,7 +59,7 @@ export async function fetchAdvancedScopusData(
     });
     if (!response.ok) {
         const errorData = await response.json();
-        const errorMessage = errorData?.['service-error']?.status?.statusText || response.statusText;
+        const errorMessage = errorData?.['service-error']?.status?.statusText || response.statusText || "The resource specified cannot be found.";
         throw new Error(`Scopus Abstract API Error: ${errorMessage}`);
     }
     const abstractData = await response.json();
@@ -74,15 +73,47 @@ export async function fetchAdvancedScopusData(
     const paperTitle = coredata["dc:title"] || "";
     const journalName = coredata["prism:publicationName"] || "";
     const coverDate = coredata["prism:coverDate"];
-    const printIssn = coredata["prism:issn"];
-    const electronicIssn = coredata["prism:eIssn"];
     const subtypeDescription = coredata["subtypeDescription"] || "";
     
-    // Check for PU affiliation
-    const affiliations = retrievalResponse.affiliation || [];
-    const isPuNameInPublication = affiliations.some((affil: any) => 
-        affil['affilname'] && affil['affilname'].toLowerCase().includes('parul')
-    );
+    // Defensive check for affiliation data
+    let affiliationData = retrievalResponse.affiliation;
+    if (affiliationData && !Array.isArray(affiliationData)) {
+        affiliationData = [affiliationData];
+    }
+    
+    let isPuNameInPublication = false;
+    if (Array.isArray(affiliationData)) {
+        try {
+            isPuNameInPublication = affiliationData.some((affil: any) => 
+                affil && typeof affil === 'object' && affil['affilname'] && affil['affilname'].toLowerCase().includes('parul')
+            );
+        } catch (e) {
+            console.warn("Could not parse Scopus affiliation data, ignoring.", e);
+        }
+    }
+
+
+    let printIssn: string | undefined;
+    let electronicIssn: string | undefined;
+
+    const issnData = coredata["prism:issn"];
+    if (Array.isArray(issnData)) {
+      issnData.forEach((issn: any) => {
+        if (issn && typeof issn === 'object' && issn['$']) {
+          if (issn['@type'] === 'electronic') {
+            electronicIssn = issn['$'];
+          } else {
+            printIssn = issn['$'];
+          }
+        }
+      });
+    } else if (typeof issnData === 'string') {
+      printIssn = issnData;
+    }
+    if (!electronicIssn && coredata["prism:eIssn"]) {
+      electronicIssn = coredata["prism:eIssn"];
+    }
+
 
     let publicationMonth = '';
     let publicationYear = '';
@@ -111,37 +142,6 @@ export async function fetchAdvancedScopusData(
         }
     }
 
-    const sourceId = coredata['source-id'];
-    if (sourceId) {
-        try {
-            const serialApiUrl = `https://api.elsevier.com/content/serial/title/source_id/${sourceId}?apiKey=${apiKey}&view=ENHANCED`;
-            const serialResponse = await fetch(serialApiUrl, { headers: { Accept: "application/json" } });
-            if (serialResponse.ok) {
-                const serialData = await serialResponse.json();
-                const serialTitleResponse = serialData?.['serial-title-response']?.[0];
-                const citeScoreInfo = serialTitleResponse?.citeScoreYearInfoList;
-
-                if (citeScoreInfo?.citeScoreTracker && citeScoreInfo?.citeScoreCurrentMetric) {
-                     const percentile = parseFloat(citeScoreInfo.citeScoreTracker);
-                     if (!isNaN(percentile)) {
-                        journalClassification = calculateQuartile(percentile);
-                     } else {
-                        warning = 'Could not parse percentile from Scopus to determine Q rating.';
-                     }
-                } else {
-                    warning = 'Q rating information was not available in the Scopus response for this journal.';
-                }
-            } else {
-                 warning = `Could not fetch Q rating details. Scopus returned status: ${serialResponse.status}`;
-                 console.warn(`Scopus Serial API failed with status: ${serialResponse.status}`);
-            }
-        } catch (serialError) {
-            warning = 'Could not fetch journal Q rating due to a network error. Please enter it manually.';
-            console.warn("Could not fetch journal Q rating from Scopus Serial API, but proceeding without it.", serialError);
-        }
-    }
-
-
     // After getting journalName, try to find its website via Springer Nature API
     if (journalName) {
       const springerApiKey = process.env.SPRINGER_API_KEY;
@@ -160,7 +160,6 @@ export async function fetchAdvancedScopusData(
           }
         } catch (e) {
           console.warn("Springer Nature API call failed, proceeding without website.", e);
-          // Do not throw an error, just proceed without the website.
         }
       }
     }
