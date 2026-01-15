@@ -16,7 +16,7 @@ import { auth, db } from "@/lib/config"
 import {
   createUserWithEmailAndPassword,
   GoogleAuthProvider,
-  signInWithPopup,
+  signInWithCredential,
   signOut,
   type User as FirebaseUser,
   onAuthStateChanged,
@@ -33,7 +33,6 @@ import {
   isEmailDomainAllowed,
   linkEmrCoPiInterestsToNewUser,
   getSystemSettings,
-  signInWithGoogleCredential,
 } from "@/app/server-actions"
 import { Eye, EyeOff, Loader2 } from "lucide-react"
 import { useTheme } from "next-themes"
@@ -199,26 +198,26 @@ export default function SignupPage() {
     }
   }
 
-  useEffect(() => {
-    const handleCredentialResponse = async (response: any) => {
-        setIsSubmitting(true);
-        try {
-            const result = await signInWithGoogleCredential(JSON.stringify(response));
-            if (!result.success || !result.user) {
-            throw new Error(result.error || "Failed to verify Google credential.");
-            }
-            await processNewUser(result.user as any);
-        } catch (error: any) {
-            toast({
-            variant: "destructive",
-            title: "Sign Up Failed",
-            description: error.message || "Could not sign up with Google. Please try again.",
-            });
-        } finally {
-            setIsSubmitting(false);
-        }
-    };
+  // Define handleCredentialResponse using useCallback so it can be used in useEffect
+  const handleCredentialResponse = useCallback(async (response: any) => {
+    setIsSubmitting(true);
+    try {
+      // Exchange Google credential for Firebase credential
+      const credential = GoogleAuthProvider.credential(response.credential);
+      const userCredential = await signInWithCredential(auth, credential);
+      await processNewUser(userCredential.user);
+    } catch (error: any) {
+      toast({
+        variant: "destructive",
+        title: "Sign Up Failed",
+        description: error.message || "Could not sign up with Google. Please try again.",
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
+  }, [toast]);
 
+  useEffect(() => {
     const checkAuthAndSettings = async () => {
         const settings = await getSystemSettings();
         setAuthSettings({ email: true, google: true, ...settings.authMethods });
@@ -234,16 +233,44 @@ export default function SignupPage() {
     };
 
     checkAuthAndSettings();
+
     if (!googleClientId) return;
 
-    if (window.google) {
-      window.google.accounts.id.initialize({
-        client_id: googleClientId,
-        callback: handleCredentialResponse,
-      });
-      window.google.accounts.id.prompt();
-    }
-  }, [router, toast, googleClientId]);
+    // Initialize Google Sign-In (script is loaded globally by AuthInitializer)
+    const initializeGoogleSignIn = async () => {
+      // Wait for Google script to load
+      let attempts = 0;
+      while (!window.google && attempts < 50) {
+        await new Promise(resolve => setTimeout(resolve, 100));
+        attempts++;
+      }
+
+      if (!window.google) {
+        console.error('Google Sign-In script failed to load');
+        return;
+      }
+
+      try {
+        // Use global GSI helper
+        // @ts-ignore
+        if (window.__gsi) {
+          console.debug('[GSI] signup page calling __gsi.init', { googleClientId, hasGsi: !!window.__gsi });
+          // @ts-ignore
+          window.__gsi.init(googleClientId);
+          // @ts-ignore
+          window.__gsi.setCallback(handleCredentialResponse);
+          // @ts-ignore
+          window.__gsi.promptSafe();
+        } else {
+          console.error('GSI helper not available on window.');
+        }
+      } catch (error) {
+        console.error('Failed to initialize or use GSI helper:', error);
+      }
+    };
+
+    initializeGoogleSignIn();
+  }, [router, toast, googleClientId, handleCredentialResponse]);
 
   const validateEmailDomain = async (email: string): Promise<boolean> => {
     if (email === "rathipranav07@gmail.com" || email === "vicepresident_86@paruluniversity.ac.in") {
