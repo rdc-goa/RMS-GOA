@@ -10,7 +10,7 @@ This document outlines the specific calculation logic and rules applied by the R
 5.  [Seed Money for APC](#5-seed-money-for-apc)
 6.  [Membership of Professional Bodies](#6-membership-of-professional-bodies)
 
----
+--
 
 ## 1. Research Papers
 
