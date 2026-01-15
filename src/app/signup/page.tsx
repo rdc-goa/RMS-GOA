@@ -1,5 +1,4 @@
 
-
 "use client"
 
 import { useRouter } from "next/navigation"
@@ -24,7 +23,7 @@ import {
 } from "firebase/auth"
 import { doc, getDoc, setDoc } from "firebase/firestore"
 import type { User, SystemSettings } from "@/types"
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { getDefaultModulesForRole } from "@/lib/modules"
 import {
   linkHistoricalData,
@@ -34,8 +33,10 @@ import {
   isEmailDomainAllowed,
   linkEmrCoPiInterestsToNewUser,
   getSystemSettings,
+  signInWithGoogleCredential,
 } from "@/app/server-actions"
 import { Eye, EyeOff, Loader2 } from "lucide-react"
+import { useTheme } from "next-themes"
 
 const signupSchema = z
   .object({
@@ -53,11 +54,13 @@ type SignupFormValues = z.infer<typeof signupSchema>
 export default function SignupPage() {
   const router = useRouter()
   const { toast } = useToast()
+  const { theme } = useTheme()
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [showPassword, setShowPassword] = useState(false)
   const [showConfirmPassword, setShowConfirmPassword] = useState(false)
   const [loading, setLoading] = useState(true);
   const [authSettings, setAuthSettings] = useState<SystemSettings['authMethods']>({ email: true, google: true });
+  const [googleClientId, setGoogleClientId] = useState<string | null>(process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || null);
 
   const form = useForm<SignupFormValues>({
     resolver: zodResolver(signupSchema),
@@ -67,36 +70,6 @@ export default function SignupPage() {
       confirmPassword: "",
     },
   });
-
-  useEffect(() => {
-    const checkAuthAndSettings = async () => {
-        const settings = await getSystemSettings();
-        setAuthSettings({ email: true, google: true, ...settings.authMethods });
-
-        const unsubscribe = onAuthStateChanged(auth, (user) => {
-          if (user) {
-            router.replace('/dashboard');
-          } else {
-            setLoading(false);
-          }
-        });
-        return () => unsubscribe();
-    };
-    checkAuthAndSettings();
-  }, [router]);
-
-  const validateEmailDomain = async (email: string): Promise<boolean> => {
-    if (email === "rathipranav07@gmail.com" || email === "vicepresident_86@paruluniversity.ac.in") {
-      return true
-    }
-
-    if (/^\d+$/.test(email.split("@")[0])) {
-      return false
-    }
-
-    const domainCheck = await isEmailDomainAllowed(email)
-    return domainCheck.allowed
-  }
 
   const processNewUser = async (firebaseUser: Partial<FirebaseUser> & { uid: string; email: string; }) => {
     const userDocRef = doc(db, "users", firebaseUser.uid)
@@ -130,9 +103,10 @@ export default function SignupPage() {
       profileComplete = true
       notifyRole = "Super-admin"
     } else if (staffResult.success) {
-      userDataFromExcel = staffResult.data
-      const userType = staffResult.data.type
-      campus = staffResult.data.campus || campus
+      const userData = staffResult.data[0];
+      userDataFromExcel = userData
+      const userType = userData.type
+      campus = userData.campus || campus
 
       if (userType === "CRO") {
         role = "CRO"
@@ -224,6 +198,95 @@ export default function SignupPage() {
     }
   }
 
+  useEffect(() => {
+    const handleCredentialResponse = async (response: any) => {
+      setIsSubmitting(true);
+      try {
+        const result = await signInWithGoogleCredential(JSON.stringify(response));
+        if (!result.success || !result.user) {
+          throw new Error(result.error || "Failed to verify Google credential.");
+        }
+        await processNewUser(result.user as any);
+      } catch (error: any) {
+        toast({
+          variant: "destructive",
+          title: "Sign Up Failed",
+          description: error.message || "Could not sign up with Google. Please try again.",
+        });
+      } finally {
+        setIsSubmitting(false);
+      }
+    };
+
+    const checkAuthAndSettings = async () => {
+        const settings = await getSystemSettings();
+        setAuthSettings({ email: true, google: true, ...settings.authMethods });
+        
+        const unsubscribe = onAuthStateChanged(auth, (user) => {
+          if (user) {
+            router.replace('/dashboard');
+          } else {
+            setLoading(false);
+          }
+        });
+        return () => unsubscribe();
+    };
+
+    checkAuthAndSettings();
+
+    if (!googleClientId) {
+      console.error("Google Client ID is missing.");
+      return;
+    }
+
+    // Assign the callback to the window object so Google's script can find it
+    (window as any).handleCredentialResponse = handleCredentialResponse;
+
+    const script = document.createElement('script');
+    script.src = 'https://accounts.google.com/gsi/client';
+    script.async = true;
+    script.defer = true;
+    script.onload = () => {
+      if (!window.google) return;
+      
+      window.google.accounts.id.initialize({
+        client_id: googleClientId,
+        callback: (window as any).handleCredentialResponse,
+      });
+
+      const buttonParent = document.getElementById('google-signup-button');
+      if (buttonParent) {
+        window.google.accounts.id.renderButton(buttonParent, {
+          theme: theme === 'dark' ? 'filled_black' : 'outline',
+          size: 'large',
+          text: 'signup_with',
+          shape: 'rectangular',
+          logo_alignment: 'left',
+        });
+      }
+    };
+    
+    document.body.appendChild(script);
+
+    return () => {
+      document.body.removeChild(script);
+      delete (window as any).handleCredentialResponse;
+    };
+  }, [router, toast, googleClientId, theme]);
+
+  const validateEmailDomain = async (email: string): Promise<boolean> => {
+    if (email === "rathipranav07@gmail.com" || email === "vicepresident_86@paruluniversity.ac.in") {
+      return true
+    }
+
+    if (/^\d+$/.test(email.split("@")[0])) {
+      return false
+    }
+
+    const domainCheck = await isEmailDomainAllowed(email)
+    return domainCheck.allowed
+  }
+
   const onEmailSubmit = async (data: SignupFormValues) => {
     setIsSubmitting(true)
     try {
@@ -253,23 +316,6 @@ export default function SignupPage() {
       setIsSubmitting(false)
     }
   }
-
-  const handleGoogleSignUp = async () => {
-    setIsSubmitting(true);
-    const provider = new GoogleAuthProvider();
-    try {
-        const result = await signInWithPopup(auth, provider);
-        await processNewUser(result.user);
-    } catch (error: any) {
-        console.error("Google Sign-up error:", error);
-        toast({
-            variant: "destructive",
-            title: "Sign Up Failed",
-            description: error.message || "Could not sign up with Google. Please try again.",
-        });
-        setIsSubmitting(false);
-    }
-  };
   
   if (loading) {
     return (
@@ -280,7 +326,7 @@ export default function SignupPage() {
   }
   
   const showEmailForm = authSettings.email !== false;
-  const showGoogleButton = authSettings.google !== false;
+  const showGoogleButton = authSettings.google !== false && googleClientId;
   const showSeparator = showEmailForm && showGoogleButton;
 
 
@@ -387,17 +433,7 @@ export default function SignupPage() {
                   </div>
                 </div>
               )}
-              {showGoogleButton && (
-                <div
-                    className="g_id_signin"
-                    data-type="standard"
-                    data-shape="rectangular"
-                    data-theme="outline"
-                    data-text="signup_with"
-                    data-size="large"
-                    data-logo_alignment="left"
-                ></div>
-              )}
+              {showGoogleButton && <div id="google-signup-button" className="flex justify-center"></div>}
                {!showEmailForm && !showGoogleButton && (
                   <div className="text-center text-muted-foreground p-4 border rounded-md">
                       Sign-up is temporarily disabled. Please contact an administrator.
