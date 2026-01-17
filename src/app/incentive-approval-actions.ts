@@ -88,18 +88,49 @@ export async function submitIncentiveClaim(claimData: Omit<IncentiveClaim, 'id' 
         const standardizedClaimId = `RDC/IC/${acronym}/${String(current).padStart(4, '0')}`;
         
         const settings = await getSystemSettings();
-        const workflow = settings.incentiveApprovalWorkflows?.[claimData.claimType];
+        const workflow = settings.incentiveApprovalWorkflows?.[claimData.claimType] || [1, 2, 3, 4, 5];
         
-        let initialStatus: IncentiveClaim['status'] = 'Accepted'; // Default if no workflow
-        if (workflow && workflow.length > 0) {
-            const firstStage = Math.min(...workflow);
+        let initialStatus: IncentiveClaim['status'];
+        const firstStage = workflow.length > 0 ? Math.min(...workflow) : 1;
+
+        if (firstStage === 1) {
+            initialStatus = 'Pending Principal Approval';
+        } else {
             initialStatus = `Pending Stage ${firstStage} Approval`;
         }
+        
+        // Auto-approve principal stage if the claimant is the principal of their own institute
+        const claimantUserSnap = await adminDb.collection('users').doc(claimData.uid).get();
+        const claimantUser = claimantUserSnap.data() as User;
+        
+        let initialApprovals: ApprovalStage[] = [];
+
+        if (claimantUser.designation === 'Principal' && firstStage === 1) {
+             const autoApproval: ApprovalStage = {
+                approverUid: claimantUser.uid,
+                approverName: `${claimantUser.name} (Auto-approved)`,
+                status: 'Approved',
+                timestamp: new Date().toISOString(),
+                comments: 'Auto-approved as claimant is the Principal.',
+                approvedAmount: claimData.calculatedIncentive || 0,
+                stage: 1,
+            };
+            initialApprovals.push(autoApproval);
+            
+            const nextStageInWorkflow = workflow.find(stage => stage > 1);
+            if (nextStageInWorkflow) {
+                initialStatus = `Pending Stage ${nextStageInWorkflow} Approval`;
+            } else {
+                initialStatus = 'Accepted';
+            }
+        }
+
 
         const finalClaimData: Omit<IncentiveClaim, 'id'> = {
             ...claimData,
             claimId: standardizedClaimId,
             status: claimData.status === 'Draft' ? 'Draft' : initialStatus,
+            approvals: initialApprovals,
             authors: claimData.authors || [],
             authorUids: (claimData.authors || []).map(a => a.uid).filter(Boolean) as string[],
         };
@@ -268,7 +299,7 @@ export async function processIncentiveClaimAction(
   claimId: string,
   action: 'approve' | 'reject' | 'verify',
   approver: User,
-  stageIndex: number, // 0, 1, 2, or 3
+  stageIndex: number, // 0-indexed (0=Principal, 1=Stage2, etc.)
   data: { amount?: number; comments?: string, verifiedFields?: { [key: string]: boolean }, suggestions?: { [key: string]: string } }
 ): Promise<{ success: boolean; error?: string }> {
   try {
@@ -280,15 +311,19 @@ export async function processIncentiveClaimAction(
     }
     const claim = { id: claimSnap.id, ...claimSnap.data() } as IncentiveClaim;
     const settings = await getSystemSettings();
-    
-    if (!settings.incentiveApprovers || settings.incentiveApprovers.length <= stageIndex) {
-        return { success: false, error: 'Approval workflow is not configured correctly.' };
-    }
-    const currentStageApprover = settings.incentiveApprovers.find(a => a.stage === stageIndex + 1);
-    if (!currentStageApprover || approver.email?.toLowerCase() !== currentStageApprover.email.toLowerCase()) {
-        return { success: false, error: 'You are not authorized to perform this action for this stage.' };
-    }
+    const currentStage = stageIndex + 1; // 1-indexed
 
+    // Authorization check
+    if (currentStage === 1) { // Principal's stage
+        if (approver.designation !== 'Principal' || approver.institute !== claim.institute) {
+             return { success: false, error: 'You are not the authorized Principal for this claim.' };
+        }
+    } else { // System approvers for stages 2-5
+        const currentStageApprover = settings.incentiveApprovers?.find(a => a.stage === currentStage);
+        if (!currentStageApprover || approver.email?.toLowerCase() !== currentStageApprover.email.toLowerCase()) {
+            return { success: false, error: `You are not authorized for Stage ${currentStage} approval.` };
+        }
+    }
 
     const newApproval: ApprovalStage = {
       approverUid: approver.uid,
@@ -297,31 +332,33 @@ export async function processIncentiveClaimAction(
       approvedAmount: data.amount || 0,
       comments: data.comments || '',
       timestamp: new Date().toISOString(),
-      stage: stageIndex + 1,
+      stage: currentStage,
       verifiedFields: data.verifiedFields || {},
       suggestions: data.suggestions || {},
     };
     
     const approvals = claim.approvals || [];
-    while (approvals.length <= stageIndex) {
-        approvals.push(null as any); 
+    const existingApprovalIndex = approvals.findIndex(a => a?.stage === currentStage);
+    if (existingApprovalIndex > -1) {
+        approvals[existingApprovalIndex] = newApproval;
+    } else {
+        approvals.push(newApproval);
     }
-    approvals[stageIndex] = newApproval;
+    approvals.sort((a,b) => a!.stage - b!.stage);
 
 
     let newStatus: IncentiveClaim['status'];
-    const workflow = settings.incentiveApprovalWorkflows?.[claim.claimType] || [1, 2, 3, 4]; // Default to all stages
+    const workflow = settings.incentiveApprovalWorkflows?.[claim.claimType] || [1, 2, 3, 4, 5];
 
     if (action === 'reject') {
         newStatus = 'Rejected';
     } else {
-        const currentStage = stageIndex + 1;
-        const nextStage = workflow.find(stage => stage > currentStage);
+        const nextStageInWorkflow = workflow.find(stage => stage > currentStage);
 
-        if (nextStage) {
-            newStatus = `Pending Stage ${nextStage} Approval`;
+        if (nextStageInWorkflow) {
+            newStatus = `Pending Stage ${nextStageInWorkflow} Approval` as IncentiveClaim['status'];
         } else {
-            newStatus = 'Accepted'; // No more stages in the workflow
+            newStatus = 'Accepted'; // Final approval
         }
     }
 
@@ -330,11 +367,9 @@ export async function processIncentiveClaimAction(
         status: newStatus,
     };
     
+    // For stages 2 onwards, the approver finalizes the amount
     if (action === 'approve' || action === 'verify') {
-        // For stages 2, 3, 4 (stageIndex 1, 2, 3), the approver finalizes the amount
-        if (stageIndex >= 1) {
-            updateData.finalApprovedAmount = data.amount;
-        }
+        updateData.finalApprovedAmount = data.amount;
     }
 
     await claimRef.update(updateData);
@@ -391,7 +426,7 @@ export async function processIncentiveClaimAction(
         }
     }
     
-    await logActivity('INFO', `Incentive claim action processed`, { claimId, action, stage: stageIndex + 1, approver: approver.name });
+    await logActivity('INFO', `Incentive claim action processed`, { claimId, action, stage: currentStage, approver: approver.name });
     return { success: true };
   } catch (error: any) {
     console.error('Error processing incentive claim action:', error);

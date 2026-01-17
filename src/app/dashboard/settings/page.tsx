@@ -554,13 +554,12 @@ export default function SettingsPage() {
     })
   }
 
-  const handleApproverChange = async (stage: 1 | 2 | 3 | 4, email: string) => {
+  const handleApproverChange = async (stage: 1 | 2 | 3 | 4 | 5, email: string) => {
     if (!systemSettings) return
     const approvers = systemSettings.incentiveApprovers || []
     const otherApprovers = approvers.filter((a) => a.stage !== stage)
     const newApprovers: ApproverSetting[] = [...otherApprovers]
 
-    // Find the previous approver for this stage to remove their access
     const previousApproverEmail = approvers.find((a) => a.stage === stage)?.email
 
     if (email) {
@@ -570,10 +569,8 @@ export default function SettingsPage() {
 
     await handleSystemSettingsSave({ ...systemSettings, incentiveApprovers: newApprovers })
 
-    // After saving, update user permissions
     const usersRef = collection(db, "users")
 
-    // Remove permissions from old approver
     if (previousApproverEmail) {
       const oldApproverQuery = query(usersRef, where("email", "==", previousApproverEmail))
       const oldApproverSnapshot = await getDocs(oldApproverQuery)
@@ -587,7 +584,6 @@ export default function SettingsPage() {
       }
     }
 
-    // Add permissions to new approver
     if (email) {
       const newApproverQuery = query(usersRef, where("email", "==", email))
       const newApproverSnapshot = await getDocs(newApproverQuery)
@@ -613,7 +609,7 @@ export default function SettingsPage() {
   const handleWorkflowChange = async (claimType: string, stage: number, isChecked: boolean) => {
     if (!systemSettings) return
     const currentWorkflows = systemSettings.incentiveApprovalWorkflows || {}
-    const currentStages = currentWorkflows[claimType] || [1, 2, 3, 4] // Default to all if not set
+    const currentStages = currentWorkflows[claimType] || [1, 2, 3, 4, 5]
 
     let newStages
     if (isChecked) {
@@ -929,26 +925,22 @@ export default function SettingsPage() {
                   <Label className="text-base">Incentive Approval Workflow</Label>
                 </div>
                 <p className="text-sm text-muted-foreground">
-                  Select which approval stages are required for each claim type. The first selected stage will be the
-                  starting point.
+                  Select which approval stages are required for each claim type. Stage 1 is always the Principal.
                 </p>
                 <Table>
                   <TableHeader>
                     <TableRow>
                       <TableHead>Claim Type</TableHead>
-                      <TableHead className="text-center">Stage 1</TableHead>
-                      <TableHead className="text-center">Stage 2</TableHead>
-                      <TableHead className="text-center">Stage 3</TableHead>
-                      <TableHead className="text-center">Stage 4</TableHead>
+                      {[2, 3, 4, 5].map(stage => <TableHead key={stage} className="text-center">Stage {stage}</TableHead>)}
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {incentiveClaimTypes.map((type) => {
-                      const workflow = systemSettings.incentiveApprovalWorkflows?.[type] || [1, 2, 3, 4]
+                      const workflow = systemSettings.incentiveApprovalWorkflows?.[type] || [1, 2, 3, 4, 5]
                       return (
                         <TableRow key={type}>
                           <TableCell className="font-medium">{type}</TableCell>
-                          {[1, 2, 3, 4].map((stage) => (
+                          {[2, 3, 4, 5].map((stage) => (
                             <TableCell key={stage} className="text-center">
                               <Checkbox
                                 checked={workflow.includes(stage)}
@@ -962,6 +954,34 @@ export default function SettingsPage() {
                     })}
                   </TableBody>
                 </Table>
+              </div>
+              <Separator />
+              <div className="space-y-4">
+                <Form {...dummyForm}>
+                  <Label className="text-base">Incentive Approver Configuration</Label>
+                  <p className="text-sm text-muted-foreground">
+                    Define the email addresses for the approval stages. Stage 1 is automatically routed to the claimant's Principal.
+                  </p>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    {[2, 3, 4, 5].map((stage) => {
+                      const approver = systemSettings.incentiveApprovers?.find((a) => a.stage === stage)
+                      return (
+                        <div key={stage} className="p-4 border rounded-lg space-y-3">
+                          <FormItem>
+                            <FormLabel>Stage {stage} Approver Email</FormLabel>
+                            <Input
+                              type="email"
+                              placeholder={`approver.stage${stage}@paruluniversity.ac.in`}
+                              defaultValue={approver?.email || ""}
+                              onBlur={(e) => handleApproverChange(stage as 2 | 3 | 4 | 5, e.target.value)}
+                              disabled={isSavingSettings}
+                            />
+                          </FormItem>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </Form>
               </div>
               <Separator />
               <div className="space-y-4">
@@ -1043,34 +1063,6 @@ export default function SettingsPage() {
                   onBlur={(e) => handleSystemSettingsSave({ ...systemSettings, iqacEmail: e.target.value })}
                   disabled={isSavingSettings}
                 />
-              </div>
-              <Separator />
-              <div className="space-y-4">
-                <Form {...dummyForm}>
-                  <Label className="text-base">Incentive Approval Workflow</Label>
-                  <p className="text-sm text-muted-foreground">
-                    Define the email addresses for the four stages of incentive claim approval.
-                  </p>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    {[1, 2, 3, 4].map((stage) => {
-                      const approver = systemSettings.incentiveApprovers?.find((a) => a.stage === stage)
-                      return (
-                        <div key={stage} className="p-4 border rounded-lg space-y-3">
-                          <FormItem>
-                            <FormLabel>Stage {stage} Approver Email</FormLabel>
-                            <Input
-                              type="email"
-                              placeholder={`approver.stage${stage}@paruluniversity.ac.in`}
-                              defaultValue={approver?.email || ""}
-                              onBlur={(e) => handleApproverChange(stage as 1 | 2 | 3 | 4, e.target.value)}
-                              disabled={isSavingSettings}
-                            />
-                          </FormItem>
-                        </div>
-                      )
-                    })}
-                  </div>
-                </Form>
               </div>
             </CardContent>
           </Card>

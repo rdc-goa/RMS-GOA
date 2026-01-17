@@ -39,30 +39,47 @@ export default function IncentiveApprovalsPage() {
     const [sortConfig, setSortConfig] = useState<{ key: SortableKeys; direction: 'ascending' | 'descending' }>({ key: 'submissionDate', direction: 'descending' });
     const [activeTab, setActiveTab] = useState('pending');
 
-    const fetchClaimsAndUsers = useCallback(async (currentUser: User, stage: number) => {
+    const fetchClaimsAndUsers = useCallback(async (currentUser: User, stage: number | null) => {
         setLoading(true);
         try {
             const claimsCollection = collection(db, 'incentiveClaims');
             const usersQuery = query(collection(db, 'users'));
             
-            const statusToFetch = `Pending Stage ${stage + 1} Approval`;
-            
-            const pendingClaimsQuery = query(
-                claimsCollection, 
-                where('status', '==', statusToFetch), 
-                orderBy('submissionDate', 'desc')
-            );
+            let pendingClaimsQuery;
+            if (currentUser.designation === 'Principal') {
+                pendingClaimsQuery = query(
+                    claimsCollection, 
+                    where('status', '==', 'Pending Principal Approval'),
+                    where('institute', '==', currentUser.institute),
+                    orderBy('submissionDate', 'desc')
+                );
+            } else if (stage !== null) {
+                const statusToFetch = `Pending Stage ${stage + 1} Approval`;
+                 pendingClaimsQuery = query(
+                    claimsCollection, 
+                    where('status', '==', statusToFetch), 
+                    orderBy('submissionDate', 'desc')
+                );
+            }
 
-            // History should include all claims the user has acted upon at their stage
-            const historyQuery = query(
-              claimsCollection, 
-              where(`approvals.${stage}.approverUid`, '==', currentUser.uid),
-              orderBy('submissionDate', 'desc')
-            );
-            
+            let historyQuery;
+            if (currentUser.designation === 'Principal') {
+                historyQuery = query(
+                    claimsCollection, 
+                    where('approvals.0.approverUid', '==', currentUser.uid),
+                    orderBy('submissionDate', 'desc')
+                );
+            } else if (stage !== null) {
+                historyQuery = query(
+                    claimsCollection, 
+                    where(`approvals.${stage}.approverUid`, '==', currentUser.uid),
+                    orderBy('submissionDate', 'desc')
+                );
+            }
+
             const [pendingSnapshot, historySnapshot, usersSnapshot] = await Promise.all([
-                getDocs(pendingClaimsQuery),
-                getDocs(historyQuery),
+                pendingClaimsQuery ? getDocs(pendingClaimsQuery) : Promise.resolve({ docs: [] }),
+                historyQuery ? getDocs(historyQuery) : Promise.resolve({ docs: [] }),
                 getDocs(usersQuery)
             ]);
 
@@ -83,13 +100,20 @@ export default function IncentiveApprovalsPage() {
         if (storedUser) {
             const parsedUser = JSON.parse(storedUser) as User;
             setUser(parsedUser);
-            const stage = parsedUser.allowedModules?.find(m => m.startsWith('incentive-approver-'))
-                ? parseInt(parsedUser.allowedModules.find(m => m.startsWith('incentive-approver-'))!.split('-')[2], 10) - 1
-                : null;
+            
+            let stage: number | null = null;
+            if (parsedUser.designation === 'Principal') {
+                stage = 0; // Principals are stage 0
+            } else {
+                const approverModule = parsedUser.allowedModules?.find(m => m.startsWith('incentive-approver-'));
+                if (approverModule) {
+                    stage = parseInt(approverModule.split('-')[2], 10) - 1;
+                }
+            }
             
             setApprovalStage(stage);
 
-            if (stage !== null) {
+            if (stage !== null || parsedUser.designation === 'Principal') {
                 fetchClaimsAndUsers(parsedUser, stage);
             } else {
                 setLoading(false);
@@ -110,7 +134,7 @@ export default function IncentiveApprovalsPage() {
     };
 
     const handleActionComplete = () => {
-        if (user && approvalStage !== null) {
+        if (user) {
             fetchClaimsAndUsers(user, approvalStage);
         }
     };
@@ -164,13 +188,18 @@ export default function IncentiveApprovalsPage() {
         )
     }
 
-    if (approvalStage === null) {
+    if (approvalStage === null && user?.designation !== 'Principal') {
         return (
             <div className="container mx-auto py-10">
                 <PageHeader title="Access Denied" description="You do not have permission to view this page." />
             </div>
         )
     }
+
+    const pageTitle = user?.designation === 'Principal'
+        ? `Incentive Approvals (Stage 1 - Principal)`
+        : `Incentive Approvals (Stage ${approvalStage === null ? '' : approvalStage + 1})`;
+
 
     const renderTable = (claimsList: IncentiveClaim[], isHistory = false) => (
       <div className="hidden md:block">
@@ -259,17 +288,17 @@ export default function IncentiveApprovalsPage() {
                             </div>
                           )}
                       </CardContent>
-                      <CardContent className="flex flex-col gap-2">
-                          <Button variant="outline" onClick={() => handleViewDetails(claim)}>
+                      <CardFooter className="flex flex-col gap-2">
+                          <Button variant="outline" onClick={() => handleViewDetails(claim)} className="w-full">
                               <Eye className="h-4 w-4 mr-2" />
                               View Details
                           </Button>
                           {!isHistory && (
-                              <Button onClick={() => handleOpenApproval(claim)}>
+                              <Button onClick={() => handleOpenApproval(claim)} className="w-full">
                                   Take Action
                               </Button>
                           )}
-                      </CardContent>
+                      </CardFooter>
                   </Card>
               )
           })}
@@ -284,7 +313,7 @@ export default function IncentiveApprovalsPage() {
     return (
         <>
             <div className="container mx-auto py-10">
-                <PageHeader title={`Incentive Approvals (Stage ${approvalStage + 1})`} description="Claims awaiting your review and approval." />
+                <PageHeader title={pageTitle} description="Claims awaiting your review and approval." />
                  <div className="flex flex-col sm:flex-row items-center py-4 gap-4">
                     <Input
                         placeholder="Filter by claimant, title, or Claim ID..."
@@ -349,7 +378,7 @@ export default function IncentiveApprovalsPage() {
                         claim={selectedClaim} 
                         approver={user}
                         claimant={allUsers.find(u => u.uid === selectedClaim.uid) || null}
-                        stageIndex={approvalStage}
+                        stageIndex={approvalStage!}
                         isOpen={isApprovalOpen} 
                         onOpenChange={setIsApprovalOpen} 
                         onActionComplete={handleActionComplete}

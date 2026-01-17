@@ -203,7 +203,7 @@ export type ApprovalStage = {
   timestamp: string; // ISO string
   comments: string;
   approvedAmount: number;
-  stage: number; // 1, 2, 3 or 4
+  stage: number; // 1, 2, 3, 4, or 5
   verifiedFields?: { [key: string]: boolean };
   suggestions?: { [key: string]: string };
 };
@@ -220,9 +220,10 @@ export type IncentiveClaim = {
   userName: string
   userEmail: string
   claimId?: string; // Standardized, sequential ID like RDC/IC/PAPER/0001
-  status: "Pending" | "Accepted" | "Rejected" | "Draft" | "Pending Stage 1 Approval" | "Pending Stage 2 Approval" | "Pending Stage 3 Approval" | "Pending Stage 4 Approval" | "Submitted to Accounts" | "Payment Completed";
+  status: "Pending" | "Accepted" | "Rejected" | "Draft" | "Pending Principal Approval" | "Pending Stage 2 Approval" | "Pending Stage 3 Approval" | "Pending Stage 4 Approval" | "Pending Stage 5 Approval" | "Submitted to Accounts" | "Payment Completed";
   submissionDate: string // ISO String
   faculty: string
+  institute: string;
   bankDetails?: UserBankDetails
   originalClaimId?: string // Link to the primary author's claim
   misId?: string
@@ -502,7 +503,7 @@ export type CroAssignment = {
 
 export type ApproverSetting = {
     email: string;
-    stage: 1 | 2 | 3 | 4;
+    stage: 1 | 2 | 3 | 4 | 5;
     signatureUrl?: string;
 };
 
