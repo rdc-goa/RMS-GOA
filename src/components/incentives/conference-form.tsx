@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import { useForm } from 'react-hook-form';
@@ -6,7 +7,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardFooter } from '@/components/ui/card';
+import { Card, CardContent, CardFooter, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
@@ -27,7 +28,7 @@ import { submitIncentiveClaim } from '@/app/incentive-approval-actions';
 import { differenceInDays, parseISO, addYears, format } from 'date-fns';
 import { calculateConferenceIncentive } from '@/app/incentive-calculation';
 import { findUserByMisId } from '@/app/userfinding';
-import { CardHeader, CardTitle, CardDescription } from '../ui/card';
+import { CardHeader as UICardHeader, CardTitle as UICardTitle, CardDescription as UICardDescription } from '../ui/card';
 
 const conferenceSchema = z
   .object({
@@ -402,6 +403,7 @@ export function ConferenceForm() {
             userName: user.name,
             userEmail: user.email,
             faculty: user.faculty,
+            institute: user.institute || '',
             status,
             submissionDate: new Date().toISOString(),
             bankDetails: user.bankDetails || null,

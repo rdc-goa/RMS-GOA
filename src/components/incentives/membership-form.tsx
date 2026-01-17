@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import { useForm } from 'react-hook-form';
@@ -219,6 +220,7 @@ export function MembershipForm() {
             userName: user.name,
             userEmail: user.email,
             faculty: user.faculty,
+            institute: user.institute || '',
             status,
             submissionDate: new Date().toISOString(),
             bankDetails: user.bankDetails || null,

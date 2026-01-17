@@ -1,3 +1,5 @@
+
+
 'use client';
 
 import { useForm, useFieldArray } from 'react-hook-form';
@@ -377,6 +379,7 @@ export function BookForm() {
             userName: user.name,
             userEmail: user.email,
             faculty: user.faculty,
+            institute: user.institute || '',
             status,
             submissionDate: new Date().toISOString(),
             bankDetails: user.bankDetails || null,

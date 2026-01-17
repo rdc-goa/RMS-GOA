@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
@@ -264,6 +265,7 @@ const handleOpenDialog = useCallback(async (claim: IncentiveClaim) => {
                 misId: currentUser.misId,
                 orcidId: currentUser.orcidId,
                 faculty: currentUser.faculty || '',
+                institute: currentUser.institute || '',
                 calculatedIncentive: calculatedAmount, // Store the calculated amount
             };
             
