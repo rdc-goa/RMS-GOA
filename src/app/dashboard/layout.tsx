@@ -386,11 +386,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       localStorage.setItem('lastActivity', Date.now().toString());
 
       const filtered = allNavItems.filter((item) => {
-        if (item.condition) return true
+        if (item.condition) return true;
         if (item.id === "incentive-approvals") {
-          return user.allowedModules?.some((m) => m.startsWith("incentive-approver-"))
+          return user.designation === 'Principal' || user.allowedModules?.some((m) => m.startsWith("incentive-approver-"));
         }
-        return user.allowedModules?.includes(item.id)
+        return user.allowedModules?.includes(item.id);
       })
       const sorted = user.sidebarOrder
         ? filtered.sort((a, b) => user.sidebarOrder!.indexOf(a.id) - user.sidebarOrder!.indexOf(b.id))
@@ -460,17 +460,31 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     }
 
     // Incentive Approvals listener
-    const approverModule = user.allowedModules?.find((m) => m.startsWith("incentive-approver-"))
-    if (approverModule) {
-      const stage = Number.parseInt(approverModule.split("-")[2], 10)
-      const statusToFetch = `Pending Stage ${stage} Approval`
-      const incentiveQuery = query(collection(db, "incentiveClaims"), where("status", "==", statusToFetch))
-      unsubscribes.push(
-        onSnapshot(incentiveQuery, (snapshot) => {
-          setPendingIncentiveApprovalsCount(snapshot.size)
-        }),
-      )
+    if (user.designation === 'Principal' && user.institute) {
+        const incentiveQuery = query(
+          collection(db, "incentiveClaims"), 
+          where("status", "==", "Pending Principal Approval"),
+          where('institute', '==', user.institute),
+        );
+        unsubscribes.push(
+            onSnapshot(incentiveQuery, (snapshot) => {
+                setPendingIncentiveApprovalsCount(snapshot.size);
+            })
+        );
+    } else {
+        const approverModule = user.allowedModules?.find((m) => m.startsWith("incentive-approver-"))
+        if (approverModule) {
+          const stage = Number.parseInt(approverModule.split("-")[2], 10)
+          const statusToFetch = `Pending Stage ${stage} Approval`
+          const incentiveQuery = query(collection(db, "incentiveClaims"), where("status", "==", statusToFetch))
+          unsubscribes.push(
+            onSnapshot(incentiveQuery, (snapshot) => {
+              setPendingIncentiveApprovalsCount(snapshot.size)
+            }),
+          )
+        }
     }
+
 
     // Pending Bank Claims listener (for admins)
     if (user.allowedModules?.includes("manage-incentive-claims")) {
