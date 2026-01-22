@@ -1,5 +1,4 @@
 
-
 'use client';
 
 import { useForm } from 'react-hook-form';
@@ -210,11 +209,16 @@ export function MembershipForm() {
         };
 
         const membershipProofUrl = await uploadFileHelper(data.membershipProof?.[0]);
-        
-        const { membershipProof, ...restOfData } = data;
 
         const claimData: Omit<IncentiveClaim, 'id' | 'claimId'> = {
-            ...restOfData,
+            professionalBodyName: data.professionalBodyName,
+            membershipType: data.membershipType,
+            membershipLocale: data.membershipLocale,
+            membershipNumber: data.membershipNumber,
+            membershipAmountPaid: data.membershipAmountPaid,
+            membershipPaymentDate: data.membershipPaymentDate,
+            membershipSelfDeclaration: data.membershipSelfDeclaration,
+            membershipProofUrl,
             calculatedIncentive,
             misId: user.misId || null,
             orcidId: user.orcidId || null,
@@ -229,9 +233,7 @@ export function MembershipForm() {
             submissionDate: new Date().toISOString(),
             bankDetails: user.bankDetails || null,
         };
-
-        if (membershipProofUrl) claimData.membershipProofUrl = membershipProofUrl;
-
+        
         const result = await submitIncentiveClaim(claimData);
         if (!result.success || !result.claimId) {
             throw new Error(result.error);

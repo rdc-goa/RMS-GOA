@@ -1,5 +1,4 @@
 
-
 'use client';
 
 import { useForm } from 'react-hook-form';
@@ -355,7 +354,7 @@ export function ConferenceForm() {
     setIsSubmitting(true);
     try {
         const data = form.getValues();
-
+        
         const token = await auth.currentUser?.getIdToken(true);
         if (!token) {
             throw new Error("Authentication token not found. Please log in again.");
@@ -366,17 +365,6 @@ export function ConferenceForm() {
             return uploadFileViaApi(file, token);
         };
         
-        const {
-            govtFundingRequestProof,
-            abstractUpload,
-            registrationFeeProof,
-            participationCertificate,
-            prizeProof,
-            travelReceipts,
-            flightTickets,
-            ...restOfData
-        } = data;
-
         const [
             govtFundingRequestProofUrl,
             abstractUrl,
@@ -385,16 +373,39 @@ export function ConferenceForm() {
             prizeProofUrl,
             travelReceiptsUrl,
         ] = await Promise.all([
-            uploadFileHelper(govtFundingRequestProof?.[0]),
-            uploadFileHelper(abstractUpload?.[0]),
-            uploadFileHelper(registrationFeeProof?.[0]),
-            uploadFileHelper(participationCertificate?.[0]),
-            uploadFileHelper(prizeProof?.[0]),
-            uploadFileHelper(travelReceipts?.[0]),
+            uploadFileHelper(data.govtFundingRequestProof?.[0]),
+            uploadFileHelper(data.abstractUpload?.[0]),
+            uploadFileHelper(data.registrationFeeProof?.[0]),
+            uploadFileHelper(data.participationCertificate?.[0]),
+            uploadFileHelper(data.prizeProof?.[0]),
+            uploadFileHelper(data.travelReceipts?.[0]),
         ]);
 
         const claimData: Omit<IncentiveClaim, 'id' | 'claimId'> = {
-            ...restOfData,
+            eventType: data.eventType,
+            conferencePaperTitle: data.conferencePaperTitle,
+            conferenceName: data.conferenceName,
+            conferenceMode: data.conferenceMode,
+            onlinePresentationOrder: data.onlinePresentationOrder,
+            conferenceType: data.conferenceType,
+            conferenceVenue: data.conferenceVenue,
+            presentationType: data.presentationType,
+            registrationFee: data.registrationFee,
+            travelFare: data.travelFare,
+            wasPresentingAuthor: data.wasPresentingAuthor,
+            isPuNamePresent: data.isPuNamePresent,
+            organizerName: data.organizerName,
+            eventWebsite: data.eventWebsite,
+            conferenceDate: data.conferenceDate,
+            presentationDate: data.presentationDate,
+            wonPrize: data.wonPrize,
+            prizeDetails: data.prizeDetails,
+            attendedOtherConference: data.attendedOtherConference,
+            travelPlaceVisited: data.travelPlaceVisited,
+            travelMode: data.travelMode,
+            conferenceSelfDeclaration: data.conferenceSelfDeclaration,
+            authorType: data.authorType,
+            totalAuthors: data.totalAuthors,
             govtFundingRequestProofUrl,
             abstractUrl,
             registrationFeeProofUrl,
@@ -414,8 +425,6 @@ export function ConferenceForm() {
             status,
             submissionDate: new Date().toISOString(),
             bankDetails: user.bankDetails || null,
-            authorType: data.authorType,
-            totalAuthors: data.totalAuthors,
         };
         
         const result = await submitIncentiveClaim(claimData);

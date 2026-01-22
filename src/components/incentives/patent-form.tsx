@@ -385,17 +385,34 @@ export function PatentForm() {
             uploadFileHelper(data.patentGovtReceipt?.[0]),
         ]);
 
-        const { patentForm1, patentApprovalProof, patentGovtReceipt, ...restOfData } = data;
-        
-        const claimData: Partial<IncentiveClaim> = {
-            ...restOfData,
-            calculatedIncentive,
+        const claimData: Omit<IncentiveClaim, 'id' | 'claimId'> = {
+            patentLocale: data.patentLocale,
+            patentCountry: data.patentCountry,
+            patentTitle: data.patentTitle,
+            patentApplicationNumber: data.patentApplicationNumber,
+            patentDomain: data.patentDomain,
+            patentInventors: data.patentInventors,
+            patentCoApplicants: data.patentCoApplicants,
+            isCollaboration: data.isCollaboration,
+            collaborationDetails: data.collaborationDetails,
+            isIprSdg: data.isIprSdg,
+            sdgGoals: data.sdgGoals,
+            isIprDisciplinary: data.isIprDisciplinary,
+            disciplinaryType: data.disciplinaryType,
+            currentStatus: data.currentStatus,
+            patentFiledFromIprCell: data.patentFiledFromIprCell,
+            patentPermissionTaken: data.patentPermissionTaken,
+            patentSelfDeclaration: data.patentSelfDeclaration,
+            patentFiledInPuName: data.patentFiledInPuName,
+            isPuSoleApplicant: data.isPuSoleApplicant,
+            patentSpecificationType: data.patentSpecificationType,
             filingDate: data.filingDate?.toISOString(),
             publicationDate: data.publicationDate?.toISOString(),
             grantDate: data.grantDate?.toISOString(),
             patentForm1Url,
             patentApprovalProofUrl,
             patentGovtReceiptUrl,
+            calculatedIncentive,
             misId: user.misId || null,
             orcidId: user.orcidId || null,
             claimType: 'Patents',
@@ -410,7 +427,7 @@ export function PatentForm() {
             bankDetails: user.bankDetails || null,
         };
         
-        const result = await submitIncentiveClaim(claimData as Omit<IncentiveClaim, 'id' | 'claimId'>);
+        const result = await submitIncentiveClaim(claimData);
 
         if (!result.success || !result.claimId) {
             throw new Error(result.error);
@@ -627,5 +644,3 @@ export function PatentForm() {
     </Card>
   );
 }
-
-    

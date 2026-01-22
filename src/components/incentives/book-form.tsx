@@ -1,5 +1,4 @@
 
-
 'use client';
 
 import { useForm, useFieldArray } from 'react-hook-form';
@@ -369,13 +368,37 @@ export function BookForm() {
         const bookProofFile = data.bookProof?.[0];
         const scopusProofFile = data.scopusProof?.[0];
         
-        const bookProofUrl = await uploadFileHelper(bookProofFile);
-        const scopusProofUrl = await uploadFileHelper(scopusProofFile);
+        const [bookProofUrl, scopusProofUrl] = await Promise.all([
+          uploadFileHelper(bookProofFile),
+          uploadFileHelper(scopusProofFile),
+        ]);
         
-        const { bookProof, scopusProof, ...restOfData } = data;
-
-        const claimData: Partial<IncentiveClaim> = {
-            ...restOfData,
+        const claimData: Omit<IncentiveClaim, 'id' | 'claimId'> = {
+            bookApplicationType: data.bookApplicationType,
+            publicationTitle: data.publicationTitle,
+            authors: data.authors,
+            bookTitleForChapter: data.bookTitleForChapter,
+            bookEditor: data.bookEditor,
+            totalPuStudents: data.totalPuStudents,
+            puStudentNames: data.puStudentNames,
+            bookChapterPages: data.bookChapterPages,
+            bookTotalPages: data.bookTotalPages,
+            bookTotalChapters: data.bookTotalChapters,
+            chaptersInSameBook: data.chaptersInSameBook,
+            publicationYear: data.publicationYear,
+            publisherName: data.publisherName,
+            publisherCity: data.publisherCity,
+            publisherCountry: data.publisherCountry,
+            publisherType: data.publisherType,
+            isScopusIndexed: data.isScopusIndexed,
+            authorRole: data.authorRole,
+            publicationMode: data.publicationMode,
+            isbnPrint: data.isbnPrint,
+            isbnElectronic: data.isbnElectronic,
+            publisherWebsite: data.publisherWebsite,
+            publicationOrderInYear: data.publicationOrderInYear,
+            bookType: data.bookType,
+            bookSelfDeclaration: data.bookSelfDeclaration,
             calculatedIncentive: calculationResult.success ? calculationResult.amount : 0,
             misId: user.misId || null,
             orcidId: user.orcidId || null,
@@ -393,12 +416,6 @@ export function BookForm() {
         
         if (bookProofUrl) claimData.bookProofUrl = bookProofUrl;
         if (scopusProofUrl) claimData.scopusProofUrl = scopusProofUrl;
-        
-        Object.keys(claimData).forEach(key => {
-            if ((claimData as any)[key] === undefined) {
-                delete (claimData as any)[key];
-            }
-        });
         
         const result = await submitIncentiveClaim(claimData as Omit<IncentiveClaim, 'id' | 'claimId'>);
         if (!result.success || !result.claimId) {
@@ -547,7 +564,7 @@ export function BookForm() {
     <Card>
       <Form {...form}>
         <form>
-          <CardContent className="space-y-6 pt-6">
+          <CardContent className="space-y-8 pt-6">
             {bankDetailsMissing && (
                 <Alert variant="destructive">
                     <AlertCircle className="h-4 w-4" />

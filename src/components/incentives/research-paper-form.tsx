@@ -761,29 +761,51 @@ export function ResearchPaperForm() {
           publicationProofFiles.map(file => uploadFileViaApi(file, token))
       );
 
-      const { publicationProof, ...restOfData } = data;
-
+      // Manually construct the payload to ensure file objects are excluded
       const claimData: Omit<IncentiveClaim, 'id' | 'claimId'> = {
-          ...restOfData,
-          publicationProofUrls,
-          calculatedIncentive,
-          misId: user.misId || null,
-          orcidId: user.orcidId || null,
-          claimType: "Research Papers",
-          benefitMode: "incentives",
-          uid: user.uid,
-          userName: user.name,
-          userEmail: user.email,
-          faculty: user.faculty,
-          institute: user.institute || '',
-          status,
-          submissionDate: new Date().toISOString(),
-          bankDetails: user.bankDetails || null,
-          authorType: data.authors.find(a => a.email.toLowerCase() === user.email.toLowerCase())?.role || 'Co-Author',
+        publicationType: data.publicationType,
+        indexType: data.indexType,
+        doi: data.doi,
+        scopusLink: data.scopusLink,
+        wosLink: data.wosLink,
+        wosAccessionNumber: data.wosAccessionNumber,
+        journalClassification: data.journalClassification,
+        wosType: data.wosType,
+        journalName: data.journalName,
+        journalWebsite: data.journalWebsite,
+        paperTitle: data.paperTitle,
+        relevantLink: data.relevantLink,
+        locale: data.locale,
+        printIssn: data.printIssn,
+        electronicIssn: data.electronicIssn,
+        publicationMonth: data.publicationMonth,
+        publicationYear: data.publicationYear,
+        sdgGoals: data.sdgGoals,
+        authors: data.authors,
+        isPuNameInPublication: data.isPuNameInPublication,
+        wasApcPaidByUniversity: data.wasApcPaidByUniversity,
+        authorPosition: data.authorPosition,
+        totalPuStudentAuthors: data.totalPuStudentAuthors,
+        puStudentNames: data.puStudentNames,
+        autoFetchedFields: data.autoFetchedFields,
+        publicationProofUrls,
+        calculatedIncentive,
+        misId: user.misId || null,
+        orcidId: user.orcidId || null,
+        claimType: "Research Papers",
+        benefitMode: "incentives",
+        uid: user.uid,
+        userName: user.name,
+        userEmail: user.email,
+        faculty: user.faculty,
+        institute: user.institute || '',
+        status,
+        submissionDate: new Date().toISOString(),
+        bankDetails: user.bankDetails || null,
+        authorType: data.authors.find(a => a.email.toLowerCase() === user.email.toLowerCase())?.role || 'Co-Author',
       };
-
+      
       const result = await submitIncentiveClaim(claimData);
-
       if (!result.success) {
         throw new Error(result.error)
       }
@@ -1493,5 +1515,3 @@ export function ResearchPaperForm() {
     </div>
   )
 }
-
-    
