@@ -91,7 +91,7 @@ function UserClaimsList({
 
         const highestApprovalStage = claim.approvals?.filter(a => a?.status === 'Approved').length || 0;
         if (highestApprovalStage > 0 && claim.status.startsWith('Pending Stage')) {
-             return <Badge variant="secondary">Stage ${highestApprovalStage} Approved</Badge>;
+             return <Badge variant="secondary">Stage {highestApprovalStage} Approved</Badge>;
         }
         
         return <Badge variant={claim.status === 'Accepted' ? 'default' : claim.status === 'Rejected' ? 'destructive' : 'secondary'}>{claim.status}</Badge>;
@@ -107,9 +107,9 @@ function UserClaimsList({
                             <p className="font-semibold">
                               {getClaimTitle(claim)}
                             </p>
-                            {claim.journalName && <p className="text-sm text-muted-foreground">Journal: ${claim.journalName}</p>}
-                            {claim.conferenceName && <p className="text-sm text-muted-foreground">Conference: ${claim.conferenceName}</p>}
-                            <p className="text-sm text-muted-foreground pt-1">Submitted: ${new Date(claim.submissionDate).toLocaleDateString()}</p>
+                            {claim.journalName && <p className="text-sm text-muted-foreground">Journal: {claim.journalName}</p>}
+                            {claim.conferenceName && <p className="text-sm text-muted-foreground">Conference: {claim.conferenceName}</p>}
+                            <p className="text-sm text-muted-foreground pt-1">Submitted: {new Date(claim.submissionDate).toLocaleDateString()}</p>
                         </div>
                         <div className="flex items-center gap-2 self-end sm:self-center">
                             {claimType === 'draft' ? (
@@ -265,7 +265,6 @@ const handleOpenDialog = useCallback(async (claim: IncentiveClaim) => {
                 misId: currentUser.misId,
                 orcidId: currentUser.orcidId,
                 faculty: currentUser.faculty || '',
-                institute: currentUser.institute || '',
                 calculatedIncentive: calculatedAmount, // Store the calculated amount
             };
             
@@ -353,7 +352,7 @@ const handleOpenDialog = useCallback(async (claim: IncentiveClaim) => {
                     <DialogHeader>
                         <DialogTitle>Apply for Co-Author Incentive</DialogTitle>
                         <DialogDescription>
-                           You are applying for an incentive for the publication: "${getClaimTitle(claimToApply)}".
+                           You are applying for an incentive for the publication: "{getClaimTitle(claimToApply)}".
                         </DialogDescription>
                     </DialogHeader>
 
@@ -363,15 +362,15 @@ const handleOpenDialog = useCallback(async (claim: IncentiveClaim) => {
                         )}
                         {claimToApply.claimType === 'Research Papers' && (
                             <>
-                                <p className="text-sm"><strong>Journal:</strong> ${claimToApply.journalName}</p>
-                                <p className="text-sm"><strong>Indexing:</strong> ${claimToApply.indexType?.toUpperCase()}</p>
-                                <p className="text-sm"><strong>Q-Rating:</strong> ${claimToApply.journalClassification}</p>
+                                <p className="text-sm"><strong>Journal:</strong> {claimToApply.journalName}</p>
+                                <p className="text-sm"><strong>Indexing:</strong> {claimToApply.indexType?.toUpperCase()}</p>
+                                <p className="text-sm"><strong>Q-Rating:</strong> {claimToApply.journalClassification}</p>
                             </>
                         )}
                          {claimToApply.claimType === 'Books' && (
                              <>
-                                <p className="text-sm"><strong>Publisher:</strong> ${claimToApply.publisherName}</p>
-                                <p className="text-sm"><strong>Book Type:</strong> ${claimToApply.bookType}</p>
+                                <p className="text-sm"><strong>Publisher:</strong> {claimToApply.publisherName}</p>
+                                <p className="text-sm"><strong>Book Type:</strong> {claimToApply.bookType}</p>
                             </>
                          )}
                         <Separator />
@@ -384,7 +383,7 @@ const handleOpenDialog = useCallback(async (claim: IncentiveClaim) => {
                             ) : (
                                 <>
                                     <p className="text-sm font-medium">Your Tentative Eligible Incentive Amount:</p>
-                                    <p className="font-bold text-2xl text-primary mt-1">₹${calculatedAmount?.toLocaleString('en-IN') ?? 'N/A'}</p>
+                                    <p className="font-bold text-2xl text-primary mt-1">₹{calculatedAmount?.toLocaleString('en-IN') ?? 'N/A'}</p>
                                 </>
                             )}
                         </div>
@@ -422,7 +421,7 @@ const handleOpenDialog = useCallback(async (claim: IncentiveClaim) => {
                     <DialogFooter>
                         <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
                         <Button type="submit" form="co-author-apply-form" disabled={isApplying || isCalculating}>
-                           ${isApplying ? <><Loader2 className="h-4 w-4 animate-spin mr-2"/> Submitting...</> : 'Confirm & Apply'}
+                           {isApplying ? <><Loader2 className="h-4 w-4 animate-spin mr-2"/> Submitting...</> : 'Confirm & Apply'}
                         </Button>
                     </DialogFooter>
                 </DialogContent>
@@ -451,26 +450,6 @@ export default function IncentiveClaimPage() {
   const [systemSettings, setSystemSettings] = useState<SystemSettings | null>(null);
   const [activeTab, setActiveTab] = useState(searchParams.get('tab') || 'apply');
   const isMobile = useIsMobile();
-
-  const updateUrl = useCallback((tab: string) => {
-    const params = new URLSearchParams(searchParams.toString());
-    params.set('tab', tab);
-    router.replace(`${pathname}?${params.toString()}`, { scroll: false });
-  }, [searchParams, pathname, router]);
-
-  useEffect(() => {
-    const currentTab = searchParams.get('tab');
-    if (currentTab) {
-      setActiveTab(currentTab);
-    }
-  }, [searchParams]);
-
-  useEffect(() => {
-    if (activeTab) {
-      updateUrl(activeTab);
-    }
-  }, [activeTab, updateUrl]);
-
 
   const fetchAllData = useCallback(async (uid: string) => {
       setLoading(true);
@@ -512,14 +491,32 @@ export default function IncentiveClaimPage() {
           const settings = await getSystemSettings();
           setSystemSettings(settings);
 
-      } catch (error) {
+      } catch (error: any) {
           console.error("Error fetching data:", error);
-          toast({ variant: 'destructive', title: "Error", description: "Could not fetch your data." });
+          toast({ variant: 'destructive', title: "Error", description: "Could not fetch your data: " + error.message });
       } finally {
           setLoading(false);
       }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-  
+
+  useEffect(() => {
+    const currentTab = searchParams.get('tab');
+    if (currentTab) {
+      setActiveTab(currentTab);
+    }
+  }, [searchParams]);
+
+  useEffect(() => {
+    const currentTabInUrl = searchParams.get('tab');
+    if (activeTab && activeTab !== currentTabInUrl) {
+      const params = new URLSearchParams(searchParams.toString());
+      params.set('tab', activeTab);
+      router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab]);
+
   useEffect(() => {
     const storedUser = localStorage.getItem('user');
     if (storedUser) {
@@ -664,7 +661,7 @@ export default function IncentiveClaimPage() {
                       </CardContent>
                       <CardFooter>
                         <div className={`text-sm font-semibold ${claim.disabled ? 'text-muted-foreground' : 'text-primary'}`}>
-                           ${claim.disabled ? 'Unavailable' : <>Apply Now <ArrowRight className="inline-block ml-1 h-4 w-4" /></>}
+                           {claim.disabled ? 'Unavailable' : <>Apply Now <ArrowRight className="inline-block ml-1 h-4 w-4" /></>}
                         </div>
                       </CardFooter>
                     </Card>
@@ -705,6 +702,7 @@ export default function IncentiveClaimPage() {
         onOpenChange={setIsDetailsOpen}
         currentUser={user}
         claimant={user} // On this page, the claimant is always the current user
+        onTakeAction={undefined}
     />
      <AlertDialog open={!!claimToDelete} onOpenChange={() => setClaimToDelete(null)}>
         <AlertDialogContent>
