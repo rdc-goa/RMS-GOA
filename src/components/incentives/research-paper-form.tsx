@@ -17,10 +17,9 @@ import { Separator } from '@/components/ui/separator';
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useToast } from '@/hooks/use-toast';
-import { db } from '@/lib/config';
+import { auth, db } from '@/lib/config';
 import { collection, doc, getDoc, setDoc } from 'firebase/firestore';
 import type { User, IncentiveClaim, Author } from '@/types';
-import { uploadFileToServer } from '@/app/server-actions';
 import { fetchAdvancedScopusData } from "@/app/scopus-actions";
 import { fetchWosDataByUrl } from "@/app/wos-actions";
 import { fetchScienceDirectData } from "@/app/sciencedirect-actions";
@@ -237,14 +236,21 @@ const months = [
 ]
 const years = Array.from({ length: 10 }, (_, i) => (new Date().getFullYear() - i).toString())
 
-const fileToDataUrl = (file: File): Promise<string> => {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onload = () => resolve(reader.result as string)
-    reader.onerror = (error) => reject(error)
-    reader.readAsDataURL(file)
-  })
-}
+const uploadFileViaApi = async (file: File, token: string): Promise<string> => {
+  const formData = new FormData();
+  formData.append('file', file);
+  const response = await fetch('/api/upload', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+    body: formData,
+  });
+  if (!response.ok) {
+    const errorData = await response.json();
+    throw new Error(errorData.error || 'File upload failed');
+  }
+  const result = await response.json();
+  return result.file.uploadedUrl;
+};
 
 const SPECIAL_POLICY_FACULTIES = [
     "Faculty of Applied Sciences",
@@ -738,6 +744,11 @@ export function ResearchPaperForm() {
     try {
       const data = form.getValues()
       
+      const token = await auth.currentUser?.getIdToken(true);
+      if (!token) {
+          throw new Error("Authentication token not found. Please log in again.");
+      }
+      
       const publicationProofFiles = data.publicationProof ? Array.from(data.publicationProof as FileList) : [];
       
       if (status === 'Pending' && publicationProofFiles.length === 0 && !claimId) {
@@ -747,15 +758,7 @@ export function ResearchPaperForm() {
       }
       
       const publicationProofUrls = await Promise.all(
-          publicationProofFiles.map(async (file, index) => {
-              const dataUrl = await fileToDataUrl(file);
-              const path = `incentive-proofs/${user.uid}/publication-proof/${new Date().toISOString()}-${index}-${file.name}`;
-              const result = await uploadFileToServer(dataUrl, path);
-              if (!result.success || !result.url) {
-                  throw new Error(result.error || `Failed to upload file ${file.name}`);
-              }
-              return result.url;
-          })
+          publicationProofFiles.map(file => uploadFileViaApi(file, token))
       );
 
       const { publicationProof, ...restOfData } = data;
@@ -1490,3 +1493,5 @@ export function ResearchPaperForm() {
     </div>
   )
 }
+
+    
