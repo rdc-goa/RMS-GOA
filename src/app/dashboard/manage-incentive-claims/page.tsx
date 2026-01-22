@@ -29,11 +29,14 @@ import { collection, getDocs, query, orderBy, where } from 'firebase/firestore';
 import type { IncentiveClaim, User } from '@/types';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
-import { markPaymentsCompleted, submitToAccounts, generateIncentivePaymentSheet, updateIncentiveClaimStatus } from '@/app/server-actions';
+import { updateIncentiveClaimStatus } from '@/app/server-actions';
+import { markPaymentsCompleted, submitToAccounts, generateIncentivePaymentSheet } from '@/app/manage-claims-actions';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
+import { FieldPath } from 'firebase/firestore';
+
 
 const STATUSES_SIMPLE: IncentiveClaim['status'][] = ['Pending', 'Accepted', 'Rejected'];
 
@@ -319,5 +322,3 @@ export default function ManageIncentiveClaimsPage() {
     </div>
   );
 }
-
-    
