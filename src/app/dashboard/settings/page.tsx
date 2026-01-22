@@ -810,19 +810,25 @@ export default function SettingsPage() {
                 </div>
               </div>
               <Separator />
-              <div className="flex items-center justify-between">
-                <div className="space-y-0.5">
-                  <Label className="text-base">Two-Factor Authentication (2FA)</Label>
-                  <p className="text-sm text-muted-foreground">
-                    {systemSettings.is2faEnabled ? "Enabled" : "Disabled"} - Require users to verify their identity with
-                    an email OTP upon login.
-                  </p>
+               <div className="space-y-4">
+                <div className="flex items-center gap-2">
+                    <ShieldCheck className="h-5 w-5" />
+                    <Label className="text-base">Two-Factor Authentication (2FA)</Label>
                 </div>
-                <Switch
-                  checked={systemSettings.is2faEnabled}
-                  onCheckedChange={handle2faToggle}
-                  disabled={isSavingSettings}
-                />
+                <div className="flex items-center justify-between rounded-lg border p-4">
+                    <div className="space-y-0.5">
+                      <Label htmlFor="2fa-switch">Enable Email OTP on Login</Label>
+                      <p className="text-sm text-muted-foreground">
+                        When enabled, all users (except for a few hardcoded exceptions) will be required to enter a one-time password sent to their email upon login.
+                      </p>
+                    </div>
+                    <Switch
+                      id="2fa-switch"
+                      checked={systemSettings.is2faEnabled}
+                      onCheckedChange={handle2faToggle}
+                      disabled={isSavingSettings}
+                    />
+                </div>
               </div>
               <Separator />
               <div className="space-y-4">
