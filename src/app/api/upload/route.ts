@@ -17,13 +17,15 @@ if (!firebaseApps.length) {
 }
 
 // Configuration
-const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5 MB
+const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
 const ALLOWED_MIME_TYPES = [
   "application/pdf",
   "image/jpeg",
   "image/png",
   "application/msword",
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "application/vnd.ms-powerpoint",
+  "application/vnd.openxmlformats-officedocument.presentationml.presentation"
 ];
 
 export async function POST(req: NextRequest) {
@@ -59,20 +61,6 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // 3. Check content length before processing
-    const contentLength = req.headers.get("content-length");
-    if (contentLength) {
-      const fileSizeBytes = parseInt(contentLength, 10);
-      if (fileSizeBytes > MAX_FILE_SIZE) {
-        return NextResponse.json(
-          {
-            error: `File size exceeds maximum limit of ${MAX_FILE_SIZE / (1024 * 1024)} MB`,
-          },
-          { status: 413 }
-        );
-      }
-    }
-
     // 4. Stream the file to your blob storage
     const formData = await req.formData();
     const file = formData.get("file") as File;
@@ -97,76 +85,32 @@ export async function POST(req: NextRequest) {
     // Validate file MIME type
     if (!ALLOWED_MIME_TYPES.includes(file.type)) {
       return NextResponse.json(
-        { error: `File type ${file.type} is not allowed. Allowed types: ${ALLOWED_MIME_TYPES.join(", ")}` },
+        { error: `File type ${file.type} is not allowed.` },
         { status: 400 }
       );
     }
 
-    // 5. Upload to Firebase Storage with Vercel Blob as fallback
-    const blob = await file.arrayBuffer();
-    const buffer = Buffer.from(blob);
+    // 5. Upload to Firebase Storage
+    const buffer = Buffer.from(await file.arrayBuffer());
     
-    let uploadUrl: string | null = null;
-    let uploadedVia = "unknown";
+    const fileName = `uploads/${userId}/${Date.now()}-${file.name}`;
+    const bucket = getStorage().bucket();
+    const fileRef = bucket.file(fileName);
 
-    // Try Firebase Storage first
-    try {
-      const fileName = `uploads/${userId}/${Date.now()}-${file.name}`;
-      const bucket = getStorage().bucket();
-      const fileRef = bucket.file(fileName);
-
-      await fileRef.save(buffer, {
+    await fileRef.save(buffer, {
+      metadata: {
+        contentType: file.type,
         metadata: {
-          contentType: file.type,
-          metadata: {
-            originalName: file.name,
-            uploadedBy: userId,
-          },
+          originalName: file.name,
+          uploadedBy: userId,
         },
-      });
+      },
+    });
 
-      // Make file publicly readable
-      await fileRef.makePublic();
-      uploadUrl = fileRef.publicUrl();
-      uploadedVia = "firebase-storage";
-    } catch (firebaseError: any) {
-      console.warn("Firebase Storage upload failed, falling back to Vercel Blob:", firebaseError.message);
-      
-      // Fallback to Vercel Blob if Firebase fails or is not configured
-      if (process.env.NEXT_PUBLIC_PERSONAL_STORAGE_URL) {
-        try {
-          const uploadFormData = new FormData();
-          uploadFormData.append("file", new Blob([blob], { type: file.type }));
-          uploadFormData.append("userId", userId);
-          uploadFormData.append("originalName", file.name);
-
-          const response = await fetch(
-            `${process.env.NEXT_PUBLIC_PERSONAL_STORAGE_URL}/api/upload`,
-            {
-              method: "POST",
-              headers: {
-                "Authorization": `Bearer ${process.env.PERSONAL_STORAGE_API_TOKEN}`,
-              },
-              body: uploadFormData,
-            }
-          );
-
-          if (response.ok) {
-            const uploadResult = await response.json();
-            uploadUrl = uploadResult.url || uploadResult.uploadedUrl || `${process.env.NEXT_PUBLIC_PERSONAL_STORAGE_URL}/${uploadResult.path || file.name}`;
-            uploadedVia = "vercel-blob";
-          } else {
-            throw new Error(`Vercel Blob upload failed with status ${response.status}`);
-          }
-        } catch (blobError: any) {
-          console.error("Vercel Blob upload also failed:", blobError.message);
-          throw new Error(`All storage backends failed: ${blobError.message}`);
-        }
-      } else {
-        throw new Error("Firebase Storage failed and Vercel Blob is not configured");
-      }
-    }
-
+    // Make file publicly readable
+    await fileRef.makePublic();
+    const uploadUrl = fileRef.publicUrl();
+    
     return NextResponse.json(
       {
         ok: true,
@@ -178,7 +122,6 @@ export async function POST(req: NextRequest) {
           uploadedAt: new Date().toISOString(),
           userId,
           uploadedUrl: uploadUrl,
-          uploadedVia,
         },
       },
       { status: 200 }
@@ -202,7 +145,7 @@ export async function OPTIONS(req: NextRequest) {
     {
       status: 200,
       headers: {
-        "Access-Control-Allow-Origin": process.env.ALLOWED_ORIGINS || "*",
+        "Access-Control-Allow-Origin": "*", // Be more specific in production
         "Access-Control-Allow-Methods": "POST, OPTIONS",
         "Access-Control-Allow-Headers": "Content-Type, Authorization",
       },

@@ -17,10 +17,10 @@ import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
 import { Separator } from '@/components/ui/separator';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useToast } from '@/hooks/use-toast';
-import { db } from '@/lib/config';
+import { auth, db } from '@/lib/config';
 import { collection, addDoc, doc, setDoc, getDoc } from 'firebase/firestore';
 import type { User, IncentiveClaim, Author } from '@/types';
-import { uploadFileToServer, checkPatentUniqueness } from '@/app/server-actions';
+import { checkPatentUniqueness } from '@/app/server-actions';
 import { findUserByMisId } from '@/app/userfinding';
 import { Loader2, AlertCircle, Info, Plus, Trash2, Search, Bot, Edit } from 'lucide-react';
 import { submitIncentiveClaim } from '@/app/incentive-approval-actions';
@@ -83,13 +83,20 @@ type ApcFormValues = z.infer<typeof apcSchema>;
 const articleTypes = ['Research Paper Publication', 'Review Article', 'Letter to Editor', 'Other'];
 const coAuthorRoles: Author['role'][] = ['First Author', 'Corresponding Author', 'Co-Author', 'First & Corresponding Author'];
 
-const fileToDataUrl = (file: File): Promise<string> => {
-    return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(reader.result as string);
-        reader.onerror = error => reject(error);
-        reader.readAsDataURL(file);
-    });
+const uploadFileViaApi = async (file: File, token: string): Promise<string> => {
+  const formData = new FormData();
+  formData.append('file', file);
+  const response = await fetch('/api/upload', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+    body: formData,
+  });
+  if (!response.ok) {
+    const errorData = await response.json();
+    throw new Error(errorData.error || 'File upload failed');
+  }
+  const result = await response.json();
+  return result.file.uploadedUrl;
 };
 
 const SPECIAL_POLICY_FACULTIES = [
@@ -500,7 +507,7 @@ useEffect(() => {
     }
     remove(index);
   };
-
+  
   const updateAuthorRole = (index: number, role: Author['role']) => {
     const currentAuthors = form.getValues('authors');
     const author = currentAuthors[index];
@@ -534,21 +541,20 @@ useEffect(() => {
     try {
         const data = form.getValues();
         
-        const uploadFileHelper = async (file: File | undefined, folderName: string): Promise<string | undefined> => {
-            if (!file || !user) return undefined;
-            const dataUrl = await fileToDataUrl(file);
-            const path = `incentive-proofs/${user.uid}/${folderName}/${new Date().toISOString()}-${file.name}`;
-            const result = await uploadFileToServer(dataUrl, path);
-            if (!result.success || !result.url) {
-            throw new Error(result.error || `File upload failed for ${folderName}`);
-            }
-            return result.url;
+        const token = await auth.currentUser?.getIdToken(true);
+        if (!token) {
+            throw new Error("Authentication token not found. Please log in again.");
+        }
+
+        const uploadFileHelper = async (file: File | undefined): Promise<string | undefined> => {
+            if (!file) return undefined;
+            return uploadFileViaApi(file, token);
         };
 
         const [apcApcWaiverProofUrl, apcPublicationProofUrl, apcInvoiceProofUrl] = await Promise.all([
-            uploadFileHelper(data.apcApcWaiverProof?.[0], 'apc-waiver-proof'),
-            uploadFileHelper(data.apcPublicationProof?.[0], 'apc-publication-proof'),
-            uploadFileHelper(data.apcInvoiceProof?.[0], 'apc-invoice-proof'),
+            uploadFileHelper(data.apcApcWaiverProof?.[0]),
+            uploadFileHelper(data.apcPublicationProof?.[0]),
+            uploadFileHelper(data.apcInvoiceProof?.[0]),
         ]);
 
         const { apcPublicationProof, apcInvoiceProof, apcApcWaiverProof, ...restOfData } = data;

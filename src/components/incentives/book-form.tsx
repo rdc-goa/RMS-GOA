@@ -19,16 +19,17 @@ import { Separator } from '@/components/ui/separator';
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useToast } from '@/hooks/use-toast';
-import { db } from '@/lib/config';
+import { auth, db } from '@/lib/config';
 import { collection, addDoc, doc, setDoc, getDoc } from 'firebase/firestore';
 import type { User, IncentiveClaim, BookCoAuthor, Author } from '@/types';
-import { uploadFileToServer } from '@/app/server-actions';
 import { findUserByMisId } from '@/app/userfinding';
 import { Loader2, AlertCircle, Plus, Trash2, Search, Edit } from 'lucide-react';
 import { submitIncentiveClaim } from '@/app/incentive-approval-actions';
 import { calculateBookIncentive } from '@/app/incentive-calculation';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../ui/table';
 import { Badge } from '../ui/badge';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogClose, DialogFooter } from '../ui/dialog';
+import { Label } from '../ui/label';
 
 const bookSchema = z
   .object({
@@ -85,13 +86,20 @@ type BookFormValues = z.infer<typeof bookSchema>;
 
 const coAuthorRoles: Author['role'][] = ['First Author', 'Corresponding Author', 'Co-Author', 'First & Corresponding Author'];
 
-const fileToDataUrl = (file: File): Promise<string> => {
-    return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(reader.result as string);
-        reader.onerror = error => reject(error);
-        reader.readAsDataURL(file);
-    });
+const uploadFileViaApi = async (file: File, token: string): Promise<string> => {
+  const formData = new FormData();
+  formData.append('file', file);
+  const response = await fetch('/api/upload', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+    body: formData,
+  });
+  if (!response.ok) {
+    const errorData = await response.json();
+    throw new Error(errorData.error || 'File upload failed');
+  }
+  const result = await response.json();
+  return result.file.uploadedUrl;
 };
 
 function ReviewDetails({ data, onEdit }: { data: BookFormValues; onEdit: () => void }) {
@@ -348,24 +356,22 @@ export function BookForm() {
         const data = form.getValues();
         const calculationResult = await calculateBookIncentive(data);
 
-        const uploadFileHelper = async (file: File | undefined, folderName: string): Promise<string | undefined> => {
-            if (!file || !user) return undefined;
-            const dataUrl = await fileToDataUrl(file);
-            const path = `incentive-proofs/${user.uid}/${folderName}/${new Date().toISOString()}-${file.name}`;
-            const result = await uploadFileToServer(dataUrl, path);
-            if (!result.success || !result.url) {
-                throw new Error(result.error || `File upload failed for ${folderName}`);
-            }
-            return result.url;
+        const token = await auth.currentUser?.getIdToken(true);
+        if (!token) {
+            throw new Error("Authentication token not found. Please log in again.");
+        }
+
+        const uploadFileHelper = async (file: File | undefined): Promise<string | undefined> => {
+            if (!file) return undefined;
+            return uploadFileViaApi(file, token);
         };
         
         const bookProofFile = data.bookProof?.[0];
         const scopusProofFile = data.scopusProof?.[0];
         
-        const bookProofUrl = await uploadFileHelper(bookProofFile, 'book-proof');
-        const scopusProofUrl = await uploadFileHelper(scopusProofFile, 'book-scopus-proof');
+        const bookProofUrl = await uploadFileHelper(bookProofFile);
+        const scopusProofUrl = await uploadFileHelper(scopusProofFile);
         
-        // Create a clean data object without the file objects
         const { bookProof, scopusProof, ...restOfData } = data;
 
         const claimData: Partial<IncentiveClaim> = {
