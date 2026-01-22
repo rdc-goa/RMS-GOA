@@ -1,4 +1,3 @@
-
 'use client';
 
 import { useForm, useFieldArray } from 'react-hook-form';
@@ -38,7 +37,6 @@ import { submitIncentiveClaim } from "@/app/incentive-approval-actions";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../ui/table";
 import { Badge } from "../ui/badge";
 import { findUserByMisId } from "@/app/userfinding";
-
 
 const MAX_FILES = 10
 const MAX_FILE_SIZE = 5 * 1024 * 1024 // 5MB
@@ -742,94 +740,92 @@ export function ResearchPaperForm() {
 
     setIsSubmitting(true)
     try {
-      const data = form.getValues()
-      
-      const token = await auth.currentUser?.getIdToken(true);
-      if (!token) {
-          throw new Error("Authentication token not found. Please log in again.");
-      }
-      
-      const publicationProofFiles = data.publicationProof ? Array.from(data.publicationProof as FileList) : [];
-      
-      if (status === 'Pending' && publicationProofFiles.length === 0 && !claimId) {
-        form.setError('publicationProof', { type: 'manual', message: 'Proof of publication is required for submission.' });
-        setIsSubmitting(false);
-        return;
-      }
-      
-      const publicationProofUrls = await Promise.all(
-          publicationProofFiles.map(file => uploadFileViaApi(file, token))
-      );
-
-      // Manually construct the payload to ensure file objects are excluded
-      const claimData: Omit<IncentiveClaim, 'id' | 'claimId'> = {
-        publicationType: data.publicationType,
-        indexType: data.indexType,
-        doi: data.doi,
-        scopusLink: data.scopusLink,
-        wosLink: data.wosLink,
-        wosAccessionNumber: data.wosAccessionNumber,
-        journalClassification: data.journalClassification,
-        wosType: data.wosType,
-        journalName: data.journalName,
-        journalWebsite: data.journalWebsite,
-        paperTitle: data.paperTitle,
-        relevantLink: data.relevantLink,
-        locale: data.locale,
-        printIssn: data.printIssn,
-        electronicIssn: data.electronicIssn,
-        publicationMonth: data.publicationMonth,
-        publicationYear: data.publicationYear,
-        sdgGoals: data.sdgGoals,
-        authors: data.authors,
-        isPuNameInPublication: data.isPuNameInPublication,
-        wasApcPaidByUniversity: data.wasApcPaidByUniversity,
-        authorPosition: data.authorPosition,
-        totalPuStudentAuthors: data.totalPuStudentAuthors,
-        puStudentNames: data.puStudentNames,
-        autoFetchedFields: data.autoFetchedFields,
-        publicationProofUrls,
-        calculatedIncentive,
-        misId: user.misId || null,
-        orcidId: user.orcidId || null,
-        claimType: "Research Papers",
-        benefitMode: "incentives",
-        uid: user.uid,
-        userName: user.name,
-        userEmail: user.email,
-        faculty: user.faculty,
-        institute: user.institute || '',
-        status,
-        submissionDate: new Date().toISOString(),
-        bankDetails: user.bankDetails || null,
-        authorType: data.authors.find(a => a.email.toLowerCase() === user.email.toLowerCase())?.role || 'Co-Author',
-      };
-      
-      const result = await submitIncentiveClaim(claimData);
-      if (!result.success) {
-        throw new Error(result.error)
-      }
-
-      const newClaimId = result.claimId;
-
-      if (status === "Draft") {
-        toast({ title: "Draft Saved!", description: "You can continue editing from the 'Incentive Claim' page." })
-        if (!claimId) { // Only redirect if it's a new draft
-            router.push(`/dashboard/incentive-claim/research-paper?claimId=${newClaimId}`);
+        const token = await auth.currentUser?.getIdToken(true);
+        if (!token) {
+            throw new Error("Authentication token not found. Please log in again.");
         }
-      } else {
-        toast({ title: "Success", description: "Your incentive claim has been submitted." })
-        router.push("/dashboard/incentive-claim")
-      }
+        
+        const data = form.getValues();
+        const publicationProofFiles = data.publicationProof ? Array.from(data.publicationProof as FileList) : [];
+        
+        if (status === 'Pending' && publicationProofFiles.length === 0 && !claimId) {
+          form.setError('publicationProof', { type: 'manual', message: 'Proof of publication is required for submission.' });
+          setIsSubmitting(false);
+          return;
+        }
+
+        const publicationProofUrls = await Promise.all(
+            publicationProofFiles.map(file => uploadFileViaApi(file, token))
+        );
+
+        const claimData: Omit<IncentiveClaim, 'id' | 'claimId'> = {
+            publicationType: data.publicationType,
+            indexType: data.indexType,
+            doi: data.doi,
+            scopusLink: data.scopusLink,
+            wosLink: data.wosLink,
+            wosAccessionNumber: data.wosAccessionNumber,
+            journalClassification: data.journalClassification,
+            wosType: data.wosType,
+            journalName: data.journalName,
+            journalWebsite: data.journalWebsite,
+            paperTitle: data.paperTitle,
+            relevantLink: data.relevantLink,
+            locale: data.locale,
+            printIssn: data.printIssn,
+            electronicIssn: data.electronicIssn,
+            publicationMonth: data.publicationMonth,
+            publicationYear: data.publicationYear,
+            sdgGoals: data.sdgGoals,
+            authors: data.authors,
+            isPuNameInPublication: data.isPuNameInPublication,
+            wasApcPaidByUniversity: data.wasApcPaidByUniversity,
+            authorPosition: data.authorPosition,
+            totalPuStudentAuthors: data.totalPuStudentAuthors,
+            puStudentNames: data.puStudentNames,
+            autoFetchedFields: data.autoFetchedFields,
+            publicationProofUrls,
+            calculatedIncentive,
+            misId: user.misId || null,
+            orcidId: user.orcidId || null,
+            claimType: "Research Papers",
+            benefitMode: "incentives",
+            uid: user.uid,
+            userName: user.name,
+            userEmail: user.email,
+            faculty: user.faculty,
+            institute: user.institute || '',
+            status,
+            submissionDate: new Date().toISOString(),
+            bankDetails: user.bankDetails || null,
+            authorType: data.authors.find(a => a.email.toLowerCase() === user.email.toLowerCase())?.role || 'Co-Author',
+        };
+
+        const result = await submitIncentiveClaim(claimData);
+        if (!result.success) {
+            throw new Error(result.error);
+        }
+
+        const newClaimId = result.claimId;
+
+        if (status === "Draft") {
+            toast({ title: "Draft Saved!", description: "You can continue editing from the 'Incentive Claim' page." })
+            if (!claimId) { // Only redirect if it's a new draft
+                router.push(`/dashboard/incentive-claim/research-paper?claimId=${newClaimId}`);
+            }
+        } else {
+            toast({ title: "Success", description: "Your incentive claim has been submitted." })
+            router.push("/dashboard/incentive-claim")
+        }
     } catch (error: any) {
-      console.error("Error submitting claim: ", error)
-      toast({
-        variant: "destructive",
-        title: "Error",
-        description: error.message || "Failed to submit claim. Please try again.",
-      })
+        console.error("Error submitting claim: ", error)
+        toast({
+            variant: "destructive",
+            title: "Error",
+            description: error.message || "Failed to submit claim. Please try again.",
+        })
     } finally {
-      setIsSubmitting(false)
+        setIsSubmitting(false)
     }
   }
 
