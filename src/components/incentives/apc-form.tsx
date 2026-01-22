@@ -155,7 +155,7 @@ function ReviewDetails({ data, onEdit }: { data: ApcFormValues; onEdit: () => vo
         );
     };
 
-    const apcWaiverProofFile = data.apcApcWaiverProof?.[0] as File | undefined;
+    const apcApcWaiverProofFile = data.apcApcWaiverProof?.[0] as File | undefined;
     const apcPublicationProofFile = data.apcPublicationProof?.[0] as File | undefined;
     const apcInvoiceProofFile = data.apcInvoiceProof?.[0] as File | undefined;
 
@@ -183,7 +183,7 @@ function ReviewDetails({ data, onEdit }: { data: ApcFormValues; onEdit: () => vo
                 {renderDetail("PU Goa Name in Publication", data.apcPuNameInPublication)}
                 {renderDetail("Total Amount of APC (INR)", `₹${data.apcTotalAmount.toLocaleString('en-IN')}`)}
                 {renderDetail("Amount Claimed (INR)", `₹${data.apcAmountClaimed.toLocaleString('en-IN')}`)}
-                {renderDetail("Proof of APC Waiver Request", apcWaiverProofFile?.name)}
+                {renderDetail("Proof of APC Waiver Request", apcApcWaiverProofFile?.name)}
                 {renderDetail("Proof of Publication", apcPublicationProofFile?.name)}
                 {renderDetail("Proof of Invoice/Payment", apcInvoiceProofFile?.name)}
             </CardContent>
@@ -545,26 +545,17 @@ useEffect(() => {
             throw new Error("Authentication token not found. Please log in again.");
         }
 
-        const uploadFileHelper = async (file: File | undefined): Promise<string | undefined> => {
-            if (!file) return undefined;
-            return uploadFileViaApi(file, token);
-        };
+        const apcApcWaiverProofFile = data.apcApcWaiverProof?.[0];
+        const apcPublicationProofFile = data.apcPublicationProof?.[0];
+        const apcInvoiceProofFile = data.apcInvoiceProof?.[0];
 
         const [apcApcWaiverProofUrl, apcPublicationProofUrl, apcInvoiceProofUrl] = await Promise.all([
-            uploadFileHelper(data.apcApcWaiverProof?.[0]),
-            uploadFileHelper(data.apcPublicationProof?.[0]),
-            uploadFileHelper(data.apcInvoiceProof?.[0]),
+            apcApcWaiverProofFile ? uploadFileViaApi(apcApcWaiverProofFile, token) : Promise.resolve(undefined),
+            apcPublicationProofFile ? uploadFileViaApi(apcPublicationProofFile, token) : Promise.resolve(undefined),
+            apcInvoiceProofFile ? uploadFileViaApi(apcInvoiceProofFile, token) : Promise.resolve(undefined),
         ]);
 
-        delete data.apcPublicationProof;
-        delete data.apcInvoiceProof;
-        delete data.apcApcWaiverProof;
-
         const claimData: Omit<IncentiveClaim, 'id' | 'claimId'> = {
-            ...data,
-            calculatedIncentive,
-            misId: user.misId || null,
-            orcidId: user.orcidId || null,
             claimType: 'Seed Money for APC',
             benefitMode: 'reimbursement',
             uid: user.uid,
@@ -575,9 +566,30 @@ useEffect(() => {
             status,
             submissionDate: new Date().toISOString(),
             bankDetails: user.bankDetails || null,
+            misId: user.misId || null,
+            orcidId: user.orcidId || null,
+            calculatedIncentive,
+            apcTypeOfArticle: data.apcTypeOfArticle,
+            apcOtherArticleType: data.apcOtherArticleType,
+            apcIndexingStatus: data.apcIndexingStatus,
+            apcQRating: data.apcQRating,
+            doi: data.doi,
+            apcPaperTitle: data.apcPaperTitle,
+            authors: data.authors,
+            apcTotalStudentAuthors: data.apcTotalStudentAuthors,
+            apcStudentNames: data.apcStudentNames,
+            apcJournalDetails: data.apcJournalDetails,
+            apcApcWaiverRequested: data.apcApcWaiverRequested,
+            apcJournalWebsite: data.apcJournalWebsite,
+            apcIssnNo: data.apcIssnNo,
+            apcSciImpactFactor: data.apcSciImpactFactor,
+            apcPuNameInPublication: data.apcPuNameInPublication,
+            apcAmountClaimed: data.apcAmountClaimed,
+            apcTotalAmount: data.apcTotalAmount,
+            apcSelfDeclaration: data.apcSelfDeclaration,
             apcApcWaiverProofUrl,
             apcPublicationProofUrl,
-            apcInvoiceProofUrl
+            apcInvoiceProofUrl,
         };
         
         const result = await submitIncentiveClaim(claimData);
@@ -832,3 +844,4 @@ useEffect(() => {
     </>
   );
 }
+
