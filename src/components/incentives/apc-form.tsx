@@ -1,5 +1,4 @@
 
-
 'use client';
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useForm, useFieldArray } from 'react-hook-form';
@@ -356,7 +355,7 @@ useEffect(() => {
         fetchDraft();
     }
   }, [searchParams, user, form, toast]);
-  
+
   const watchAuthors = form.watch('authors');
   const firstAuthorExists = useMemo(() => 
     watchAuthors.some(author => author.role === 'First Author' || author.role === 'First & Corresponding Author'),
@@ -557,10 +556,12 @@ useEffect(() => {
             uploadFileHelper(data.apcInvoiceProof?.[0]),
         ]);
 
-        const { apcPublicationProof, apcInvoiceProof, apcApcWaiverProof, ...restOfData } = data;
+        delete data.apcPublicationProof;
+        delete data.apcInvoiceProof;
+        delete data.apcApcWaiverProof;
 
         const claimData: Omit<IncentiveClaim, 'id' | 'claimId'> = {
-            ...restOfData,
+            ...data,
             calculatedIncentive,
             misId: user.misId || null,
             orcidId: user.orcidId || null,
@@ -574,11 +575,10 @@ useEffect(() => {
             status,
             submissionDate: new Date().toISOString(),
             bankDetails: user.bankDetails || null,
+            apcApcWaiverProofUrl,
+            apcPublicationProofUrl,
+            apcInvoiceProofUrl
         };
-
-        if (apcApcWaiverProofUrl) claimData.apcApcWaiverProofUrl = apcApcWaiverProofUrl;
-        if (apcPublicationProofUrl) claimData.apcPublicationProofUrl = apcPublicationProofUrl;
-        if (apcInvoiceProofUrl) claimData.apcInvoiceProofUrl = apcInvoiceProofUrl;
         
         const result = await submitIncentiveClaim(claimData);
 
@@ -783,7 +783,7 @@ useEffect(() => {
                     control={form.control}
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Amount claimed (INR)</FormLabel>
+                        <FormLabel>Amount Claimed (INR)</FormLabel>
                         <FormControl>
                           <Input
                             type="text"
