@@ -497,8 +497,7 @@ export default function IncentiveClaimPage() {
       } finally {
           setLoading(false);
       }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [toast]);
 
   useEffect(() => {
     const currentTab = searchParams.get('tab');
@@ -526,7 +525,8 @@ export default function IncentiveClaimPage() {
     } else {
         setLoading(false);
     }
-  }, [fetchAllData]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleViewDetails = (claim: IncentiveClaim) => {
     setSelectedClaim(claim);
@@ -722,3 +722,4 @@ export default function IncentiveClaimPage() {
     </>
   );
 }
+
