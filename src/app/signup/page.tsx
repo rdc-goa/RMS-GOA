@@ -86,7 +86,7 @@ export default function SignupPage() {
     }
 
     const domainCheck = await isEmailDomainAllowed(firebaseUser.email!)
-    const staffRes = await fetch(`/api/get-staff-data?email=${firebaseUser.email!}`)
+    const staffRes = await fetch(\`/api/get-staff-data?email=\${firebaseUser.email!}\`)
     const staffResult = await staffRes.json()
 
     let userDataFromExcel: Partial<User> = {}
@@ -102,7 +102,7 @@ export default function SignupPage() {
       designation = "Super-admin"
       profileComplete = true
       notifyRole = "Super-admin"
-    } else if (staffResult.success) {
+    } else if (staffResult.success && staffResult.data.length > 0) {
       const userData = staffResult.data[0];
       userDataFromExcel = userData
       const userType = userData.type
@@ -157,22 +157,22 @@ export default function SignupPage() {
     try {
       const historicalResult = await linkHistoricalData(user)
       if (historicalResult.success && historicalResult.count > 0) {
-        console.log(`Successfully linked ${historicalResult.count} historical IMR projects for new user ${user.email}.`)
+        console.log(\`Successfully linked \${historicalResult.count} historical IMR projects for new user \${user.email}.\`)
       }
 
       const paperResult = await linkPapersToNewUser(user.uid, user.email)
       if (paperResult.success && paperResult.count > 0) {
-        console.log(`Successfully linked ${paperResult.count} research papers for new user ${user.email}.`)
+        console.log(\`Successfully linked \${paperResult.count} research papers for new user \${user.email}.\`)
       }
 
       const emrInterestResult = await linkEmrInterestsToNewUser(user.uid, user.email)
       if (emrInterestResult.success && emrInterestResult.count > 0) {
-        console.log(`Successfully linked ${emrInterestResult.count} EMR interests for new user ${user.email}.`)
+        console.log(\`Successfully linked \${emrInterestResult.count} EMR interests for new user \${user.email}.\`)
       }
       
       const emrCoPiResult = await linkEmrCoPiInterestsToNewUser(user.uid, user.email);
       if (emrCoPiResult.success && emrCoPiResult.count > 0) {
-        console.log(`Successfully linked ${emrCoPiResult.count} EMR Co-PI interests for new user ${user.email}.`);
+        console.log(\`Successfully linked \${emrCoPiResult.count} EMR Co-PI interests for new user \${user.email}.\`);
       }
 
     } catch (e) {
@@ -439,7 +439,7 @@ export default function SignupPage() {
                         id="g_id_onload"
                         data-client_id={googleClientId}
                         data-context="signup"
-                        data-login_uri={`${process.env.NEXT_PUBLIC_BASE_URL}/login`}
+                        data-login_uri={\`\${process.env.NEXT_PUBLIC_BASE_URL}/login\`}
                         data-callback="handleCredentialResponse"
                         data-itp_support="true"
                     ></div>
