@@ -21,11 +21,12 @@ import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
-import { Loader2, Check, X, ExternalLink } from 'lucide-react';
+import { Loader2, Check, X, ExternalLink, Info } from 'lucide-react';
 import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
 import Link from 'next/link';
 import { Tooltip, TooltipProvider, TooltipTrigger, TooltipContent } from '../ui/tooltip';
+import { Alert, AlertDescription, AlertTitle } from '../ui/alert';
 
 interface ApprovalDialogProps {
   claim: IncentiveClaim;
@@ -588,6 +589,16 @@ export function ApprovalDialog({ claim, approver, claimant, stageIndex, isOpen, 
                         </div>
                     )}
                     
+                    {isChecklistEnabled && (
+                        <Alert variant="default" className="bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-700">
+                            <Info className="h-4 w-4" />
+                            <AlertTitle>Action Required</AlertTitle>
+                            <AlertDescription>
+                                For each item in the checklist below, please click the check (✓) to confirm it is correct, or the cross (✗) to flag it. You must verify all items to proceed.
+                            </AlertDescription>
+                        </Alert>
+                    )}
+
                      {stageIndex === 0 && claim.calculatedIncentive !== undefined && claim.calculatedIncentive !== null && (
                         <div className="p-4 bg-blue-100 dark:bg-blue-900/30 rounded-md text-center">
                             <p className="text-sm font-medium text-blue-800 dark:text-blue-200">Tentatively Eligible Incentive Amount:</p>
