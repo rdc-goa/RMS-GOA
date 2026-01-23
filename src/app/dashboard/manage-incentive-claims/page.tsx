@@ -141,7 +141,7 @@ export default function ManageIncentiveClaimsPage() {
   }, [allClaims, searchTerm, claimTypeFilter]);
   
   const tabClaims = useMemo(() => {
-    const pending = filteredClaims.filter(claim => ['Pending', 'Pending Stage 1 Approval', 'Pending Stage 2 Approval', 'Pending Stage 3 Approval'].includes(claim.status));
+    const pending = filteredClaims.filter(claim => ['Pending', 'Pending Principal Approval', 'Pending Stage 1 Approval', 'Pending Stage 2 Approval', 'Pending Stage 3 Approval'].includes(claim.status));
     const pendingBank = filteredClaims.filter(claim => ['Accepted', 'Submitted to Accounts'].includes(claim.status));
     const approved = filteredClaims.filter(claim => claim.status === 'Payment Completed');
     const rejected = filteredClaims.filter(claim => claim.status === 'Rejected');
