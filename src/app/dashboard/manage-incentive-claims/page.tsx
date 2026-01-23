@@ -42,6 +42,8 @@ import { Textarea } from '@/components/ui/textarea';
 import { Separator } from '@/components/ui/separator';
 import { FieldPath } from 'firebase-admin/firestore';
 import Link from 'next/link';
+import { format } from 'date-fns';
+
 
 const CLAIM_TYPES = ['Research Papers', 'Patents', 'Conference Presentations', 'Books', 'Membership of Professional Bodies', 'Seed Money for APC'];
 type SortableKeys = keyof Pick<IncentiveClaim, 'userName' | 'paperTitle' | 'submissionDate' | 'status' | 'claimType'>;
@@ -50,7 +52,7 @@ type SortableKeys = keyof Pick<IncentiveClaim, 'userName' | 'paperTitle' | 'subm
 export default function ManageIncentiveClaimsPage() {
   const [allClaims, setAllClaims] = useState<IncentiveClaim[]>([]);
   const [users, setUsers] = useState<User[]>([]);
-  const [activeTab, setActiveTab] = useState('pending');
+  const [activeTab, setActiveTab] = useState('pending-bank');
   const [loading, setLoading] = useState(true);
   const [selectedClaim, setSelectedClaim] = useState<IncentiveClaim | null>(null);
   const { toast } = useToast();
@@ -303,7 +305,7 @@ export default function ManageIncentiveClaimsPage() {
                       }
                     }}
                     disabled={sortedAndFilteredClaims.length > 30}
-                    indeterminate={selectedClaims.length > 0 && selectedClaims.length < sortedAndFilteredClaims.length ? "true" : undefined}
+                    indeterminate={selectedClaims.length > 0 && selectedClaims.length < sortedAndFilteredClaims.length}
                 />
             </TableHead>
             <TableHead>
@@ -483,7 +485,6 @@ export default function ManageIncentiveClaimsPage() {
 
 function GeneratePaymentSheetDialog({ isOpen, onOpenChange, claims, allUsers }: { isOpen: boolean; onOpenChange: (open: boolean) => void; claims: IncentiveClaim[]; allUsers: User[] }) {
     const { toast } = useToast();
-    const [remarks, setRemarks] = useState<Record<string, string>>({});
     const [referenceNumber, setReferenceNumber] = useState('');
     const [isGenerating, setIsGenerating] = useState(false);
 
@@ -494,6 +495,11 @@ function GeneratePaymentSheetDialog({ isOpen, onOpenChange, claims, allUsers }: 
         }
         setIsGenerating(true);
         try {
+            const remarks: Record<string, string> = {};
+            claims.forEach(claim => {
+                remarks[claim.id] = claim.claimId || claim.id;
+            });
+
             const result = await generateIncentivePaymentSheet(claims.map(c => c.id), remarks, `RDC/ACCT/PYMT/${referenceNumber}`);
             if (result.success && result.fileData) {
                 const byteCharacters = atob(result.fileData);
@@ -525,7 +531,7 @@ function GeneratePaymentSheetDialog({ isOpen, onOpenChange, claims, allUsers }: 
             <DialogContent className="sm:max-w-3xl">
                 <DialogHeader>
                     <DialogTitle>Generate Incentive Payment Sheet</DialogTitle>
-                    <DialogDescription>Add remarks for the selected claims and provide a reference number for the payment sheet.</DialogDescription>
+                    <DialogDescription>Provide a reference number for the payment sheet. Claim IDs will be used as remarks.</DialogDescription>
                 </DialogHeader>
                 <div className="space-y-4 py-4 max-h-[60vh] overflow-y-auto pr-4">
                     <div className="flex items-center gap-2">
@@ -534,21 +540,12 @@ function GeneratePaymentSheetDialog({ isOpen, onOpenChange, claims, allUsers }: 
                     </div>
                     <Separator />
                     <div className="space-y-2">
-                        <h4 className="font-semibold">Add Remarks</h4>
+                        <h4 className="font-semibold">Selected Claims</h4>
                         {claims.map(claim => (
-                            <div key={claim.id} className="grid grid-cols-1 md:grid-cols-3 gap-4 border p-2 rounded-md">
-                                <div className="md:col-span-1">
-                                    <p className="font-medium text-sm">{claim.userName}</p>
-                                    <p className="text-xs text-muted-foreground">{claim.paperTitle || claim.publicationTitle || claim.claimType}</p>
-                                    <p className="text-sm font-semibold">₹{claim.finalApprovedAmount?.toLocaleString('en-IN')}</p>
-                                </div>
-                                <div className="md:col-span-2">
-                                    <Textarea
-                                        placeholder="Enter remarks for this claim..."
-                                        value={remarks[claim.id] || ''}
-                                        onChange={(e) => setRemarks(prev => ({ ...prev, [claim.id]: e.target.value }))}
-                                    />
-                                </div>
+                            <div key={claim.id} className="border p-3 rounded-md">
+                                <p className="font-medium text-sm">{claim.userName}</p>
+                                <p className="text-xs text-muted-foreground">{claim.claimId}</p>
+                                <p className="text-sm font-semibold">₹{claim.finalApprovedAmount?.toLocaleString('en-IN')}</p>
                             </div>
                         ))}
                     </div>
@@ -563,5 +560,3 @@ function GeneratePaymentSheetDialog({ isOpen, onOpenChange, claims, allUsers }: 
         </Dialog>
     );
 }
-
-    
