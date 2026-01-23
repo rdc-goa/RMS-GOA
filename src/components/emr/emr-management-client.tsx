@@ -95,7 +95,7 @@ const attendanceSchema = z.object({
   absentEvaluatorUids: z.array(z.string()),
 });
 
-function ManualRegistrationDialog({ call, isOpen, onOpenChange, onActionComplete, currentUser }: { call: FundingCall; isOpen: boolean; onOpenChange: (open: boolean) => void; onActionComplete: () => void; currentUser: User; }) {
+function ManualRegistrationDialog({ call, isOpen, onOpenChange, onActionComplete, currentUser, allUsers }: { call: FundingCall; isOpen: boolean; onOpenChange: (open: boolean) => void; onActionComplete: () => void; currentUser: User; allUsers: User[] }) {
     const { toast } = useToast();
     const [searchTerm, setSearchTerm] = useState('');
     const [isSearching, setIsSearching] = useState(false);
@@ -109,13 +109,17 @@ function ManualRegistrationDialog({ call, isOpen, onOpenChange, onActionComplete
         try {
             const result = await findUserByMisId(searchTerm);
             if (result.success && result.users && result.users.length > 0) {
-                // To simplify, we'll take the first result.
-                // A more robust implementation might handle multiple matches.
-                const userToRegister = allUsers.find(u => u.uid === result.users![0].uid);
-                if (userToRegister) {
-                    setFoundUser(userToRegister);
+                const foundPerson = result.users[0];
+                if (foundPerson.uid) { // Check if the user is registered (has a UID)
+                    const userToRegister = allUsers.find(u => u.uid === foundPerson.uid);
+                    if (userToRegister) {
+                        setFoundUser(userToRegister);
+                    } else {
+                        // This case is unlikely if findUserByMisId is working correctly, but good to handle
+                        toast({ variant: 'destructive', title: 'User Data Mismatch', description: "Found a registered user but could not load their full profile." });
+                    }
                 } else {
-                    toast({ variant: 'destructive', title: 'User Not Fully Registered', description: "This user was found but hasn't completed their portal profile." });
+                    toast({ variant: 'destructive', title: 'User Not Registered', description: `${foundPerson.name} has not signed up on the portal yet and cannot be added.` });
                 }
             } else {
                 toast({ variant: 'destructive', title: 'User Not Found', description: result.error || "No user found with this MIS ID." });
@@ -785,6 +789,7 @@ export function EmrManagementClient({ call, interests, allUsers, currentUser, on
                 onOpenChange={setIsManualRegisterOpen}
                 onActionComplete={onActionComplete}
                 currentUser={currentUser}
+                allUsers={allUsers}
              />
         </Card>
     );
