@@ -40,6 +40,8 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Separator } from '@/components/ui/separator';
+import { FieldPath } from 'firebase-admin/firestore';
+import Link from 'next/link';
 
 const CLAIM_TYPES = ['Research Papers', 'Patents', 'Conference Presentations', 'Books', 'Membership of Professional Bodies', 'Seed Money for APC'];
 type SortableKeys = keyof Pick<IncentiveClaim, 'userName' | 'paperTitle' | 'submissionDate' | 'status' | 'claimType'>;
@@ -141,7 +143,7 @@ export default function ManageIncentiveClaimsPage() {
   }, [allClaims, searchTerm, claimTypeFilter]);
   
   const tabClaims = useMemo(() => {
-    const pending = filteredClaims.filter(claim => ['Pending', 'Pending Principal Approval', 'Pending Stage 1 Approval', 'Pending Stage 2 Approval', 'Pending Stage 3 Approval'].includes(claim.status));
+    const pending = filteredClaims.filter(claim => ['Pending', 'Pending Principal Approval', 'Pending Stage 1 Approval', 'Pending Stage 2 Approval', 'Pending Stage 3 Approval', 'Pending Stage 4 Approval', 'Pending Stage 5 Approval'].includes(claim.status));
     const pendingBank = filteredClaims.filter(claim => ['Accepted', 'Submitted to Accounts'].includes(claim.status));
     const approved = filteredClaims.filter(claim => claim.status === 'Payment Completed');
     const rejected = filteredClaims.filter(claim => claim.status === 'Rejected');
@@ -301,7 +303,6 @@ export default function ManageIncentiveClaimsPage() {
                       }
                     }}
                     disabled={sortedAndFilteredClaims.length > 30}
-                    // @ts-ignore
                     indeterminate={selectedClaims.length > 0 && selectedClaims.length < sortedAndFilteredClaims.length ? "true" : undefined}
                 />
             </TableHead>
@@ -328,7 +329,11 @@ export default function ManageIncentiveClaimsPage() {
         </TableHeader>
         <TableBody>
           {sortedAndFilteredClaims.map((claim) => {
+            const claimant = users.find(u => u.uid === claim.uid);
+            const profileLink = claimant?.campus === 'Goa' ? `/goa/${claimant.misId}` : `/profile/${claimant.misId}`;
+            const hasProfileLink = claimant && claimant.misId;
             const lastRejectedApproval = claim.approvals?.slice().reverse().find(a => a?.status === 'Rejected');
+            
             return (
               <TableRow key={claim.id} data-state={selectedClaims.includes(claim.id) ? "selected" : ""}>
                 <TableCell>
@@ -347,7 +352,15 @@ export default function ManageIncentiveClaimsPage() {
                         }}
                     />
                 </TableCell>
-                <TableCell className="font-medium whitespace-nowrap">{claim.userName}</TableCell>
+                <TableCell className="font-medium whitespace-nowrap">
+                  {hasProfileLink ? (
+                      <Link href={profileLink} target="_blank" className="text-primary hover:underline">
+                          {claim.userName}
+                      </Link>
+                  ) : (
+                      claim.userName
+                  )}
+                </TableCell>
                 <TableCell className="max-w-xs whitespace-normal break-words">{getClaimTitle(claim)}</TableCell>
                 <TableCell className="hidden md:table-cell"><Badge variant="outline">{claim.claimType}</Badge></TableCell>
                 <TableCell>{new Date(claim.submissionDate).toLocaleDateString()}</TableCell>
