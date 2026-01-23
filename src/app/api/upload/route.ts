@@ -1,20 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getAuth } from "firebase-admin/auth";
-import { initializeApp, getApps, cert } from "firebase-admin/app";
-import { getStorage } from "firebase-admin/storage";
-
-// Initialize Firebase Admin SDK
-const firebaseApps = getApps();
-if (!firebaseApps.length) {
-  initializeApp({
-    credential: cert({
-      projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
-      clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-      privateKey: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, "\n"),
-    }),
-    storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
-  });
-}
+import { adminAuth, adminStorage } from "@/lib/admin";
 
 // Configuration
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
@@ -43,7 +28,7 @@ export async function POST(req: NextRequest) {
     let userId: string;
 
     try {
-      const decodedToken = await getAuth().verifyIdToken(token);
+      const decodedToken = await adminAuth.verifyIdToken(token);
       userId = decodedToken.uid;
     } catch (error) {
       return NextResponse.json(
@@ -94,7 +79,7 @@ export async function POST(req: NextRequest) {
     const buffer = Buffer.from(await file.arrayBuffer());
     
     const fileName = `uploads/${userId}/${Date.now()}-${file.name}`;
-    const bucket = getStorage().bucket();
+    const bucket = adminStorage.bucket();
     const fileRef = bucket.file(fileName);
 
     await fileRef.save(buffer, {

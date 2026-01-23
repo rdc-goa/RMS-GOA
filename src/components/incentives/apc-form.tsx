@@ -19,7 +19,6 @@ import { useToast } from '@/hooks/use-toast';
 import { auth, db } from '@/lib/config';
 import { collection, addDoc, doc, setDoc, getDoc } from 'firebase/firestore';
 import type { User, IncentiveClaim, Author } from '@/types';
-import { checkPatentUniqueness } from '@/app/server-actions';
 import { findUserByMisId } from '@/app/userfinding';
 import { Loader2, AlertCircle, Info, Plus, Trash2, Search, Bot, Edit } from 'lucide-react';
 import { submitIncentiveClaim } from '@/app/incentive-approval-actions';
@@ -60,14 +59,12 @@ const apcSchema = z.object({
   apcApcWaiverRequested: z.boolean().refine(val => val === true, {
     message: 'You must request an APC waiver and provide proof to be eligible.',
   }),
-  apcApcWaiverProof: z.any().refine(files => files?.length > 0, {
-    message: 'Proof of APC waiver request is required.',
-  }),
+  apcApcWaiverProof: z.any(),
   apcJournalWebsite: z.string().url('Please enter a valid URL.'),
   apcIssnNo: z.string().min(5, 'ISSN is required.'),
   apcSciImpactFactor: z.coerce.number().optional(),
-  apcPublicationProof: z.any().refine((files) => files?.length > 0, 'Proof of publication is required.'),
-  apcInvoiceProof: z.any().refine((files) => files?.length > 0, 'Proof of payment/invoice is required.'),
+  apcPublicationProof: z.any(),
+  apcInvoiceProof: z.any(),
   apcPuNameInPublication: z.boolean().optional(),
   apcAmountClaimed: z.coerce.number().positive('Claimed amount must be positive.'),
   apcTotalAmount: z.coerce.number().positive('Total amount must be a positive number greater than 0.'),
@@ -545,14 +542,10 @@ useEffect(() => {
             throw new Error("Authentication token not found. Please log in again.");
         }
 
-        const apcApcWaiverProofFile = data.apcApcWaiverProof?.[0];
-        const apcPublicationProofFile = data.apcPublicationProof?.[0];
-        const apcInvoiceProofFile = data.apcInvoiceProof?.[0];
-
         const [apcApcWaiverProofUrl, apcPublicationProofUrl, apcInvoiceProofUrl] = await Promise.all([
-            apcApcWaiverProofFile ? uploadFileViaApi(apcApcWaiverProofFile, token) : Promise.resolve(undefined),
-            apcPublicationProofFile ? uploadFileViaApi(apcPublicationProofFile, token) : Promise.resolve(undefined),
-            apcInvoiceProofFile ? uploadFileViaApi(apcInvoiceProofFile, token) : Promise.resolve(undefined),
+            data.apcApcWaiverProof?.[0] ? uploadFileViaApi(data.apcApcWaiverProof[0], token) : Promise.resolve(undefined),
+            data.apcPublicationProof?.[0] ? uploadFileViaApi(data.apcPublicationProof[0], token) : Promise.resolve(undefined),
+            data.apcInvoiceProof?.[0] ? uploadFileViaApi(data.apcInvoiceProof[0], token) : Promise.resolve(undefined),
         ]);
 
         const claimData: Omit<IncentiveClaim, 'id' | 'claimId'> = {
@@ -640,7 +633,6 @@ useEffect(() => {
   }
 
   return (
-    <>
     <Card>
       <Form {...form}>
         <form>
@@ -665,8 +657,9 @@ useEffect(() => {
                 </AlertDescription>
             </Alert>
 
-            <div className="space-y-6">
-                <h3 className="font-semibold text-sm">ARTICLE & JOURNAL DETAILS</h3>
+            <div className="rounded-lg border p-4 space-y-6 animate-in fade-in-0">
+                <h3 className="font-semibold text-sm -mb-2">ARTICLE & JOURNAL DETAILS</h3>
+                <Separator />
                 <FormField control={form.control} name="apcTypeOfArticle" render={({ field }) => ( <FormItem><FormLabel>Type of Article</FormLabel><FormControl><RadioGroup onValueChange={field.onChange} value={field.value} className="flex flex-col space-y-2 md:flex-row md:space-y-0 md:space-x-6">{articleTypes.map(type => (<FormItem key={type} className="flex items-center space-x-2 space-y-0"><FormControl><RadioGroupItem value={type} /></FormControl><FormLabel className="font-normal">{type}</FormLabel></FormItem>))}</RadioGroup></FormControl><FormMessage /></FormItem> )} />
                 {watchArticleType === 'Other' && <FormField name="apcOtherArticleType" control={form.control} render={({ field }) => ( <FormItem><FormLabel>Please specify other article type</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem> )} />}
                 <FormField name="apcIndexingStatus" control={form.control} render={({ field }) => ( <FormItem><FormLabel>Indexing/Listing status of the Journal</FormLabel>{availableIndexingStatuses.map(item => (<FormField key={item} control={form.control} name="apcIndexingStatus" render={({ field }) => ( <FormItem key={item} className="flex flex-row items-start space-x-3 space-y-0"><FormControl><Checkbox checked={field.value?.includes(item)} onCheckedChange={(checked) => { return checked ? field.onChange([...(field.value || []), item]) : field.onChange(field.value?.filter(value => value !== item)); }} /></FormControl><FormLabel className="font-normal">{item}</FormLabel></FormItem> )} />))}<FormMessage /></FormItem> )} />
@@ -841,7 +834,5 @@ useEffect(() => {
         </form>
       </Form>
     </Card>
-    </>
   );
 }
-
