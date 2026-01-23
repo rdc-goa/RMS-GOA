@@ -1,4 +1,5 @@
 
+
 export type CoPiDetails = {
   uid?: string | null // Will exist for registered users
   name: string
@@ -231,6 +232,7 @@ export type IncentiveClaim = {
   calculatedIncentive?: number
   finalApprovedAmount?: number;
   approvals?: ApprovalStage[];
+  approverUids?: string[];
   autoFetchedFields?: (keyof IncentiveClaim)[];
   paperId?: string; // Link to the entry in the 'papers' collection
   paymentSheetRef?: string;
@@ -270,6 +272,7 @@ export type IncentiveClaim = {
   totalPuStudentAuthors?: number;
   puStudentNames?: string;
   authorType?: string;
+  wosAccessionNumber?: string;
 
 
   // Patent Fields
@@ -574,3 +577,5 @@ export type FoundUser = {
   misId: string;
   campus: string;
 }
+
+    

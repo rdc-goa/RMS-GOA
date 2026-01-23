@@ -62,29 +62,27 @@ export default function IncentiveApprovalsPage() {
                 );
             }
 
-            let historyQuery;
-            if (currentUser.designation === 'Principal') {
-                historyQuery = query(
-                    claimsCollection, 
-                    where('approvals.0.approverUid', '==', currentUser.uid),
-                    orderBy('submissionDate', 'desc')
-                );
-            } else if (stage !== null) {
-                historyQuery = query(
-                    claimsCollection, 
-                    where(`approvals.${stage}.approverUid`, '==', currentUser.uid),
-                    orderBy('submissionDate', 'desc')
-                );
-            }
+            const historyQuery = query(
+                claimsCollection,
+                where('approverUids', 'array-contains', currentUser.uid),
+                orderBy('submissionDate', 'desc')
+            );
 
             const [pendingSnapshot, historySnapshot, usersSnapshot] = await Promise.all([
                 pendingClaimsQuery ? getDocs(pendingClaimsQuery) : Promise.resolve({ docs: [] }),
-                historyQuery ? getDocs(historyQuery) : Promise.resolve({ docs: [] }),
+                getDocs(historyQuery),
                 getDocs(usersQuery)
             ]);
+            
+            const pendingClaimsData = pendingSnapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as IncentiveClaim));
+            setPendingClaims(pendingClaimsData);
+            
+            const pendingIds = new Set(pendingClaimsData.map(c => c.id));
+            const historyClaimsData = historySnapshot.docs
+                .map(doc => ({ ...doc.data(), id: doc.id } as IncentiveClaim))
+                .filter(claim => !pendingIds.has(claim.id)); // Filter out claims that are currently pending for this user
 
-            setPendingClaims(pendingSnapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as IncentiveClaim)));
-            setHistoryClaims(historySnapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as IncentiveClaim)));
+            setHistoryClaims(historyClaimsData);
             setAllUsers(usersSnapshot.docs.map(doc => ({ ...doc.data(), uid: doc.id } as User)));
 
         } catch (error) {
@@ -103,7 +101,7 @@ export default function IncentiveApprovalsPage() {
             
             let stage: number | null = null;
             if (parsedUser.designation === 'Principal') {
-                stage = 0; // Principals are stage 0
+                stage = 0; // Principals are stage 1, which is index 0
             } else {
                 const approverModule = parsedUser.allowedModules?.find(m => m.startsWith('incentive-approver-'));
                 if (approverModule) {
@@ -388,3 +386,5 @@ export default function IncentiveApprovalsPage() {
         </>
     );
 }
+
+    

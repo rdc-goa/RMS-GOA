@@ -1,5 +1,4 @@
 
-
 'use server';
 
 import { adminDb } from '@/lib/admin';
@@ -99,11 +98,11 @@ export async function submitIncentiveClaim(claimData: Omit<IncentiveClaim, 'id' 
             initialStatus = `Pending Stage ${firstStage} Approval`;
         }
         
-        // Auto-approve principal stage if the claimant is the principal of their own institute
         const claimantUserSnap = await adminDb.collection('users').doc(claimData.uid).get();
         const claimantUser = claimantUserSnap.data() as User;
         
         let initialApprovals: ApprovalStage[] = [];
+        let approverUids: string[] = [];
 
         if (claimantUser.designation === 'Principal' && firstStage === 1) {
              const autoApproval: ApprovalStage = {
@@ -116,6 +115,7 @@ export async function submitIncentiveClaim(claimData: Omit<IncentiveClaim, 'id' 
                 stage: 1,
             };
             initialApprovals.push(autoApproval);
+            approverUids.push(claimantUser.uid);
             
             const nextStageInWorkflow = workflow.find(stage => stage > 1);
             if (nextStageInWorkflow) {
@@ -131,6 +131,7 @@ export async function submitIncentiveClaim(claimData: Omit<IncentiveClaim, 'id' 
             claimId: standardizedClaimId,
             status: claimData.status === 'Draft' ? 'Draft' : initialStatus,
             approvals: initialApprovals,
+            approverUids: approverUids,
             authors: claimData.authors || [],
             authorUids: (claimData.authors || []).map(a => a.uid).filter(Boolean) as string[],
         };
@@ -365,6 +366,7 @@ export async function processIncentiveClaimAction(
     const updateData: { [key: string]: any } = {
         approvals,
         status: newStatus,
+        approverUids: FieldValue.arrayUnion(approver.uid),
     };
     
     // For stages 2 onwards, the approver finalizes the amount
@@ -434,3 +436,5 @@ export async function processIncentiveClaimAction(
     return { success: false, error: error.message || 'An unexpected error occurred.' };
   }
 }
+
+    
