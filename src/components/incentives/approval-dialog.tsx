@@ -233,7 +233,6 @@ function ConferenceClaimDetails({
             <div className="space-y-1">
                 {conferenceChecklistFields.map(field => renderDetail(field, (claimWithUserData as any)[field.id]))}
             </div>
-            {isChecklistEnabled && <FormMessage>{form.formState.errors.verifiedFields?.message}</FormMessage>}
         </div>
     );
 }
@@ -375,7 +374,6 @@ function ResearchPaperClaimDetails({
             <div className="space-y-1">
                  {allPossibleResearchPaperFields.map(field => renderDetail(field, (claimWithUserData as any)[field.id]))}
             </div>
-            {isChecklistEnabled && <FormMessage>{form.formState.errors.verifiedFields?.message}</FormMessage>}
         </div>
     );
 }
@@ -522,6 +520,19 @@ export function ApprovalDialog({ claim, approver, claimant, stageIndex, isOpen, 
             setIsSubmitting(false);
         }
     };
+    
+    const handleInvalidSubmit = (errors: any) => {
+        if (errors.verifiedFields) {
+            toast({
+                variant: 'destructive',
+                title: 'Action Required',
+                description: 'For each item in the checklist below, please click the check (✓) to confirm it is correct, or the cross (✗) to flag it. You must verify all items to proceed.',
+                duration: 7000,
+            });
+        } else {
+            console.log("Unhandled form validation errors", errors);
+        }
+    };
 
     const previousApprovals = (claim.approvals || []).filter(a => a?.stage < stageIndex + 1);
     
@@ -559,7 +570,7 @@ export function ApprovalDialog({ claim, approver, claimant, stageIndex, isOpen, 
                     </div>
                 </DialogHeader>
                 
-                <div className="max-h-[60vh] overflow-y-auto pr-4 space-y-4">
+                <div className="max-h-[70vh] overflow-y-auto pr-4 space-y-4">
                     {isViewerAdminOrApprover && previousApprovals.length > 0 && (
                         <div className="space-y-4">
                             <h4 className="font-semibold text-sm">Previous Approval History</h4>
@@ -589,16 +600,6 @@ export function ApprovalDialog({ claim, approver, claimant, stageIndex, isOpen, 
                         </div>
                     )}
                     
-                    {isChecklistEnabled && (
-                        <Alert variant="default" className="bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-700">
-                            <Info className="h-4 w-4" />
-                            <AlertTitle>Action Required</AlertTitle>
-                            <AlertDescription>
-                                For each item in the checklist below, please click the check (✓) to confirm it is correct, or the cross (✗) to flag it. You must verify all items to proceed.
-                            </AlertDescription>
-                        </Alert>
-                    )}
-
                      {stageIndex === 0 && claim.calculatedIncentive !== undefined && claim.calculatedIncentive !== null && (
                         <div className="p-4 bg-blue-100 dark:bg-blue-900/30 rounded-md text-center">
                             <p className="text-sm font-medium text-blue-800 dark:text-blue-200">Tentatively Eligible Incentive Amount:</p>
@@ -612,7 +613,7 @@ export function ApprovalDialog({ claim, approver, claimant, stageIndex, isOpen, 
                         {isConferenceClaim && <ConferenceClaimDetails claim={claim} claimant={claimant} form={form} isChecklistEnabled={isChecklistEnabled} stageIndex={stageIndex} previousApprovals={claim.approvals || []} />}
 
 
-                        <form id="approval-form" onSubmit={form.handleSubmit(handleSubmit)} className="space-y-4">
+                        <form id="approval-form" onSubmit={form.handleSubmit(handleSubmit, handleInvalidSubmit)} className="space-y-4">
                             {showActionButtons && (
                                 <FormField
                                     name="action"
@@ -680,3 +681,5 @@ export function ApprovalDialog({ claim, approver, claimant, stageIndex, isOpen, 
         </Dialog>
     );
 }
+
+    
