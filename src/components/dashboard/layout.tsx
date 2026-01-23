@@ -628,10 +628,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           </SidebarContent>
           <SidebarFooter className="hidden md:flex mt-auto group-data-[collapsible=icon]:hidden">
             <Image
-              src="https://pinxoxpbufq92wb4.public.blob.vercel-storage.com/PU-WATERMARK.svg"
+              src="https://lhdlkrfbkon55i6u.public.blob.vercel-storage.com/Pu%20Goa%20White.png"
               alt="Parul University Goa Logo"
-              width={150}
-              height={50}
+              width={180}
+              height={70}
               className="mx-auto"
               style={{ height: "auto" }}
             />

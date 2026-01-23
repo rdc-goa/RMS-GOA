@@ -42,6 +42,12 @@ const nextConfig: NextConfig = {
       },
       {
         protocol: 'https',
+        hostname: 'lhdlkrfbkon55i6u.public.blob.vercel-storage.com',
+        port: '',
+        pathname: '/**',
+      },
+      {
+        protocol: 'https',
         hostname: 'www.pierc.org',
         port: '',
         pathname: '/**',
