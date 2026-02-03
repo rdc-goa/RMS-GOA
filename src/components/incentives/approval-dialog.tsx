@@ -81,6 +81,7 @@ const createApprovalSchema = (stageIndex: number, claimType?: string) => {
 type ApprovalFormData = z.infer<ReturnType<typeof createApprovalSchema>>;
 
 const allPossibleResearchPaperFields: { id: keyof IncentiveClaim | 'name' | 'designation' | 'authorRoleAndPosition' | 'totalInternalAuthors', label: string }[] = [
+    { id: 'name', label: 'Name of the Applicant' },
     { id: 'designation', label: 'Designation and Dept.' },
     { id: 'publicationType', label: 'Type of publication' },
     { id: 'journalName', label: 'Name of Journal' },
@@ -97,6 +98,7 @@ const allPossibleResearchPaperFields: { id: keyof IncentiveClaim | 'name' | 'des
 ];
 
 const conferenceChecklistFields: { id: keyof IncentiveClaim | 'name' | 'designation', label: string }[] = [
+    { id: 'name', label: 'Name of the Applicant' },
     { id: 'designation', label: 'Designation & Department' },
     { id: 'eventType', label: 'Type of Event' },
     { id: 'conferencePaperTitle', label: 'Title of Paper' },
@@ -239,15 +241,13 @@ function ConferenceClaimDetails({
 
 
 function ResearchPaperClaimDetails({ 
-    claim, 
-    claimant, 
+    claimWithUserData, 
     form, 
     isChecklistEnabled, 
     stageIndex, 
     previousApprovals 
 }: { 
-    claim: IncentiveClaim, 
-    claimant: User | null, 
+    claimWithUserData: Record<string, any>,
     form: any, 
     isChecklistEnabled: boolean,
     stageIndex: number,
@@ -257,7 +257,7 @@ function ResearchPaperClaimDetails({
     const approval2 = previousApprovals[1];
 
     const renderDetail = (field: {id: string, label: string}, value?: string | number | null | boolean | string[]) => {
-        if (value === undefined || value === null || value === '' || (Array.isArray(value) && value.length === 0)) return null;
+        if (value === undefined || value === null || value === '' || (Array.isArray(value) && value.length === 0) || value === 'N/A / N/A' || value === 'undefined / undefined') return null;
         
         let displayValue: React.ReactNode = String(value);
 
@@ -351,15 +351,6 @@ function ResearchPaperClaimDetails({
             </div>
         );
     };
-    
-    const claimWithUserData = {
-        ...claim,
-        name: claimant?.name,
-        designation: `${claimant?.designation || 'N/A'}, ${claimant?.department || 'N/A'}`,
-        authorRoleAndPosition: `${claim.authorType || 'N/A'} / ${claim.authorPosition || 'N/A'}`,
-        totalInternalAuthors: (claim.authors || []).filter(a => !a.isExternal).length,
-    };
-
 
     return (
         <div className="space-y-4 rounded-lg border bg-muted/50 p-4">
@@ -377,6 +368,7 @@ function ResearchPaperClaimDetails({
         </div>
     );
 }
+
 
 function MembershipClaimDetails({ claim, claimant }: { claim: IncentiveClaim, claimant: User | null }) {
   const renderDetail = (label: string, value?: string | number | null) => {
@@ -416,25 +408,33 @@ export function ApprovalDialog({ claim, approver, claimant, stageIndex, isOpen, 
     const showActionButtons = !isChecklistEnabled;
     
     const approvalSchema = createApprovalSchema(stageIndex, claim.claimType);
+
+    const claimWithUserData = useMemo(() => ({
+        ...claim,
+        name: claimant?.name,
+        designation: `${claimant?.designation || 'N/A'}, ${claimant?.department || 'N/A'}`,
+        authorRoleAndPosition: `${claim.authorType || 'N/A'} / ${claim.authorPosition || 'N/A'}`,
+        totalInternalAuthors: (claim.authors || []).filter(a => !a.isExternal).length,
+        conferenceDuration: claim.conferenceDuration ? `${claim.conferenceDuration} Days` : 'N/A',
+    }), [claim, claimant]);
     
     const fieldsToVerify = useMemo(() => {
         let fieldList;
-        let claimData: Record<string, any>;
-
         if (isConferenceClaim) {
             fieldList = conferenceChecklistFields;
-            claimData = { ...claim, name: claimant?.name, designation: `${claimant?.designation}, ${claimant?.department}` };
         } else if (isResearchPaperClaim) {
             fieldList = allPossibleResearchPaperFields;
-            claimData = { ...claim, name: claimant?.name, designation: `${claimant?.designation}, ${claimant?.department}`, authorRoleAndPosition: `${claim.authorType} / ${claim.authorPosition}`, totalInternalAuthors: (claim.authors || []).filter(a => !a.isExternal).length };
         } else {
             return [];
         }
         
         return fieldList
-            .filter(f => (claimData as any)[f.id] !== undefined && (claimData as any)[f.id] !== null && (claimData as any)[f.id] !== '')
-            .map(f => f.id);
-    }, [isConferenceClaim, isResearchPaperClaim, claim, claimant]);
+            .filter(field => {
+                const value = (claimWithUserData as any)[field.id];
+                return value !== undefined && value !== null && value !== '' && (!Array.isArray(value) || value.length > 0) && value !== 'N/A / N/A' && value !== 'N/A, N/A';
+            })
+            .map(field => field.id);
+    }, [isConferenceClaim, isResearchPaperClaim, claimWithUserData]);
 
     const formSchemaWithVerification = useMemo(() => approvalSchema.refine(data => {
         if (!isChecklistEnabled) return true;
@@ -458,8 +458,7 @@ export function ApprovalDialog({ claim, approver, claimant, stageIndex, isOpen, 
     }, [stageIndex, claim]);
     
     const getDefaultAction = useCallback(() => {
-        if (isChecklistEnabled) return 'verify';
-        return 'approve';
+        return isChecklistEnabled ? 'verify' : 'approve';
     }, [isChecklistEnabled]);
 
     const form = useForm<ApprovalFormData>({
@@ -609,7 +608,7 @@ export function ApprovalDialog({ claim, approver, claimant, stageIndex, isOpen, 
 
                     <Form {...form}>
                         {claim.claimType === 'Membership of Professional Bodies' && <MembershipClaimDetails claim={claim} claimant={claimant} />}
-                        {isResearchPaperClaim && <ResearchPaperClaimDetails claim={claim} claimant={claimant} form={form} isChecklistEnabled={isChecklistEnabled} stageIndex={stageIndex} previousApprovals={claim.approvals || []} />}
+                        {isResearchPaperClaim && <ResearchPaperClaimDetails claimWithUserData={claimWithUserData} form={form} isChecklistEnabled={isChecklistEnabled} stageIndex={stageIndex} previousApprovals={claim.approvals || []} />}
                         {isConferenceClaim && <ConferenceClaimDetails claim={claim} claimant={claimant} form={form} isChecklistEnabled={isChecklistEnabled} stageIndex={stageIndex} previousApprovals={claim.approvals || []} />}
 
 
@@ -673,7 +672,7 @@ export function ApprovalDialog({ claim, approver, claimant, stageIndex, isOpen, 
                     <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
                     <Button type="submit" form="approval-form" disabled={isSubmitting}>
                         {isSubmitting ? <><Loader2 className="mr-2 h-4 w-4 animate-spin"/> Submitting...</> : (
-                            showActionButtons ? 'Submit Action' : 'Submit & Forward'
+                            isChecklistEnabled ? 'Submit & Forward' : 'Submit Action'
                         )}
                     </Button>
                 </DialogFooter>
@@ -681,5 +680,3 @@ export function ApprovalDialog({ claim, approver, claimant, stageIndex, isOpen, 
         </Dialog>
     );
 }
-
-    
