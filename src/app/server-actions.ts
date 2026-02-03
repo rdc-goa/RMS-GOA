@@ -1,4 +1,3 @@
-
 'use server'
 
 import { adminAuth, adminDb, adminStorage } from "@/lib/admin"
@@ -1673,12 +1672,13 @@ export async function scheduleMeeting(
       time: string
       venue: string
       evaluatorUids: string[]
+      mode: 'Online' | 'Offline'
     },
     isMidTermReview: boolean = false,
   ): Promise<{ success: boolean; error?: string }> {
-    const { date, time, venue, evaluatorUids } = meetingDetails
+    const { date, time, venue, mode } = meetingDetails
   
-    if (!evaluatorUids || evaluatorUids.length === 0) {
+    if (!meetingDetails.evaluatorUids || meetingDetails.evaluatorUids.length === 0) {
       return { success: false, error: "An evaluation committee must be assigned." }
     }
   
@@ -1692,7 +1692,7 @@ export async function scheduleMeeting(
       const projectRef = adminDb.collection("projects").doc(project.id)
       const updateData: { status: string; meetingDetails: any, hasHadMidTermReview?: boolean } = {
         status: "Under Review",
-        meetingDetails: { date, time, venue, assignedEvaluators: evaluatorUids },
+        meetingDetails: { date, time, venue, assignedEvaluators: meetingDetails.evaluatorUids, mode },
       };
 
       if (isMidTermReview) {
@@ -1719,7 +1719,7 @@ export async function scheduleMeeting(
               </p>
               <p><strong style="color:#ffffff;">Date:</strong> ${formatInTimeZone(meetingDateTimeString, timeZone, "MMMM d, yyyy")}</p>
               <p><strong style="color:#ffffff;">Time:</strong> ${formatInTimeZone(meetingDateTimeString, timeZone, "h:mm a (z)")}</p>
-              <p><strong style="color:#ffffff;">Venue:</strong> ${venue}</p>
+              <p><strong style="color:#ffffff;">${mode === 'Online' ? 'Meeting Link:' : 'Venue:'}</strong> ${mode === 'Online' ? `<a href="${venue}" style="color:#64b5f6;">${venue}</a>` : venue}</p>
               <p style="color:#cccccc; margin-top: 15px;">Please be prepared for your presentation. Good luck!</p>
               ${EMAIL_STYLES.footer}
           </div>
@@ -1738,8 +1738,8 @@ export async function scheduleMeeting(
     }
   
     // Notify evaluators once
-    if (evaluatorUids && evaluatorUids.length > 0) {
-      const evaluatorDocs = await Promise.all(evaluatorUids.map((uid) => adminDb.collection("users").doc(uid).get()))
+    if (meetingDetails.evaluatorUids && meetingDetails.evaluatorUids.length > 0) {
+      const evaluatorDocs = await Promise.all(meetingDetails.evaluatorUids.map((uid) => adminDb.collection("users").doc(uid).get()))
   
       for (const evaluatorDoc of evaluatorDocs) {
         if (evaluatorDoc.exists) {
@@ -1765,7 +1765,7 @@ export async function scheduleMeeting(
                       <p style="color:#e0e0e0;">You have been assigned to an IMR ${isMidTermReview ? 'mid-term review' : 'evaluation'} committee.</p>
                       <p><strong style="color:#ffffff;">Date:</strong> ${formatInTimeZone(meetingDateTimeString, timeZone, "MMMM d, yyyy")}</p>
                       <p><strong style="color:#ffffff;">Time:</strong> ${formatInTimeZone(meetingDateTimeString, timeZone, "h:mm a (z)")}</p>
-                      <p><strong style="color:#ffffff;">Venue:</strong> ${venue}</p>
+                      <p><strong style="color:#ffffff;">${mode === 'Online' ? 'Meeting Link:' : 'Venue:'}</strong> ${mode === 'Online' ? `<a href="${venue}" style="color:#64b5f6;">${venue}</a>` : venue}</p>
                       <p style="color:#cccccc; margin-top: 15px;">Please review the assigned projects on the PU Goa Research Projects Portal.</p>
                       ${EMAIL_STYLES.footer}
                   </div>
@@ -1781,7 +1781,7 @@ export async function scheduleMeeting(
     try {
       await batch.commit()
       await Promise.all(emailPromises)
-      await logActivity("INFO", `IMR ${isMidTermReview ? 'mid-term' : ''} meeting scheduled`, { projectIds: projects.map(p => p.id), meetingDate: date, evaluatorCount: evaluatorUids.length });
+      await logActivity("INFO", `IMR ${isMidTermReview ? 'mid-term' : ''} meeting scheduled`, { projectIds: projects.map(p => p.id), meetingDate: date, evaluatorCount: meetingDetails.evaluatorUids.length });
       return { success: true }
     } catch (error: any) {
       console.error("Error committing batch or sending emails:", error)
@@ -1789,7 +1789,6 @@ export async function scheduleMeeting(
       return { success: false, error: "Failed to update project statuses or send notifications." }
     }
 }
-
 export async function sendErrorEmail(
     data: {
         error: { name: string; message: string; stack?: string },
@@ -1879,6 +1878,3 @@ export async function signInWithGoogleCredential(credentialString: string): Prom
         return { success: false, error: error.message || "Failed to verify Google credential." };
     }
 }
-    
-
-    
