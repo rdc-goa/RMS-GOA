@@ -174,7 +174,7 @@ export default function ScheduleMeetingPage() {
   const [allUsers, setAllUsers] = useState<User[]>([]);
   const [systemSettings, setSystemSettings] = useState<SystemSettings | null>(null);
   const { toast } = useToast();
-  const [activeTab, setActiveTab] = useState('new-submissions');
+  const [activeTab, setActiveTab] = useState('schedule');
   const [user, setUser] = useState<User | null>(null);
   const router = useRouter();
 
@@ -236,7 +236,7 @@ export default function ScheduleMeetingPage() {
 
       const projectsQuery = query(
         collection(db, 'projects'),
-        where('status', 'in', ['Submitted', 'In Progress', 'Sanctioned', 'SANCTIONED']),
+        where('status', 'in', ['Submitted', 'In Progress', 'Sanctioned', 'SANCTIONED', 'Under Review']),
         orderBy('submissionDate', 'desc')
       );
       
@@ -287,12 +287,12 @@ export default function ScheduleMeetingPage() {
     return isAfter(thresholdDate, parseISO(grantStartDate));
   });
 
-
-  const projectsForCurrentTab = activeTab === 'new-submissions' ? newSubmissions : midTermReviewProjects;
+  const [activeSchedulingTab, setActiveSchedulingTab] = useState('new-submissions');
+  const projectsForCurrentSchedulingTab = activeSchedulingTab === 'new-submissions' ? newSubmissions : midTermReviewProjects;
 
   const handleSelectAll = (checked: boolean) => {
     if (checked) {
-      setSelectedProjects(projectsForCurrentTab.map(p => p.id));
+      setSelectedProjects(projectsForCurrentSchedulingTab.map(p => p.id));
     } else {
       setSelectedProjects([]);
     }
@@ -308,7 +308,7 @@ export default function ScheduleMeetingPage() {
 
   useEffect(() => {
     setSelectedProjects([]);
-  }, [activeTab]);
+  }, [activeTab, activeSchedulingTab]);
 
   const onSubmit = async (data: z.infer<typeof scheduleSchema>) => {
     if (selectedProjects.length === 0) {
@@ -333,7 +333,7 @@ export default function ScheduleMeetingPage() {
           pi_email: p.pi_email 
       }));
 
-    const isMidTermReview = activeTab === 'mid-term-review';
+    const isMidTermReview = activeSchedulingTab === 'mid-term-review';
 
     const result = await scheduleMeeting(projectsToSchedule, meetingDetails, isMidTermReview);
 
@@ -348,6 +348,25 @@ export default function ScheduleMeetingPage() {
   };
   
   const usersMap = new Map(allUsers.map(u => [u.uid, u]));
+
+  const scheduledMeetings = useMemo(() => {
+    const meetings = new Map<string, { details: NonNullable<Project['meetingDetails']>, projects: Project[] }>();
+    
+    allProjects
+      .filter(p => p.meetingDetails && p.status === 'Under Review')
+      .forEach(p => {
+        const key = `${p.meetingDetails!.date}-${p.meetingDetails!.time}-${p.meetingDetails!.venue}`;
+        if (!meetings.has(key)) {
+          meetings.set(key, {
+            details: p.meetingDetails!,
+            projects: []
+          });
+        }
+        meetings.get(key)!.projects.push(p);
+      });
+
+    return Array.from(meetings.values()).sort((a, b) => new Date(b.details!.date).getTime() - new Date(a.details!.date).getTime());
+  }, [allProjects]);
 
   if (loading || !user) {
     return (
@@ -373,140 +392,193 @@ export default function ScheduleMeetingPage() {
             title="Schedule IMR Meeting"
             description="Select projects to schedule an initial submission meeting or a mid-term review."
         />
-        <div className="mt-8 grid grid-cols-1 lg:grid-cols-3 gap-8">
-            <div className="lg:col-span-2">
-                <Tabs value={activeTab} onValueChange={setActiveTab}>
-                    <TabsList className="grid w-full grid-cols-2">
-                        <TabsTrigger value="new-submissions">New Submissions ({newSubmissions.length})</TabsTrigger>
-                        <TabsTrigger value="mid-term-review">Mid-term Review ({midTermReviewProjects.length})</TabsTrigger>
-                    </TabsList>
-                    <TabsContent value="new-submissions" className="mt-4">
-                        <ProjectListTable
-                            projects={newSubmissions}
-                            selectedProjects={selectedProjects}
-                            onSelectAll={handleSelectAll}
-                            onSelectOne={handleSelectOne}
-                            usersMap={usersMap}
-                            title="Projects Awaiting Meeting"
-                            description="Select new submissions to schedule for their initial evaluation meeting."
-                            dateColumnHeader="Submission Date"
-                        />
-                    </TabsContent>
-                    <TabsContent value="mid-term-review" className="mt-4">
-                         <ProjectListTable
-                            projects={midTermReviewProjects}
-                            selectedProjects={selectedProjects}
-                            onSelectAll={handleSelectAll}
-                            onSelectOne={handleSelectOne}
-                            usersMap={usersMap}
-                            title="Projects Due for Mid-term Review"
-                            description={`These projects were funded at least ${systemSettings?.imrMidTermReviewMonths ?? 6} months ago and are due for a progress review.`}
-                            dateColumnHeader="Last Disbursement Date"
-                        />
-                    </TabsContent>
-                </Tabs>
-            </div>
-            
-            <Card>
-                <CardHeader>
-                <CardTitle>Schedule Details</CardTitle>
-                <CardDescription>Set the time and assign evaluators for the selected projects.</CardDescription>
-                </CardHeader>
-                <CardContent>
-                <Form {...form}>
-                    <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-                    <FormField name="date" control={form.control} render={({ field }) => ( 
-                        <FormItem className="flex flex-col">
-                            <FormLabel>Meeting Date</FormLabel>
-                            <Popover><PopoverTrigger asChild><FormControl><Button variant={"outline"} className={cn("pl-3 text-left font-normal", !field.value && "text-muted-foreground")}>{field.value ? format(field.value, "PPP") : (<span>Pick a date</span>)}<CalendarIcon className="ml-auto h-4 w-4 opacity-50" /></Button></FormControl></PopoverTrigger><PopoverContent className="w-auto p-0" align="start"><Calendar captionLayout="dropdown-buttons" fromYear={2015} toYear={new Date().getFullYear() + 5} mode="single" selected={field.value} onSelect={field.onChange} disabled={(date) => date < startOfToday()} initialFocus /></PopoverContent></Popover>
-                            <FormMessage />
-                        </FormItem> 
-                    )} />
-                    <FormField name="time" control={form.control} render={({ field }) => ( <FormItem><FormLabel>Meeting Time</FormLabel><FormControl><Input type="time" {...field} /></FormControl><FormMessage /></FormItem> )} />
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="mt-8">
+            <TabsList className="grid w-full grid-cols-2">
+                <TabsTrigger value="schedule">Schedule New Meeting</TabsTrigger>
+                <TabsTrigger value="history">History</TabsTrigger>
+            </TabsList>
+            <TabsContent value="schedule" className="mt-4">
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                    <div className="lg:col-span-2">
+                        <Tabs value={activeSchedulingTab} onValueChange={setActiveSchedulingTab}>
+                            <TabsList className="grid w-full grid-cols-2">
+                                <TabsTrigger value="new-submissions">New Submissions ({newSubmissions.length})</TabsTrigger>
+                                <TabsTrigger value="mid-term-review">Mid-term Review ({midTermReviewProjects.length})</TabsTrigger>
+                            </TabsList>
+                            <TabsContent value="new-submissions" className="mt-4">
+                                <ProjectListTable
+                                    projects={newSubmissions}
+                                    selectedProjects={selectedProjects}
+                                    onSelectAll={handleSelectAll}
+                                    onSelectOne={handleSelectOne}
+                                    usersMap={usersMap}
+                                    title="Projects Awaiting Meeting"
+                                    description="Select new submissions to schedule for their initial evaluation meeting."
+                                    dateColumnHeader="Submission Date"
+                                />
+                            </TabsContent>
+                            <TabsContent value="mid-term-review" className="mt-4">
+                                <ProjectListTable
+                                    projects={midTermReviewProjects}
+                                    selectedProjects={selectedProjects}
+                                    onSelectAll={handleSelectAll}
+                                    onSelectOne={handleSelectOne}
+                                    usersMap={usersMap}
+                                    title="Projects Due for Mid-term Review"
+                                    description={`These projects were funded at least ${systemSettings?.imrMidTermReviewMonths ?? 6} months ago and are due for a progress review.`}
+                                    dateColumnHeader="Last Disbursement Date"
+                                />
+                            </TabsContent>
+                        </Tabs>
+                    </div>
                     
-                    <FormField name="mode" control={form.control} render={({ field }) => (
-                        <FormItem className="space-y-3">
-                            <FormLabel>Meeting Mode</FormLabel>
-                             {hasGoaCampusPi && (
-                                <Alert variant="default" className="bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-700">
-                                    <Info className="h-4 w-4 text-blue-600" />
-                                    <AlertTitle>Online Mode Enforced</AlertTitle>
-                                    <AlertDescription className="text-blue-700 dark:text-blue-300">
-                                        An online meeting is required as one or more selected PIs are from the Goa campus.
-                                    </AlertDescription>
-                                </Alert>
-                            )}
-                            <FormControl>
-                                <RadioGroup onValueChange={field.onChange} value={field.value} className="flex space-x-4">
-                                    <FormItem className="flex items-center space-x-2"><FormControl><RadioGroupItem value="Offline" disabled={hasGoaCampusPi} /></FormControl><FormLabel className="font-normal">Offline</FormLabel></FormItem>
-                                    <FormItem className="flex items-center space-x-2"><FormControl><RadioGroupItem value="Online" /></FormControl><FormLabel className="font-normal">Online</FormLabel></FormItem>
-                                </RadioGroup>
-                            </FormControl>
-                            <FormMessage />
-                        </FormItem>
-                    )} />
-                    
-                    <FormField
-                        name="venue"
-                        control={form.control}
-                        render={({ field }) => (
-                            <FormItem>
-                                <FormLabel>{meetingMode === 'Online' ? 'Meeting Link' : 'Venue'}</FormLabel>
-                                <FormControl>
-                                    <Input 
-                                        {...field} 
-                                        placeholder={meetingMode === 'Online' ? 'https://meet.google.com/...' : 'Enter physical venue'}
-                                    />
-                                </FormControl>
-                                <FormMessage />
-                            </FormItem>
-                        )}
-                    />
-                    
-                    <FormField
-                        control={form.control}
-                        name="evaluatorUids"
-                        render={({ field }) => (
-                            <FormItem className="flex flex-col">
-                            <FormLabel>Assign Evaluators</FormLabel>
-                            <DropdownMenu>
-                                <DropdownMenuTrigger asChild>
-                                <Button variant="outline" className="w-full justify-between">
-                                    {field.value?.length > 0 ? `${field.value.length} selected` : "Select evaluators"}
-                                    <ChevronDown className="h-4 w-4 opacity-50" />
-                                </Button>
-                                </DropdownMenuTrigger>
-                                <DropdownMenuContent className="w-[--radix-popover-trigger-width]">
-                                <DropdownMenuLabel>Available Staff</DropdownMenuLabel>
-                                <DropdownMenuSeparator />
-                                {evaluators.map((evaluator) => (
-                                    <DropdownMenuCheckboxItem
-                                    key={evaluator.uid}
-                                    checked={field.value?.includes(evaluator.uid)}
-                                    onCheckedChange={(checked) => {
-                                        return checked
-                                        ? field.onChange([...(field.value || []), evaluator.uid])
-                                        : field.onChange(field.value?.filter((id) => id !== evaluator.uid));
-                                    }}
-                                    >
-                                    {evaluator.name}
-                                    </DropdownMenuCheckboxItem>
-                                ))}
-                                </DropdownMenuContent>
-                            </DropdownMenu>
-                            <FormMessage />
-                            </FormItem>
-                        )}
-                        />
-                    <Button type="submit" className="w-full" disabled={form.formState.isSubmitting || selectedProjects.length === 0}>
-                        {form.formState.isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                        Schedule for {selectedProjects.length} Project(s)
-                    </Button>
-                    </form>
-                </Form>
-                </CardContent>
-            </Card>
-        </div>
+                    <Card>
+                        <CardHeader>
+                        <CardTitle>Schedule Details</CardTitle>
+                        <CardDescription>Set the time and assign evaluators for the selected projects.</CardDescription>
+                        </CardHeader>
+                        <CardContent>
+                        <Form {...form}>
+                            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+                            <FormField name="date" control={form.control} render={({ field }) => ( 
+                                <FormItem className="flex flex-col">
+                                    <FormLabel>Meeting Date</FormLabel>
+                                    <Popover><PopoverTrigger asChild><FormControl><Button variant={"outline"} className={cn("pl-3 text-left font-normal", !field.value && "text-muted-foreground")}>{field.value ? format(field.value, "PPP") : (<span>Pick a date</span>)}<CalendarIcon className="ml-auto h-4 w-4 opacity-50" /></Button></FormControl></PopoverTrigger><PopoverContent className="w-auto p-0" align="start"><Calendar captionLayout="dropdown-buttons" fromYear={2015} toYear={new Date().getFullYear() + 5} mode="single" selected={field.value} onSelect={field.onChange} disabled={(date) => date < startOfToday()} initialFocus /></PopoverContent></Popover>
+                                    <FormMessage />
+                                </FormItem> 
+                            )} />
+                            <FormField name="time" control={form.control} render={({ field }) => ( <FormItem><FormLabel>Meeting Time</FormLabel><FormControl><Input type="time" {...field} /></FormControl><FormMessage /></FormItem> )} />
+                            
+                            <FormField name="mode" control={form.control} render={({ field }) => (
+                                <FormItem className="space-y-3">
+                                    <FormLabel>Meeting Mode</FormLabel>
+                                    {hasGoaCampusPi && (
+                                        <Alert variant="default" className="bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-700">
+                                            <Info className="h-4 w-4 text-blue-600" />
+                                            <AlertTitle>Online Mode Enforced</AlertTitle>
+                                            <AlertDescription className="text-blue-700 dark:text-blue-300">
+                                                An online meeting is required as one or more selected PIs are from the Goa campus.
+                                            </AlertDescription>
+                                        </Alert>
+                                    )}
+                                    <FormControl>
+                                        <RadioGroup onValueChange={field.onChange} value={field.value} className="flex space-x-4">
+                                            <FormItem className="flex items-center space-x-2"><FormControl><RadioGroupItem value="Offline" disabled={hasGoaCampusPi} /></FormControl><FormLabel className="font-normal">Offline</FormLabel></FormItem>
+                                            <FormItem className="flex items-center space-x-2"><FormControl><RadioGroupItem value="Online" /></FormControl><FormLabel className="font-normal">Online</FormLabel></FormItem>
+                                        </RadioGroup>
+                                    </FormControl>
+                                    <FormMessage />
+                                </FormItem>
+                            )} />
+                            
+                            <FormField
+                                name="venue"
+                                control={form.control}
+                                render={({ field }) => (
+                                    <FormItem>
+                                        <FormLabel>{meetingMode === 'Online' ? 'Meeting Link' : 'Venue'}</FormLabel>
+                                        <FormControl>
+                                            <Input 
+                                                {...field} 
+                                                placeholder={meetingMode === 'Online' ? 'https://meet.google.com/...' : 'Enter physical venue'}
+                                            />
+                                        </FormControl>
+                                        <FormMessage />
+                                    </FormItem>
+                                )}
+                            />
+                            
+                            <FormField
+                                control={form.control}
+                                name="evaluatorUids"
+                                render={({ field }) => (
+                                    <FormItem className="flex flex-col">
+                                    <FormLabel>Assign Evaluators</FormLabel>
+                                    <DropdownMenu>
+                                        <DropdownMenuTrigger asChild>
+                                        <Button variant="outline" className="w-full justify-between">
+                                            {field.value?.length > 0 ? `${field.value.length} selected` : "Select evaluators"}
+                                            <ChevronDown className="h-4 w-4 opacity-50" />
+                                        </Button>
+                                        </DropdownMenuTrigger>
+                                        <DropdownMenuContent className="w-[--radix-popover-trigger-width]">
+                                        <DropdownMenuLabel>Available Staff</DropdownMenuLabel>
+                                        <DropdownMenuSeparator />
+                                        {evaluators.map((evaluator) => (
+                                            <DropdownMenuCheckboxItem
+                                            key={evaluator.uid}
+                                            checked={field.value?.includes(evaluator.uid)}
+                                            onCheckedChange={(checked) => {
+                                                return checked
+                                                ? field.onChange([...(field.value || []), evaluator.uid])
+                                                : field.onChange(field.value?.filter((id) => id !== evaluator.uid));
+                                            }}
+                                            >
+                                            {evaluator.name}
+                                            </DropdownMenuCheckboxItem>
+                                        ))}
+                                        </DropdownMenuContent>
+                                    </DropdownMenu>
+                                    <FormMessage />
+                                    </FormItem>
+                                )}
+                                />
+                            <Button type="submit" className="w-full" disabled={form.formState.isSubmitting || selectedProjects.length === 0}>
+                                {form.formState.isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                                Schedule for {selectedProjects.length} Project(s)
+                            </Button>
+                            </form>
+                        </Form>
+                        </CardContent>
+                    </Card>
+                </div>
+            </TabsContent>
+            <TabsContent value="history" className="mt-4">
+                 <div className="space-y-4">
+                    {scheduledMeetings.length > 0 ? (
+                        scheduledMeetings.map((meeting, index) => {
+                            const evaluatorNames = meeting.details.assignedEvaluators?.map(uid => usersMap.get(uid)?.name || 'Unknown').join(', ');
+                            return (
+                                <Card key={index}>
+                                    <CardHeader>
+                                        <CardTitle>Meeting on {format(parseISO(meeting.details.date), 'PPP')} at {meeting.details.time}</CardTitle>
+                                        <CardDescription>{meeting.details.venue} ({meeting.details.mode})</CardDescription>
+                                    </CardHeader>
+                                    <CardContent>
+                                        <div className="space-y-2">
+                                            <div>
+                                                <h4 className="font-semibold">Assigned Evaluators:</h4>
+                                                <p className="text-sm text-muted-foreground">{evaluatorNames}</p>
+                                            </div>
+                                            <div>
+                                                <h4 className="font-semibold">Projects ({meeting.projects.length}):</h4>
+                                                <ul className="list-disc list-inside text-sm pl-4">
+                                                    {meeting.projects.map(p => (
+                                                        <li key={p.id}>
+                                                            <Link href={`/dashboard/project/${p.id}`} className="text-primary hover:underline" target="_blank">
+                                                                {p.title}
+                                                            </Link>
+                                                            <span className="text-muted-foreground"> (PI: {p.pi})</span>
+                                                        </li>
+                                                    ))}
+                                                </ul>
+                                            </div>
+                                        </div>
+                                    </CardContent>
+                                </Card>
+                            );
+                        })
+                    ) : (
+                         <Card>
+                            <CardContent className="py-12 text-center text-muted-foreground">
+                                No meetings have been scheduled yet.
+                            </CardContent>
+                        </Card>
+                    )}
+                 </div>
+            </TabsContent>
+        </Tabs>
     </div>
   );
 }
+
