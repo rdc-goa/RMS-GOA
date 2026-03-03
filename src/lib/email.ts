@@ -2,7 +2,7 @@
 'use server';
 
 import nodemailer from 'nodemailer';
-import { getSystemSettings } from '@/app/server-actions';
+import { getSystemSettings } from '@/app/actions';
 
 const GMAIL_USER = process.env.GMAIL_USER;
 const GMAIL_APP_PASSWORD = process.env.GMAIL_APP_PASSWORD;
@@ -49,9 +49,14 @@ interface EmailOptions {
   html: string;
   attachments?: { filename: string; path: string }[];
   from: 'default' | 'rdc';
+  icalEvent?: {
+    filename: string;
+    method: 'REQUEST';
+    content: string;
+  };
 }
 
-export async function sendEmail({ to, cc, bcc, subject, html, attachments, from = 'default' }: EmailOptions) {
+export async function sendEmail({ to, cc, bcc, subject, html, attachments, from = 'default', icalEvent }: EmailOptions) {
   // DND Check
   try {
     const settings = await getSystemSettings();
@@ -93,6 +98,7 @@ export async function sendEmail({ to, cc, bcc, subject, html, attachments, from 
     subject: subject,
     html: html,
     attachments: attachments,
+    icalEvent: icalEvent,
   };
 
   try {

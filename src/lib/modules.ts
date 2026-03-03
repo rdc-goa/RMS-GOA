@@ -1,13 +1,14 @@
 
+
 import type { User } from "@/types"
 
 export const ALL_MODULES = [
   { id: "dashboard", label: "Dashboard" },
-  { id: "ai-chat", label: "AI Chat Agent" },
   { id: "new-submission", label: "New Submission" },
   { id: "my-projects", label: "My Projects" },
   { id: "emr-calendar", label: "EMR Calendar" },
   { id: "incentive-claim", label: "Incentive Claims" },
+  { id: "arps-calculator", label: "ARPS Calculator" },
   { id: "incentive-approvals", label: "Incentive Approvals" },
   { id: "evaluator-dashboard", label: "Evaluation Queue" },
   { id: "my-evaluations", label: "My IMR Evaluations" },
@@ -27,23 +28,29 @@ export const ALL_MODULES = [
   { id: "module-management", label: "Module Management" },
   { id: "notifications", label: "Notifications" },
   { id: "settings", label: "Settings" },
+  { id: 'post-a-job', label: 'Post a Job' },
+  { id: 'recruitment-approvals', label: 'Recruitment Approvals' },
 ]
 
-const coreModules = ["dashboard", "notifications", "settings", "emr-calendar"]
-const facultyCoreModules = ["new-submission", "my-projects"]
+const coreModules = ["dashboard", "notifications", "settings", "emr-calendar", "incentive-claim"]
+const facultyCoreModules = ["new-submissiogin", "my-projects"]
 const hierarchyCoreModules = ["analytics"]
 
-const facultyDefaults = [...coreModules, ...facultyCoreModules, "incentive-claim"]
-const croDefaults = [...coreModules, ...facultyCoreModules, "all-projects", "analytics", "incentive-claim"]
+const facultyDefaults = [...coreModules, ...facultyCoreModules]
+const croDefaults = [...coreModules, ...facultyCoreModules, "all-projects", "analytics"]
 const iqacDefaults = [...coreModules, "all-projects", "analytics"]
 const adminDefaults = [...croDefaults, "schedule-meeting", "pending-reviews", "completed-reviews", "emr-management", "manage-incentive-claims"]
-const superAdminDefaults = [...adminDefaults, "module-management"]
+const superAdminDefaults = [...adminDefaults, "module-management", "arps-calculator"]
 
 // Default modules for special designations who are otherwise 'faculty' role
 const principalDefaults = [...coreModules, ...hierarchyCoreModules, "all-projects"]
 const hodDefaults = [...coreModules, ...hierarchyCoreModules, "all-projects"]
+const goaHeadDefaults = [...coreModules, ...hierarchyCoreModules, "all-projects"] // Read-only access
 
 export function getDefaultModulesForRole(role: User["role"], designation?: User["designation"]): string[] {
+  if (designation === "Head of Goa Campus") {
+    return goaHeadDefaults
+  }
   
   if (role === "faculty") {
     if (designation === "Principal") {
