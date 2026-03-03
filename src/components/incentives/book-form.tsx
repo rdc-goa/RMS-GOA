@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import { useForm, useFieldArray } from 'react-hook-form';
@@ -18,30 +19,40 @@ import { Separator } from '@/components/ui/separator';
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useToast } from '@/hooks/use-toast';
-import { auth, db } from '@/lib/config';
+import { db } from '@/lib/config';
 import { collection, addDoc, doc, setDoc, getDoc } from 'firebase/firestore';
 import type { User, IncentiveClaim, BookCoAuthor, Author } from '@/types';
+import { uploadFileToApi } from '@/lib/upload-client';
 import { findUserByMisId } from '@/app/userfinding';
 import { Loader2, AlertCircle, Plus, Trash2, Search, Edit } from 'lucide-react';
-import { submitIncentiveClaim } from '@/app/incentive-approval-actions';
+import { submitIncentiveClaimViaApi } from '@/lib/incentive-claim-client';
 import { calculateBookIncentive } from '@/app/incentive-calculation';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../ui/table';
 import { Badge } from '../ui/badge';
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogClose, DialogFooter } from '../ui/dialog';
-import { Label } from '../ui/label';
+
+const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
 
 const bookSchema = z
   .object({
     bookApplicationType: z.enum(['Book Chapter', 'Book'], { required_error: 'Please select an application type.' }),
     publicationTitle: z.string().min(3, 'Title is required.'),
-    authors: z.array(z.object({
-        name: z.string().min(2, 'Author name is required.'),
-        email: z.string().email('Invalid email format.'),
-        uid: z.string().optional().nullable(),
-        role: z.enum(['First Author', 'Corresponding Author', 'Co-Author', 'First & Corresponding Author', "Presenting Author", "First & Presenting Author"]),
-        isExternal: z.boolean(),
-        status: z.enum(['approved', 'pending', 'Applied']),
-    })).min(1, 'At least one author is required.')
+        authors: z
+            .array(
+                z
+                    .object({
+                        name: z.string().min(2, 'Author name is required.'),
+                        email: z.string().email('Invalid email format.').or(z.literal('')),
+                        uid: z.string().optional().nullable(),
+                        role: z.enum(['First Author', 'Corresponding Author', 'Co-Author', 'First & Corresponding Author', "Presenting Author", "First & Presenting Author"]),
+                        isExternal: z.boolean(),
+                        status: z.enum(['approved', 'pending', 'Applied'])
+                    })
+                    .refine((data) => data.isExternal || !!data.email, {
+                        message: 'Email is required for internal authors.',
+                        path: ['email'],
+                    })
+            )
+            .min(1, 'At least one author is required.')
     .refine(data => {
         const firstAuthors = data.filter(author => author.role === 'First Author' || author.role === 'First & Corresponding Author');
         return firstAuthors.length <= 1;
@@ -65,8 +76,8 @@ const bookSchema = z
     isbnPrint: z.string().optional(),
     isbnElectronic: z.string().optional(),
     publisherWebsite: z.string().url('Please enter a valid URL.').optional().or(z.literal('')),
-    bookProof: z.any().refine((files) => files?.length > 0, 'Proof of publication is required.'),
-    scopusProof: z.any().optional(),
+    bookProof: z.any().refine((files) => files?.length > 0, 'Proof of publication is required.').refine((files) => !files?.[0] || files?.[0]?.size <= MAX_FILE_SIZE, 'File must be less than 10 MB.'),
+    scopusProof: z.any().optional().refine((files) => !files?.[0] || files?.[0]?.size <= MAX_FILE_SIZE, 'File must be less than 10 MB.'),
     publicationOrderInYear: z.enum(['First', 'Second', 'Third']).optional(),
     bookType: z.enum(['Textbook', 'Reference Book'], { required_error: 'Please select the book type.' }),
     bookSelfDeclaration: z.boolean().refine(val => val === true, { message: 'You must agree to the self-declaration.' }),
@@ -84,22 +95,6 @@ const bookSchema = z
 type BookFormValues = z.infer<typeof bookSchema>;
 
 const coAuthorRoles: Author['role'][] = ['First Author', 'Corresponding Author', 'Co-Author', 'First & Corresponding Author'];
-
-const uploadFileViaApi = async (file: File, token: string): Promise<string> => {
-  const formData = new FormData();
-  formData.append('file', file);
-  const response = await fetch('/api/upload', {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${token}` },
-    body: formData,
-  });
-  if (!response.ok) {
-    const errorData = await response.json();
-    throw new Error(errorData.error || 'File upload failed');
-  }
-  const result = await response.json();
-  return result.file.uploadedUrl;
-};
 
 function ReviewDetails({ data, onEdit }: { data: BookFormValues; onEdit: () => void }) {
     const renderDetail = (label: string, value?: string | number | boolean | string[] | Author[]) => {
@@ -208,7 +203,6 @@ export function BookForm() {
   const [externalAuthorRole, setExternalAuthorRole] = useState<Author['role']>('Co-Author');
   const [calculatedIncentive, setCalculatedIncentive] = useState<number | null>(null);
   const [isLoadingDraft, setIsLoadingDraft] = useState(true);
-  const [isSelectionOpen, setIsSelectionOpen] = useState(false);
 
   const form = useForm<BookFormValues>({
     resolver: zodResolver(bookSchema),
@@ -346,7 +340,7 @@ export function BookForm() {
         toast({
             variant: 'destructive',
             title: 'Bank Details Missing',
-            description: 'You must add your bank details in Settings to submit a claim.',
+            description: 'You must add your salary bank account details in your profile before you can submit a claim.',
         });
         return;
     }
@@ -355,28 +349,39 @@ export function BookForm() {
         const data = form.getValues();
         const calculationResult = await calculateBookIncentive(data);
 
-        const token = await auth.currentUser?.getIdToken(true);
-        if (!token) {
-            throw new Error("Authentication token not found. Please log in again.");
-        }
-
-        const uploadFileHelper = async (file: File | undefined): Promise<string | undefined> => {
-            if (!file) return undefined;
-            return uploadFileViaApi(file, token);
+        const uploadFileHelper = async (file: File | undefined, folderName: string): Promise<string | undefined> => {
+            if (!file || !user) return undefined;
+            const path = `incentive-proofs/${user.uid}/${folderName}/${new Date().toISOString()}-${file.name}`;
+            const result = await uploadFileToApi(file, { path });
+            if (!result.success || !result.url) {
+                throw new Error(result.error || `File upload failed for ${folderName}`);
+            }
+            return result.url;
         };
         
         const bookProofFile = data.bookProof?.[0];
         const scopusProofFile = data.scopusProof?.[0];
         
-        const [bookProofUrl, scopusProofUrl] = await Promise.all([
-          uploadFileHelper(bookProofFile),
-          uploadFileHelper(scopusProofFile),
-        ]);
+        const bookProofUrl = await uploadFileHelper(bookProofFile, 'book-proof');
+        const scopusProofUrl = await uploadFileHelper(scopusProofFile, 'book-scopus-proof');
         
-        const claimData: Omit<IncentiveClaim, 'id' | 'claimId'> = {
+        // Create a clean data object without the file objects
+        const { bookProof, scopusProof, ...restOfData } = data;
+
+        // Optimize authors array - only send essential fields to reduce payload size
+        const optimizedAuthors = (data.authors || []).map(author => ({
+            name: author.name,
+            email: author.email,
+            uid: author.uid || null,
+            role: author.role,
+            isExternal: author.isExternal,
+            status: author.status,
+        }));
+
+        const claimData: Partial<IncentiveClaim> = {
             bookApplicationType: data.bookApplicationType,
             publicationTitle: data.publicationTitle,
-            authors: data.authors,
+            authors: optimizedAuthors,
             bookTitleForChapter: data.bookTitleForChapter,
             bookEditor: data.bookEditor,
             totalPuStudents: data.totalPuStudents,
@@ -400,34 +405,40 @@ export function BookForm() {
             bookType: data.bookType,
             bookSelfDeclaration: data.bookSelfDeclaration,
             calculatedIncentive: calculationResult.success ? calculationResult.amount : 0,
-            misId: user.misId || null,
-            orcidId: user.orcidId || null,
+            misId: user.misId,
             claimType: 'Books',
             benefitMode: 'incentives',
             uid: user.uid,
             userName: user.name,
             userEmail: user.email,
             faculty: user.faculty,
-            institute: user.institute || '',
             status,
             submissionDate: new Date().toISOString(),
-            bankDetails: user.bankDetails || null,
         };
         
         if (bookProofUrl) claimData.bookProofUrl = bookProofUrl;
         if (scopusProofUrl) claimData.scopusProofUrl = scopusProofUrl;
         
-        const result = await submitIncentiveClaim(claimData as Omit<IncentiveClaim, 'id' | 'claimId'>);
+        // Remove undefined and null values to reduce payload size
+        Object.keys(claimData).forEach(key => {
+            const value = (claimData as any)[key];
+            if (value === undefined || value === null) {
+                delete (claimData as any)[key];
+            }
+        });
+        
+        const claimId = searchParams.get('claimId');
+        const result = await submitIncentiveClaimViaApi(claimData as Omit<IncentiveClaim, 'id' | 'claimId'>, claimId || undefined);
         if (!result.success || !result.claimId) {
             throw new Error(result.error);
         }
 
-        const claimId = searchParams.get('claimId') || result.claimId;
+        const newClaimId = claimId || result.claimId;
         
         if (status === 'Draft') {
             toast({ title: 'Draft Saved!', description: "You can continue editing from the 'Incentive Claim' page." });
             if (!searchParams.get('claimId')) {
-                router.push(`/dashboard/incentive-claim/book?claimId=${claimId}`);
+                router.push(`/dashboard/incentive-claim/book?claimId=${newClaimId}`);
             }
         } else {
             toast({ title: 'Success', description: 'Your incentive claim for books/chapters has been submitted.' });
@@ -440,26 +451,35 @@ export function BookForm() {
         setIsSubmitting(false);
     }
   }
-
+  
   const onFinalSubmit = () => handleSave('Pending');
   
-  const handleSearchCoPi = async () => {
-    if (!coPiSearchTerm) return;
+  const handleSearchCoPi = async (searchTerm: string) => {
+    if (!searchTerm || searchTerm.length < 2) {
+      setFoundCoPis([]);
+      return;
+    }
     setIsSearching(true);
     try {
-        const result = await findUserByMisId(coPiSearchTerm);
-        if (result.success && result.users && result.users.length > 0) {
-            if (result.users.length === 1) {
-                handleAddCoPi(result.users[0]);
-            } else {
-                setFoundCoPis(result.users);
-                setIsSelectionOpen(true);
-            }
+        // Check if search term looks like a MIS ID (numeric or alphanumeric, max 10 chars)
+        const isMisIdSearch = /^[a-zA-Z0-9]+$/.test(searchTerm) && searchTerm.length <= 10;
+        
+        let url = '';
+        if (isMisIdSearch) {
+            url = `/api/find-users-by-name?misId=${encodeURIComponent(searchTerm)}`;
         } else {
-            toast({ variant: 'destructive', title: 'User Not Found', description: result.error });
+            url = `/api/find-users-by-name?name=${encodeURIComponent(searchTerm)}`;
         }
-    } catch (error: any) {
-        toast({ variant: 'destructive', title: 'Search Failed', description: error.message || 'An error occurred while searching.' });
+        
+        const res = await fetch(url);
+        const result = await res.json();
+        if (result.success && Array.isArray(result.users)) {
+            setFoundCoPis(result.users);
+        } else {
+            setFoundCoPis([]);
+        }
+    } catch (error) {
+        toast({ variant: 'destructive', title: 'Search Failed', description: 'An error occurred while searching.' });
     } finally {
         setIsSearching(false);
     }
@@ -493,21 +513,20 @@ export function BookForm() {
     }
     setCoPiSearchTerm('');
     setFoundCoPis([]);
-    setIsSelectionOpen(false);
   };
   
-   const addExternalAuthor = () => {
+    const addExternalAuthor = () => {
         const name = externalAuthorName.trim();
         const email = externalAuthorEmail.trim().toLowerCase();
-        if (!name || !email) {
-            toast({ title: 'Name and email are required for external authors', variant: 'destructive' });
-            return;
+        if (!name) {
+                toast({ title: 'Name is required for external authors', variant: 'destructive' });
+                return;
         }
-         if (fields.some(a => a.email.toLowerCase() === email)) {
-            toast({ title: 'Author already added', variant: 'destructive' });
-            return;
+        if (email && fields.some(a => a.email?.toLowerCase() === email)) {
+                toast({ title: 'Author already added', variant: 'destructive' });
+                return;
         }
-        append({ name, email, role: externalAuthorRole, isExternal: true, uid: null, status: 'pending' });
+        append({ name, email: email || '', role: externalAuthorRole, isExternal: true, uid: null, status: 'pending' });
         setExternalAuthorName('');
         setExternalAuthorEmail('');
         setExternalAuthorRole('Co-Author'); // Reset role selector
@@ -543,19 +562,19 @@ export function BookForm() {
 
   if (currentStep === 2) {
     return (
-        <Card>
-            <form onSubmit={form.handleSubmit(onFinalSubmit)}>
-                <CardContent className="pt-6">
-                    <ReviewDetails data={form.getValues()} onEdit={() => setCurrentStep(1)} />
-                </CardContent>
-                <CardFooter>
-                    <Button type="submit" disabled={isSubmitting || bankDetailsMissing}>
-                        {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                        {isSubmitting ? 'Submitting...' : 'Submit Claim'}
-                    </Button>
-                </CardFooter>
-            </form>
-        </Card>
+      <Card>
+        <form onSubmit={form.handleSubmit(onFinalSubmit)}>
+          <CardContent className="pt-6">
+            <ReviewDetails data={form.getValues()} onEdit={() => setCurrentStep(1)} />
+          </CardContent>
+          <CardFooter>
+            <Button type="submit" disabled={isSubmitting || bankDetailsMissing}>
+              {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              {isSubmitting ? 'Submitting...' : 'Submit Claim'}
+            </Button>
+          </CardFooter>
+        </form>
+      </Card>
     );
   }
 
@@ -564,7 +583,7 @@ export function BookForm() {
     <Card>
       <Form {...form}>
         <form>
-          <CardContent className="space-y-8 pt-6">
+          <CardContent className="space-y-6 pt-6">
             {bankDetailsMissing && (
                 <Alert variant="destructive">
                     <AlertCircle className="h-4 w-4" />
@@ -575,7 +594,7 @@ export function BookForm() {
                     </AlertDescription>
                 </Alert>
             )}
-
+            
             <div className="rounded-lg border p-4 space-y-6 animate-in fade-in-0">
                 <h3 className="font-semibold text-sm -mb-2">BOOK/BOOK CHAPTER DETAILS</h3>
                 <Separator />
@@ -618,22 +637,40 @@ export function BookForm() {
                     <Separator className="my-4" />
 
                     <div className="space-y-2 p-3 border rounded-md">
-                        <FormLabel>Add Internal Co-Author</FormLabel>
-                        <div className="flex items-center gap-2">
-                            <Input placeholder="Search by Co-Author's Name or MIS ID" value={coPiSearchTerm} onChange={(e) => setCoPiSearchTerm(e.target.value)} />
-                            <Button type="button" onClick={handleSearchCoPi} disabled={isSearching}>{isSearching ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Search'}</Button>
+                        <FormLabel className="text-sm">Add Internal Co-Author</FormLabel>
+                        <div className="relative">
+                            <Input
+                                placeholder="Search by Co-Author's Name or MIS ID"
+                                value={coPiSearchTerm}
+                                onChange={(e) => {
+                                    setCoPiSearchTerm(e.target.value);
+                                    handleSearchCoPi(e.target.value);
+                                }}
+                            />
+                            {isSearching && <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 animate-spin" />}
                         </div>
+                        {foundCoPis.length > 0 && (
+                            <div className="relative">
+                                <div className="absolute w-full bg-background border rounded-md shadow-lg z-10 max-h-48 overflow-y-auto">
+                                    {foundCoPis.map((coPi: any) => (
+                                        <div key={coPi.uid || coPi.email || coPi.misId} className="p-2 hover:bg-muted cursor-pointer" onClick={() => handleAddCoPi(coPi)}>
+                                            {coPi.name} ({coPi.misId})
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
                     </div>
                     <div className="space-y-2 p-3 border rounded-md">
                         <FormLabel className="text-sm">Add External Co-Author</FormLabel>
                         <div className="flex flex-col md:flex-row gap-2 mt-1">
                             <Input value={externalAuthorName} onChange={(e) => setExternalAuthorName(e.target.value)} placeholder="External author's name"/>
-                            <Input value={externalAuthorEmail} onChange={(e) => setExternalAuthorEmail(e.target.value)} placeholder="External author's email"/>
+                            <Input value={externalAuthorEmail} onChange={(e) => setExternalAuthorEmail(e.target.value)} placeholder="External author's email (optional)"/>
                             <Select value={externalAuthorRole} onValueChange={(value) => setExternalAuthorRole(value as Author['role'])}>
                                 <SelectTrigger><SelectValue/></SelectTrigger>
                                 <SelectContent>{getAvailableRoles(undefined).map(role => (<SelectItem key={role} value={role}>{role}</SelectItem>))}</SelectContent>
                             </Select>
-                            <Button type="button" onClick={addExternalAuthor} variant="outline" size="icon" disabled={!externalAuthorName.trim() || !externalAuthorEmail.trim()}><Plus className="h-4 w-4"/></Button>
+                            <Button type="button" onClick={addExternalAuthor} variant="outline" size="icon" disabled={!externalAuthorName.trim()}><Plus className="h-4 w-4"/></Button>
                         </div>
                     </div>
                      <FormMessage>{form.formState.errors.authors?.message || form.formState.errors.authors?.root?.message}</FormMessage>
@@ -667,7 +704,6 @@ export function BookForm() {
                 )}
                 {(publicationMode === 'Print Only' || publicationMode === 'Print & Electronic') && <FormField name="isbnPrint" control={form.control} render={({ field }) => ( <FormItem><FormLabel>ISBN Number (Print)</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem> )} />}
                 {(publicationMode === 'Electronic Only' || publicationMode === 'Print & Electronic') && <FormField name="isbnElectronic" control={form.control} render={({ field }) => ( <FormItem><FormLabel>ISBN Number (Electronic)</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem> )} />}
-                
                 <FormField name="publisherWebsite" control={form.control} render={({ field }) => ( <FormItem><FormLabel>Publisher Website</FormLabel><FormControl><Input type="url" placeholder="https://example.com" {...field} /></FormControl><FormMessage /></FormItem> )} />
                 <FormField name="publicationOrderInYear" control={form.control} render={({ field }) => ( <FormItem><FormLabel>Is this your First/Second/Third Chapter/Book in the calendar year?</FormLabel><Select onValueChange={field.onChange} value={field.value}><FormControl><SelectTrigger><SelectValue placeholder="Select publication order" /></SelectTrigger></FormControl><SelectContent><SelectItem value="First">First</SelectItem><SelectItem value="Second">Second</SelectItem><SelectItem value="Third">Third</SelectItem></SelectContent></Select><FormMessage /></FormItem> )} />
                  {calculatedIncentive !== null && (
@@ -698,28 +734,6 @@ export function BookForm() {
         </form>
       </Form>
     </Card>
-    <Dialog open={isSelectionOpen} onOpenChange={setIsSelectionOpen}>
-        <DialogContent>
-            <DialogHeader>
-                <DialogTitle>Multiple Users Found</DialogTitle>
-                <DialogDescription>Please select the correct user to add.</DialogDescription>
-            </DialogHeader>
-            <div className="py-4">
-                <RadioGroup onValueChange={(value) => handleAddCoPi(JSON.parse(value))}>
-                    {foundCoPis.map((u, i) => (
-                        <div key={i} className="flex items-center space-x-2 border rounded-md p-3">
-                            <RadioGroupItem value={JSON.stringify(u)} id={`user-${i}`} />
-                            <Label htmlFor={`user-${i}`} className="flex flex-col">
-                                <span className="font-semibold">{u.name}</span>
-                                <span className="text-muted-foreground text-xs">{u.email}</span>
-                                <span className="text-muted-foreground text-xs">{u.campus}</span>
-                            </Label>
-                        </div>
-                    ))}
-                </RadioGroup>
-            </div>
-        </DialogContent>
-    </Dialog>
     </>
   );
 }

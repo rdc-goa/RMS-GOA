@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import { useForm } from 'react-hook-form';
@@ -15,12 +16,15 @@ import { Separator } from '@/components/ui/separator';
 import { useState, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useToast } from '@/hooks/use-toast';
-import { auth, db } from '@/lib/config';
+import { db } from '@/lib/config';
 import { collection, doc, setDoc, getDoc } from 'firebase/firestore';
 import type { User, IncentiveClaim } from '@/types';
+import { uploadFileToApi } from '@/lib/upload-client';
 import { Loader2, AlertCircle, Edit } from 'lucide-react';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
-import { submitIncentiveClaim } from '@/app/incentive-approval-actions';
+import { submitIncentiveClaimViaApi } from '@/lib/incentive-claim-client';
+
+const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
 
 const membershipSchema = z.object({
     professionalBodyName: z.string().min(3, 'Name of the professional body is required.'),
@@ -29,27 +33,11 @@ const membershipSchema = z.object({
     membershipNumber: z.string().min(1, 'Membership number is required.'),
     membershipAmountPaid: z.coerce.number().positive('A valid positive amount is required.'),
     membershipPaymentDate: z.string().min(1, 'Payment date is required.'),
-    membershipProof: z.any().refine((files) => files?.length > 0, 'Proof of membership/payment is required.'),
+    membershipProof: z.any().refine((files) => files?.length > 0, 'Proof of membership/payment is required.').refine((files) => !files?.[0] || files?.[0]?.size <= MAX_FILE_SIZE, 'File must be less than 10 MB.'),
     membershipSelfDeclaration: z.boolean().refine(val => val === true, { message: 'You must agree to the self-declaration.' }),
 });
 
 type MembershipFormValues = z.infer<typeof membershipSchema>;
-
-const uploadFileViaApi = async (file: File, token: string): Promise<string> => {
-  const formData = new FormData();
-  formData.append('file', file);
-  const response = await fetch('/api/upload', {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${token}` },
-    body: formData,
-  });
-  if (!response.ok) {
-    const errorData = await response.json();
-    throw new Error(errorData.error || 'File upload failed');
-  }
-  const result = await response.json();
-  return result.file.uploadedUrl;
-};
 
 function ReviewDetails({ data, onEdit }: { data: MembershipFormValues; onEdit: () => void }) {
     const renderDetail = (label: string, value?: string | number | boolean) => {
@@ -198,27 +186,23 @@ export function MembershipForm() {
     try {
         const data = form.getValues();
         
-        const token = await auth.currentUser?.getIdToken(true);
-        if (!token) {
-            throw new Error("Authentication token not found. Please log in again.");
-        }
-
-        const uploadFileHelper = async (file: File | undefined): Promise<string | undefined> => {
-            if (!file) return undefined;
-            return uploadFileViaApi(file, token);
+        const uploadFileHelper = async (file: File | undefined, folderName: string): Promise<string | undefined> => {
+          if (!file || !user) return undefined;
+          const path = `incentive-proofs/${user.uid}/${folderName}/${new Date().toISOString()}-${file.name}`;
+          const result = await uploadFileToApi(file, { path });
+          if (!result.success || !result.url) {
+            throw new Error(result.error || `File upload failed for ${folderName}`);
+          }
+          return result.url;
         };
 
-        const membershipProofUrl = await uploadFileHelper(data.membershipProof?.[0]);
+        const membershipProofUrl = await uploadFileHelper(data.membershipProof?.[0], 'membership-proof');
+        
+        // This is the fix: create a new object without the FileList
+        const { membershipProof, ...restOfData } = data;
 
         const claimData: Omit<IncentiveClaim, 'id' | 'claimId'> = {
-            professionalBodyName: data.professionalBodyName,
-            membershipType: data.membershipType,
-            membershipLocale: data.membershipLocale,
-            membershipNumber: data.membershipNumber,
-            membershipAmountPaid: data.membershipAmountPaid,
-            membershipPaymentDate: data.membershipPaymentDate,
-            membershipSelfDeclaration: data.membershipSelfDeclaration,
-            membershipProofUrl,
+            ...restOfData,
             calculatedIncentive,
             misId: user.misId || null,
             orcidId: user.orcidId || null,
@@ -228,23 +212,25 @@ export function MembershipForm() {
             userName: user.name,
             userEmail: user.email,
             faculty: user.faculty,
-            institute: user.institute || '',
             status,
             submissionDate: new Date().toISOString(),
             bankDetails: user.bankDetails || null,
         };
-        
-        const result = await submitIncentiveClaim(claimData);
+
+        if (membershipProofUrl) claimData.membershipProofUrl = membershipProofUrl;
+
+        const claimId = searchParams.get('claimId');
+        const result = await submitIncentiveClaimViaApi(claimData, claimId || undefined);
         if (!result.success || !result.claimId) {
             throw new Error(result.error);
         }
 
-        const claimId = searchParams.get('claimId') || result.claimId;
+        const newClaimId = claimId || result.claimId;
 
         if (status === 'Draft') {
           toast({ title: 'Draft Saved!', description: "You can continue editing from the 'Incentive Claim' page." });
           if (!searchParams.get('claimId')) {
-            router.push(`/dashboard/incentive-claim/membership?claimId=${claimId}`);
+            router.push(`/dashboard/incentive-claim/membership?claimId=${newClaimId}`);
           }
         } else {
           toast({ title: 'Success', description: 'Your incentive claim for membership has been submitted.' });

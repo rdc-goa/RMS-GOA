@@ -1,4 +1,3 @@
-
 'use client';
 
 import { useForm, useFieldArray } from 'react-hook-form';
@@ -17,12 +16,13 @@ import { Separator } from '@/components/ui/separator';
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useToast } from '@/hooks/use-toast';
-import { auth, db } from '@/lib/config';
+import { db } from '@/lib/config';
 import { collection, doc, setDoc, getDoc } from 'firebase/firestore';
 import type { User, IncentiveClaim, PatentInventor } from '@/types';
-import { checkPatentUniqueness } from '@/app/server-actions';
+import { checkPatentUniqueness } from '@/app/actions';
+import { uploadFileToApi } from '@/lib/upload-client';
 import { Loader2, AlertCircle, Info, Plus, Trash2, Search, Calendar as CalendarIcon, ChevronDown, Edit } from 'lucide-react';
-import { submitIncentiveClaim } from '@/app/incentive-approval-actions';
+import { submitIncentiveClaimViaApi } from '@/lib/incentive-claim-client';
 import { findUserByMisId } from '@/app/userfinding';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
@@ -39,6 +39,8 @@ import {
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { calculatePatentIncentive } from '@/app/incentive-calculation';
 import { Table, TableBody, TableCell, TableHeader, TableHead, TableRow } from '../ui/table';
+
+const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
 
 const sdgGoalsList = [
   "Goal 1: No Poverty", "Goal 2: Zero Hunger", "Goal 3: Good Health and Well-being", "Goal 4: Quality Education",
@@ -69,11 +71,20 @@ const patentSchema = z
     publicationDate: z.date().optional(),
     grantDate: z.date().optional(),
     currentStatus: z.enum(['Filed', 'Published', 'Granted'], { required_error: 'Please select the current status.' }),
-    patentForm1: z.any().refine((files) => files?.length > 0, 'Proof (Form 1) is required.'),
+    patentForm1: z
+      .any()
+      .refine((files) => files?.length > 0, 'Proof (Form 1) is required.')
+      .refine((files) => !files?.[0] || files?.[0]?.size <= MAX_FILE_SIZE, 'File must be less than 10 MB.'),
     patentFiledFromIprCell: z.boolean({ required_error: 'This field is required.' }),
     patentPermissionTaken: z.boolean().optional(),
-    patentApprovalProof: z.any().optional(),
-    patentGovtReceipt: z.any().refine((files) => files?.length > 0, 'Proof (Govt. Receipt) is required.'),
+    patentApprovalProof: z
+      .any()
+      .optional()
+      .refine((files) => !files?.[0] || files?.[0]?.size <= MAX_FILE_SIZE, 'File must be less than 10 MB.'),
+    patentGovtReceipt: z
+      .any()
+      .refine((files) => files?.length > 0, 'Proof (Govt. Receipt) is required.')
+      .refine((files) => !files?.[0] || files?.[0]?.size <= MAX_FILE_SIZE, 'File must be less than 10 MB.'),
     patentSelfDeclaration: z.boolean().refine(val => val === true, { message: 'You must agree to the self-declaration.' }),
     patentFiledInPuName: z.boolean({ required_error: 'This field is required.' }),
     isPuSoleApplicant: z.boolean().optional(),
@@ -83,62 +94,51 @@ const patentSchema = z
   .refine(data => !(data.isCollaboration === 'Yes') || (!!data.collaborationDetails && data.collaborationDetails.length > 0), { message: 'Collaboration details are required.', path: ['collaborationDetails'] })
   .refine(data => !(data.isIprSdg === 'Yes') || (!!data.sdgGoals && data.sdgGoals.length > 0), { message: 'Please select at least one SDG.', path: ['sdgGoals'] })
   .refine(data => !(data.isIprDisciplinary === 'Yes') || !!data.disciplinaryType, { message: 'Please select the disciplinary type.', path: ['disciplinaryType'] })
-  .refine(data => !(data.currentStatus === 'Published' || data.currentStatus === 'Granted') || !!data.publicationDate, { message: 'Publication date is required for this status.', path: ['publicationDate'] })
-  .refine(data => !(data.currentStatus === 'Granted') || !!data.grantDate, { message: 'Grant date is required for this status.', path: ['grantDate'] })
-  .refine(data => data.patentFiledFromIprCell || data.patentPermissionTaken !== undefined, { message: 'Permission status is required if not filed from IPR Cell.', path: ['patentPermissionTaken']})
-  .refine(data => !data.patentFiledInPuName || data.isPuSoleApplicant !== undefined, { message: 'Please specify if PU is the sole applicant.', path: ['isPuSoleApplicant']});
+    .refine(data => !(data.currentStatus === 'Published' || data.currentStatus === 'Granted') || !!data.publicationDate, { message: 'Publication date is required for this status.', path: ['publicationDate'] });
 
+  type PatentFormValues = z.infer<typeof patentSchema>;
 
-type PatentFormValues = z.infer<typeof patentSchema>;
-
-const uploadFileViaApi = async (file: File, token: string): Promise<string> => {
-  const formData = new FormData();
-  formData.append('file', file);
-  const response = await fetch('/api/upload', {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${token}` },
-    body: formData,
-  });
-  if (!response.ok) {
-    const errorData = await response.json();
-    throw new Error(errorData.error || 'File upload failed');
-  }
-  const result = await response.json();
-  return result.file.uploadedUrl;
-};
-
-function ReviewDetails({ data, onEdit }: { data: PatentFormValues; onEdit: () => void }) {
+  function ReviewDetails({ data, onEdit }: { data: PatentFormValues; onEdit: () => void }) {
     const renderDetail = (label: string, value?: string | number | boolean | string[] | PatentInventor[]) => {
-        if (!value && value !== 0 && value !== false) return null;
+      if (!value && value !== 0 && value !== false) return null;
         
-        let displayValue: React.ReactNode = String(value);
-        if (typeof value === 'boolean') {
-            displayValue = value ? 'Yes' : 'No';
-        }
-        if (Array.isArray(value)) {
-            if (value.length > 0 && typeof value[0] === 'object' && value[0] !== null && 'name' in value[0]) {
-                displayValue = (
-                    <div className="border rounded-lg overflow-hidden">
-                        <Table><TableHeader><TableRow><TableHead>Name</TableHead><TableHead>MIS ID</TableHead></TableRow></TableHeader>
-                        <TableBody>
-                            {(value as PatentInventor[]).map((p, idx) => (
-                                <TableRow key={idx}><TableCell>{p.name}</TableCell><TableCell>{p.misId}</TableCell></TableRow>
-                            ))}
-                        </TableBody>
-                        </Table>
-                    </div>
-                );
-            } else {
-                displayValue = (value as string[]).join(', ');
-            }
-        }
-
-        return (
-            <div className="grid grid-cols-3 gap-2 py-1.5 items-start">
-                <dt className="font-semibold text-muted-foreground col-span-1">{label}</dt>
-                <dd className="col-span-2">{displayValue}</dd>
+      let displayValue: React.ReactNode = String(value);
+      if (typeof value === 'boolean') {
+        displayValue = value ? 'Yes' : 'No';
+      }
+      if (Array.isArray(value)) {
+        if (value.length > 0 && typeof value[0] === 'object' && value[0] !== null && 'name' in value[0]) {
+          displayValue = (
+            <div className="border rounded-lg overflow-hidden">
+              <Table>
+                <TableHeader>
+                <TableRow>
+                  <TableHead>Name</TableHead>
+                  <TableHead>MIS ID</TableHead>
+                </TableRow>
+                </TableHeader>
+                <TableBody>
+                {(value as PatentInventor[]).map((p, idx) => (
+                  <TableRow key={idx}>
+                    <TableCell>{p.name}</TableCell>
+                    <TableCell>{p.misId}</TableCell>
+                  </TableRow>
+                ))}
+                </TableBody>
+              </Table>
             </div>
-        );
+          );
+        } else {
+          displayValue = (value as string[]).join(', ');
+        }
+      }
+
+      return (
+        <div className="grid grid-cols-3 gap-2 py-1.5 items-start">
+          <dt className="font-semibold text-muted-foreground col-span-1">{label}</dt>
+          <dd className="col-span-2">{displayValue}</dd>
+        </div>
+      );
     };
     
     const form1File = data.patentForm1?.[0] as File | undefined;
@@ -146,47 +146,47 @@ function ReviewDetails({ data, onEdit }: { data: PatentFormValues; onEdit: () =>
     const govtReceiptFile = data.patentGovtReceipt?.[0] as File | undefined;
 
     return (
-        <Card>
-            <CardHeader>
-                <div className="flex justify-between items-center">
-                    <div>
-                        <CardTitle>Review Your Application</CardTitle>
-                        <CardDescription>Please review the details below before final submission.</CardDescription>
-                    </div>
-                    <Button variant="outline" onClick={onEdit}><Edit className="h-4 w-4 mr-2" /> Edit</Button>
-                </div>
-            </CardHeader>
-            <CardContent className="space-y-4">
-                {renderDetail("Locale", data.patentLocale)}
-                {renderDetail("Country", data.patentCountry)}
-                {renderDetail("Patent Title", data.patentTitle)}
-                {renderDetail("Application Number", data.patentApplicationNumber)}
-                {renderDetail("Domain", data.patentDomain)}
-                {renderDetail("Inventors", data.patentInventors)}
-                {renderDetail("Co-Applicants", data.patentCoApplicants)}
-                {renderDetail("Collaboration", data.isCollaboration)}
-                {renderDetail("Collaboration Details", data.collaborationDetails)}
-                {renderDetail("Relates to SDGs", data.isIprSdg)}
-                {renderDetail("SDGs", data.sdgGoals)}
-                {renderDetail("Disciplinary Type", data.disciplinaryType)}
-                {renderDetail("Filing Date", data.filingDate ? format(data.filingDate, 'PPP') : 'N/A')}
-                {renderDetail("Publication Date", data.publicationDate ? format(data.publicationDate, 'PPP') : 'N/A')}
-                {renderDetail("Grant Date", data.grantDate ? format(data.grantDate, 'PPP') : 'N/A')}
-                {renderDetail("Current Status", data.currentStatus)}
-                {renderDetail("Specification Type", data.patentSpecificationType)}
-                {renderDetail("Filed in PU Name", data.patentFiledInPuName)}
-                {renderDetail("PU is Sole Applicant", data.isPuSoleApplicant)}
-                {renderDetail("Filed from IPR Cell", data.patentFiledFromIprCell)}
-                {renderDetail("Permission Taken", data.patentPermissionTaken)}
-                {renderDetail("Form 1 Proof", form1File?.name)}
-                {renderDetail("Approval Proof", approvalProofFile?.name)}
-                {renderDetail("Govt. Receipt", govtReceiptFile?.name)}
-            </CardContent>
-        </Card>
+      <Card>
+        <CardHeader>
+          <div className="flex justify-between items-center">
+            <div>
+              <CardTitle>Review Your Application</CardTitle>
+              <CardDescription>Please review the details below before final submission.</CardDescription>
+            </div>
+            <Button variant="outline" onClick={onEdit}><Edit className="h-4 w-4 mr-2" /> Edit</Button>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {renderDetail("Locale", data.patentLocale)}
+          {renderDetail("Country", data.patentCountry)}
+          {renderDetail("Patent Title", data.patentTitle)}
+          {renderDetail("Application Number", data.patentApplicationNumber)}
+          {renderDetail("Domain", data.patentDomain)}
+          {renderDetail("Inventors", data.patentInventors)}
+          {renderDetail("Co-Applicants", data.patentCoApplicants)}
+          {renderDetail("Collaboration", data.isCollaboration)}
+          {renderDetail("Collaboration Details", data.collaborationDetails)}
+          {renderDetail("Relates to SDGs", data.isIprSdg)}
+          {renderDetail("SDGs", data.sdgGoals)}
+          {renderDetail("Disciplinary Type", data.disciplinaryType)}
+          {renderDetail("Filing Date", data.filingDate ? format(data.filingDate, 'PPP') : 'N/A')}
+          {renderDetail("Publication Date", data.publicationDate ? format(data.publicationDate, 'PPP') : 'N/A')}
+          {renderDetail("Grant Date", data.grantDate ? format(data.grantDate, 'PPP') : 'N/A')}
+          {renderDetail("Current Status", data.currentStatus)}
+          {renderDetail("Specification Type", data.patentSpecificationType)}
+          {renderDetail("Filed in PU Name", data.patentFiledInPuName)}
+          {renderDetail("PU is Sole Applicant", data.isPuSoleApplicant)}
+          {renderDetail("Filed from IPR Cell", data.patentFiledFromIprCell)}
+          {renderDetail("Permission Taken", data.patentPermissionTaken)}
+          {renderDetail("Form 1 Proof", form1File?.name)}
+          {renderDetail("Approval Proof", approvalProofFile?.name)}
+          {renderDetail("Govt. Receipt", govtReceiptFile?.name)}
+        </CardContent>
+      </Card>
     );
-}
+  }
 
-export function PatentForm() {
+  export function PatentForm() {
   const { toast } = useToast();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -224,7 +224,21 @@ export function PatentForm() {
   const formValues = form.watch();
 
   const calculate = useCallback(async () => {
-    const result = await calculatePatentIncentive(formValues);
+    const mapClaimStatus = (status?: PatentFormValues['currentStatus']): IncentiveClaim['currentStatus'] | undefined => {
+      if (status === 'Published') return 'Published';
+      if (status === 'Filed') return 'Under Examination';
+      if (status === 'Granted') return 'Awarded';
+      return undefined;
+    };
+    const mappedStatus = mapClaimStatus(formValues.currentStatus);
+    const incentiveInput: Partial<IncentiveClaim> = {
+      ...formValues,
+      currentStatus: mappedStatus,
+      filingDate: formValues.filingDate?.toISOString(),
+      publicationDate: formValues.publicationDate?.toISOString(),
+      grantDate: formValues.grantDate?.toISOString(),
+    };
+    const result = await calculatePatentIncentive(incentiveInput);
     if (result.success) {
         setCalculatedIncentive(result.amount ?? null);
     } else {
@@ -265,16 +279,25 @@ export function PatentForm() {
                 const claimRef = doc(db, 'incentiveClaims', claimId);
                 const claimSnap = await getDoc(claimRef);
                 if (claimSnap.exists()) {
-                    const draftData = claimSnap.data() as IncentiveClaim;
-                    form.reset({
-                        ...draftData,
-                        filingDate: draftData.filingDate ? parseISO(draftData.filingDate) : undefined,
-                        publicationDate: draftData.publicationDate ? parseISO(draftData.publicationDate) : undefined,
-                        grantDate: draftData.grantDate ? parseISO(draftData.grantDate) : undefined,
-                        patentForm1: undefined,
-                        patentApprovalProof: undefined,
-                        patentGovtReceipt: undefined,
-                    });
+                  const draftData = claimSnap.data() as IncentiveClaim;
+                  const normalizeStatus = (status?: string): PatentFormValues['currentStatus'] | undefined => {
+                    if (status === 'Awarded') return 'Granted';
+                    if (status === 'Under Examination' || status === 'FER Responded' || status === 'Amended Examination') {
+                      return 'Filed';
+                    }
+                    if (status === 'Filed' || status === 'Published' || status === 'Granted') return status;
+                    return undefined;
+                  };
+                  form.reset({
+                    ...(draftData as unknown as PatentFormValues),
+                    filingDate: draftData.filingDate ? parseISO(draftData.filingDate) : undefined,
+                    publicationDate: draftData.publicationDate ? parseISO(draftData.publicationDate) : undefined,
+                    grantDate: draftData.grantDate ? parseISO(draftData.grantDate) : undefined,
+                    currentStatus: normalizeStatus(draftData.currentStatus),
+                    patentForm1: undefined,
+                    patentApprovalProof: undefined,
+                    patentGovtReceipt: undefined,
+                  });
                 } else {
                     toast({ variant: 'destructive', title: 'Draft Not Found' });
                 }
@@ -369,76 +392,65 @@ export function PatentForm() {
             return;
         }
         
-        const token = await auth.currentUser?.getIdToken(true);
-        if (!token) {
-            throw new Error("Authentication token not found. Please log in again.");
-        }
-
-        const uploadFileHelper = async (file: File | undefined): Promise<string | undefined> => {
-            if (!file) return undefined;
-            return uploadFileViaApi(file, token);
+        const uploadFileHelper = async (file: File | undefined, folderName: string): Promise<string | undefined> => {
+          if (!file || !user) return undefined;
+          const path = `incentive-proofs/${user.uid}/${folderName}/${new Date().toISOString()}-${file.name}`;
+          const result = await uploadFileToApi(file, { path });
+          if (!result.success || !result.url) { throw new Error(result.error || `File upload failed for ${folderName}`); }
+          return result.url;
         };
 
         const [patentForm1Url, patentApprovalProofUrl, patentGovtReceiptUrl] = await Promise.all([
-            uploadFileHelper(data.patentForm1?.[0]),
-            uploadFileHelper(data.patentApprovalProof?.[0]),
-            uploadFileHelper(data.patentGovtReceipt?.[0]),
+            uploadFileHelper(data.patentForm1?.[0], 'patent-form1'),
+            uploadFileHelper(data.patentApprovalProof?.[0], 'patent-approval'),
+            uploadFileHelper(data.patentGovtReceipt?.[0], 'patent-govt-receipt'),
         ]);
 
-        const claimData: Omit<IncentiveClaim, 'id' | 'claimId'> = {
-            patentLocale: data.patentLocale,
-            patentCountry: data.patentCountry,
-            patentTitle: data.patentTitle,
-            patentApplicationNumber: data.patentApplicationNumber,
-            patentDomain: data.patentDomain,
-            patentInventors: data.patentInventors,
-            patentCoApplicants: data.patentCoApplicants,
-            isCollaboration: data.isCollaboration,
-            collaborationDetails: data.collaborationDetails,
-            isIprSdg: data.isIprSdg,
-            sdgGoals: data.sdgGoals,
-            isIprDisciplinary: data.isIprDisciplinary,
-            disciplinaryType: data.disciplinaryType,
-            currentStatus: data.currentStatus,
-            patentFiledFromIprCell: data.patentFiledFromIprCell,
-            patentPermissionTaken: data.patentPermissionTaken,
-            patentSelfDeclaration: data.patentSelfDeclaration,
-            patentFiledInPuName: data.patentFiledInPuName,
-            isPuSoleApplicant: data.isPuSoleApplicant,
-            patentSpecificationType: data.patentSpecificationType,
+        const { patentForm1, patentApprovalProof, patentGovtReceipt, currentStatus, ...restOfData } = data;
+        const mapClaimStatus = (status?: PatentFormValues['currentStatus']): IncentiveClaim['currentStatus'] | undefined => {
+          if (status === 'Published') return 'Published';
+          if (status === 'Filed') return 'Under Examination';
+          if (status === 'Granted') return 'Awarded';
+          return undefined;
+        };
+        
+        const claimData: Partial<IncentiveClaim> = {
+            ...restOfData,
+          currentStatus: mapClaimStatus(currentStatus),
+          calculatedIncentive: calculatedIncentive ?? undefined,
             filingDate: data.filingDate?.toISOString(),
             publicationDate: data.publicationDate?.toISOString(),
             grantDate: data.grantDate?.toISOString(),
-            patentForm1Url,
-            patentApprovalProofUrl,
-            patentGovtReceiptUrl,
-            calculatedIncentive,
-            misId: user.misId || null,
-            orcidId: user.orcidId || null,
+          misId: user.misId ?? undefined,
+          orcidId: user.orcidId ?? undefined,
             claimType: 'Patents',
             benefitMode: 'incentives',
             uid: user.uid,
             userName: user.name,
             userEmail: user.email,
             faculty: user.faculty,
-            institute: user.institute || '',
             status,
             submissionDate: new Date().toISOString(),
-            bankDetails: user.bankDetails || null,
+          bankDetails: user.bankDetails ?? undefined,
         };
+
+        if (patentForm1Url) claimData.patentForm1Url = patentForm1Url;
+        if (patentApprovalProofUrl) claimData.patentApprovalProofUrl = patentApprovalProofUrl;
+        if (patentGovtReceiptUrl) claimData.patentGovtReceiptUrl = patentGovtReceiptUrl;
         
-        const result = await submitIncentiveClaim(claimData);
+        const claimId = searchParams.get('claimId');
+        const result = await submitIncentiveClaimViaApi(claimData as Omit<IncentiveClaim, 'id' | 'claimId'>, claimId || undefined);
 
         if (!result.success || !result.claimId) {
             throw new Error(result.error);
         }
 
-        const claimId = searchParams.get('claimId') || result.claimId;
+        const newClaimId = claimId || result.claimId;
 
         if (status === 'Draft') {
           toast({ title: 'Draft Saved!', description: "You can continue editing from the 'Incentive Claim' page." });
           if(!searchParams.get('claimId')) {
-            router.push(`/dashboard/incentive-claim/patent?claimId=${claimId}`);
+            router.push(`/dashboard/incentive-claim/patent?claimId=${newClaimId}`);
           }
         } else {
           toast({ title: 'Success', description: 'Your incentive claim for patent has been submitted.' });
@@ -574,7 +586,10 @@ export function PatentForm() {
                       <DropdownMenu>
                           <DropdownMenuTrigger asChild>
                             <Button variant="outline" className="w-full justify-between font-normal">
-                              {field.value?.length > 0 ? `${field.value.length} selected` : "Select relevant goals"}
+                              {(() => {
+                                const selectedCount = field.value?.length ?? 0;
+                                return selectedCount > 0 ? `${selectedCount} selected` : "Select relevant goals";
+                              })()}
                               <ChevronDown className="h-4 w-4 opacity-50" />
                             </Button>
                           </DropdownMenuTrigger>

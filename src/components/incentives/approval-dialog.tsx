@@ -8,6 +8,7 @@ import * as z from 'zod';
 import { useToast } from '@/hooks/use-toast';
 import type { User, IncentiveClaim, ApprovalStage, Author } from '@/types';
 import { processIncentiveClaimAction } from '@/app/incentive-approval-actions';
+import { isEligibleForFinancialDisbursement } from '@/lib/incentive-eligibility';
 import {
   Dialog,
   DialogContent,
@@ -21,12 +22,11 @@ import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
-import { Loader2, Check, X, ExternalLink, Info } from 'lucide-react';
+import { Loader2, Check, X, ExternalLink } from 'lucide-react';
 import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
 import Link from 'next/link';
 import { Tooltip, TooltipProvider, TooltipTrigger, TooltipContent } from '../ui/tooltip';
-import { Alert, AlertDescription, AlertTitle } from '../ui/alert';
 
 interface ApprovalDialogProps {
   claim: IncentiveClaim;
@@ -39,7 +39,7 @@ interface ApprovalDialogProps {
 }
 
 const verifiedFieldsSchema = z.record(z.string(), z.boolean()).optional();
-const suggestionsSchema = z.record(z.string(), z.string().optional()).optional();
+const suggestionsSchema = z.record(z.string(), z.string()).optional();
 
 const createApprovalSchema = (stageIndex: number, claimType?: string) => {
     const isChecklistEnabled = (claimType === 'Research Papers' && (stageIndex === 0 || stageIndex === 1)) || (claimType === 'Conference Presentations' && stageIndex === 0);
@@ -81,7 +81,6 @@ const createApprovalSchema = (stageIndex: number, claimType?: string) => {
 type ApprovalFormData = z.infer<ReturnType<typeof createApprovalSchema>>;
 
 const allPossibleResearchPaperFields: { id: keyof IncentiveClaim | 'name' | 'designation' | 'authorRoleAndPosition' | 'totalInternalAuthors', label: string }[] = [
-    { id: 'name', label: 'Name of the Applicant' },
     { id: 'designation', label: 'Designation and Dept.' },
     { id: 'publicationType', label: 'Type of publication' },
     { id: 'journalName', label: 'Name of Journal' },
@@ -97,8 +96,21 @@ const allPossibleResearchPaperFields: { id: keyof IncentiveClaim | 'name' | 'des
     { id: 'publicationMonth', label: 'Published Month & Year' },
 ];
 
+const additionalResearchPaperFieldsForFinalReview: { id: keyof IncentiveClaim | 'authorsSummary'; label: string }[] = [
+    { id: 'paperTitle', label: 'Title of Paper' },
+    { id: 'doi', label: 'DOI' },
+    { id: 'relevantLink', label: 'Relevant Link' },
+    { id: 'journalWebsite', label: 'Journal Website' },
+    { id: 'scopusLink', label: 'Scopus Link' },
+    { id: 'wosLink', label: 'WoS Link' },
+    { id: 'sdgGoals', label: 'SDG Goals' },
+    { id: 'totalPuStudentAuthors', label: 'Total PU Student Authors' },
+    { id: 'puStudentNames', label: 'PU Student Names' },
+    { id: 'wasApcPaidByUniversity', label: 'APC Paid by University' },
+    { id: 'authorsSummary', label: 'All Authors (Role)' },
+];
+
 const conferenceChecklistFields: { id: keyof IncentiveClaim | 'name' | 'designation', label: string }[] = [
-    { id: 'name', label: 'Name of the Applicant' },
     { id: 'designation', label: 'Designation & Department' },
     { id: 'eventType', label: 'Type of Event' },
     { id: 'conferencePaperTitle', label: 'Title of Paper' },
@@ -235,19 +247,22 @@ function ConferenceClaimDetails({
             <div className="space-y-1">
                 {conferenceChecklistFields.map(field => renderDetail(field, (claimWithUserData as any)[field.id]))}
             </div>
+            {isChecklistEnabled && <FormMessage>{form.formState.errors.verifiedFields?.message}</FormMessage>}
         </div>
     );
 }
 
 
 function ResearchPaperClaimDetails({ 
-    claimWithUserData, 
+    claim, 
+    claimant, 
     form, 
     isChecklistEnabled, 
     stageIndex, 
     previousApprovals 
 }: { 
-    claimWithUserData: Record<string, any>,
+    claim: IncentiveClaim, 
+    claimant: User | null, 
     form: any, 
     isChecklistEnabled: boolean,
     stageIndex: number,
@@ -256,20 +271,48 @@ function ResearchPaperClaimDetails({
     const approval1 = previousApprovals[0];
     const approval2 = previousApprovals[1];
 
-    const renderDetail = (field: {id: string, label: string}, value?: string | number | null | boolean | string[]) => {
-        if (value === undefined || value === null || value === '' || (Array.isArray(value) && value.length === 0) || value === 'N/A / N/A' || value === 'undefined / undefined') return null;
-        
+    const getDisplayValue = (field: {id: string, label: string}, value?: string | number | null | boolean | string[] | Author[]) => {
+        if (value === undefined || value === null || value === '' || (Array.isArray(value) && value.length === 0)) return null;
         let displayValue: React.ReactNode = String(value);
 
         if (typeof value === 'boolean') {
             displayValue = value ? 'Yes' : 'No';
+        } else if (typeof value === 'string' && /^https?:\/\//i.test(value)) {
+            displayValue = (
+                <Button asChild variant="link" size="sm" className="p-0 h-auto justify-start">
+                    <a href={value} target="_blank" rel="noopener noreferrer">Open Link</a>
+                </Button>
+            );
+        } else if (field.id === 'authorsSummary' && Array.isArray(value)) {
+            const authors = value as Author[];
+            displayValue = (
+                <div className="rounded-md border overflow-hidden">
+                    <table className="w-full text-xs">
+                        <thead className="bg-muted/60">
+                            <tr>
+                                <th className="text-left font-medium p-2">Author Name</th>
+                                <th className="text-left font-medium p-2">Role</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {authors.map((author, index) => (
+                                <tr key={`${author.email || author.name}-${index}`} className="border-t">
+                                    <td className="p-2">{author.name}</td>
+                                    <td className="p-2">{author.role}</td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
+            );
         } else if (Array.isArray(value)) {
              if (value.every(item => typeof item === 'string' && item.startsWith('https://'))) {
+                const links = value as string[];
                 displayValue = (
                     <div className="flex flex-col gap-1">
-                        {value.map((url, i) => (
+                        {links.map((url, i) => (
                              <Button key={i} asChild variant="link" size="sm" className="p-0 h-auto justify-start">
-                                <a href={url} target="_blank" rel="noopener noreferrer">View Document {value.length > 1 ? i + 1 : ''}</a>
+                                <a href={url} target="_blank" rel="noopener noreferrer">View Document {links.length > 1 ? i + 1 : ''}</a>
                             </Button>
                         ))}
                     </div>
@@ -278,6 +321,13 @@ function ResearchPaperClaimDetails({
                 displayValue = value.join(', ');
             }
         }
+
+        return displayValue;
+    };
+
+    const renderDetail = (field: {id: string, label: string}, value?: string | number | null | boolean | string[] | Author[]) => {
+        const displayValue = getDisplayValue(field, value);
+        if (displayValue === null) return null;
         
         const suggestion1 = approval1?.suggestions?.[field.id];
         const suggestion2 = approval2?.suggestions?.[field.id];
@@ -352,6 +402,117 @@ function ResearchPaperClaimDetails({
         );
     };
 
+    const renderAdditionalDetail = (field: {id: string, label: string}, value?: string | number | null | boolean | string[] | Author[]) => {
+        const displayValue = getDisplayValue(field, value);
+        if (displayValue === null) return null;
+
+        return (
+            <div key={field.id} className="grid grid-cols-12 gap-3 text-sm items-start py-1.5">
+                <span className="text-muted-foreground col-span-4">{field.label}</span>
+                <div className="col-span-8 break-words">{displayValue}</div>
+            </div>
+        );
+    };
+
+    // Calculate incentive breakdown for display
+    const calculateIncentiveBreakdown = () => {
+        try {
+            const { journalClassification, publicationType, wasApcPaidByUniversity, isPuNameInPublication, authors = [] } = claim;
+            const internalAuthors = authors.filter(a => !a.isExternal);
+            const mainAuthors = internalAuthors.filter(a => ['First Author', 'Corresponding Author', 'First & Corresponding Author'].includes(a.role));
+            const coAuthors = internalAuthors.filter(a => a.role === 'Co-Author');
+
+            // Base incentive
+            let baseAmount = 0;
+            switch (journalClassification) {
+                case 'Nature/Science/Lancet': baseAmount = 50000; break;
+                case 'Top 1% Journals': baseAmount = 25000; break;
+                case 'Q1': baseAmount = 15000; break;
+                case 'Q2': baseAmount = 10000; break;
+                case 'Q3': baseAmount = 6000; break;
+                case 'Q4': baseAmount = 4000; break;
+            }
+
+            // Apply publication type adjustment
+            let adjustedAmount = baseAmount;
+            if (publicationType === 'Case Reports/Short Surveys') {
+                adjustedAmount = baseAmount * 0.9;
+            } else if (publicationType === 'Review Articles' && ['Q3', 'Q4'].includes(journalClassification || '')) {
+                adjustedAmount = baseAmount * 0.8;
+            } else if (publicationType === 'Letter to the Editor/Editorial') {
+                adjustedAmount = 2500;
+            }
+
+            // Apply university-level deductions
+            let deductedAmount = adjustedAmount;
+            const deductions = [];
+            
+            if (wasApcPaidByUniversity) {
+                deductedAmount /= 2;
+                deductions.push('APC Paid by University (÷2)');
+            }
+            if (isPuNameInPublication === false) {
+                deductedAmount /= 2;
+                deductions.push('PU Name Not in Publication (÷2)');
+            }
+
+            // Calculate share based on author composition
+            let finalAmount = 0;
+            let authorShare = 'N/A';
+
+            if (internalAuthors.length === 0) {
+                finalAmount = 0;
+                authorShare = 'No internal authors';
+            } else if (internalAuthors.length === 1) {
+                if (mainAuthors.length === 1) {
+                    finalAmount = deductedAmount;
+                    authorShare = 'Sole main author (100%)';
+                } else if (coAuthors.length === 1) {
+                    finalAmount = deductedAmount * 0.8;
+                    authorShare = 'Sole co-author (80%)';
+                }
+            } else if (mainAuthors.length > 0 && coAuthors.length > 0) {
+                const mainShare = (deductedAmount * 0.7) / mainAuthors.length;
+                const coShare = (deductedAmount * 0.3) / coAuthors.length;
+                finalAmount = mainAuthors.length > 0 ? mainShare : coShare;
+                authorShare = `Mixed: Main (70% ÷ ${mainAuthors.length}), Co-Author (30% ÷ ${coAuthors.length})`;
+            } else if (mainAuthors.length === 0 && coAuthors.length > 1) {
+                finalAmount = (deductedAmount * 0.8) / coAuthors.length;
+                authorShare = `Multiple co-authors (80% ÷ ${coAuthors.length})`;
+            } else if (mainAuthors.length > 0) {
+                finalAmount = deductedAmount / mainAuthors.length;
+                authorShare = `Multiple main authors (÷ ${mainAuthors.length})`;
+            }
+
+            return {
+                baseAmount,
+                publicationTypeAdjustment: publicationType === 'Case Reports/Short Surveys' ? '0.9×' : publicationType === 'Review Articles' && ['Q3', 'Q4'].includes(journalClassification || '') ? '0.8×' : '1.0×',
+                adjustedAmount: Math.round(adjustedAmount),
+                deductions,
+                deductedAmount: Math.round(deductedAmount),
+                internalAuthorsCount: internalAuthors.length,
+                mainAuthorsCount: mainAuthors.length,
+                coAuthorsCount: coAuthors.length,
+                authorShare,
+                finalAmount: Math.round(finalAmount),
+            };
+        } catch (error) {
+            return null;
+        }
+    };
+
+    const breakdown = calculateIncentiveBreakdown();
+    
+    const claimWithUserData = {
+        ...claim,
+        name: claimant?.name,
+        designation: `${claimant?.designation || 'N/A'}, ${claimant?.department || 'N/A'}`,
+        authorRoleAndPosition: `${claim.authorType || 'N/A'} / ${claim.authorPosition || 'N/A'}`,
+        totalInternalAuthors: (claim.authors || []).filter(a => !a.isExternal).length,
+        authorsSummary: claim.authors || [],
+    };
+
+
     return (
         <div className="space-y-4 rounded-lg border bg-muted/50 p-4">
             <div className="flex items-center justify-between">
@@ -365,10 +526,69 @@ function ResearchPaperClaimDetails({
             <div className="space-y-1">
                  {allPossibleResearchPaperFields.map(field => renderDetail(field, (claimWithUserData as any)[field.id]))}
             </div>
+            {!isChecklistEnabled && (
+                <>
+                    <Separator />
+                    <div className="space-y-1">
+                        <h5 className="text-sm font-semibold">Additional Research Paper Details</h5>
+                        {additionalResearchPaperFieldsForFinalReview.map(field => renderAdditionalDetail(field, (claimWithUserData as any)[field.id]))}
+                    </div>
+                </>
+            )}
+            {breakdown && !isChecklistEnabled && (
+                <>
+                    <Separator />
+                    <div className="space-y-2 bg-blue-50 dark:bg-blue-950 rounded-lg p-3 border border-blue-200 dark:border-blue-800">
+                        <h5 className="text-sm font-semibold text-blue-900 dark:text-blue-100">Incentive Calculation Breakdown</h5>
+                        <div className="space-y-1.5 text-xs">
+                            <div className="grid grid-cols-2 gap-2">
+                                <span className="text-blue-700 dark:text-blue-300">1. Base Amount (Q-Rating):</span>
+                                <span className="font-medium text-right">₹{breakdown.baseAmount.toLocaleString('en-IN')}</span>
+                            </div>
+                            <div className="grid grid-cols-2 gap-2">
+                                <span className="text-blue-700 dark:text-blue-300">2. Publication Type Adjustment:</span>
+                                <span className="font-medium text-right">×{breakdown.publicationTypeAdjustment}</span>
+                            </div>
+                            <div className="grid grid-cols-2 gap-2">
+                                <span className="text-blue-700 dark:text-blue-300">3. After Adjustment:</span>
+                                <span className="font-medium text-right">₹{breakdown.adjustedAmount.toLocaleString('en-IN')}</span>
+                            </div>
+                            {breakdown.deductions.length > 0 && (
+                                <>
+                                    <div className="border-t border-blue-200 dark:border-blue-800 pt-1.5 mt-1.5">
+                                        <p className="text-blue-700 dark:text-blue-300 font-medium mb-1">University-level Deductions:</p>
+                                        {breakdown.deductions.map((deduction, i) => (
+                                            <div key={i} className="grid grid-cols-2 gap-2 ml-2">
+                                                <span className="text-blue-600 dark:text-blue-400">• {deduction}</span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-2 font-semibold border-t border-blue-200 dark:border-blue-800 pt-1.5 mt-1.5">
+                                        <span className="text-blue-900 dark:text-blue-100">After All Deductions:</span>
+                                        <span className="text-right text-blue-900 dark:text-blue-100">₹{breakdown.deductedAmount.toLocaleString('en-IN')}</span>
+                                    </div>
+                                </>
+                            )}
+                            <div className="border-t border-blue-200 dark:border-blue-800 pt-1.5 mt-1.5">
+                                <p className="text-blue-700 dark:text-blue-300 font-medium mb-1">Author Distribution:</p>
+                                <div className="ml-2 space-y-0.5">
+                                    <div className="text-blue-600 dark:text-blue-400">Internal Authors: {breakdown.internalAuthorsCount}</div>
+                                    <div className="text-blue-600 dark:text-blue-400">Main Authors: {breakdown.mainAuthorsCount}, Co-Authors: {breakdown.coAuthorsCount}</div>
+                                    <div className="text-blue-600 dark:text-blue-400 text-xs italic">{breakdown.authorShare}</div>
+                                </div>
+                            </div>
+                            <div className="grid grid-cols-2 gap-2 font-bold border-t border-blue-200 dark:border-blue-800 pt-1.5 mt-1.5 bg-blue-100 dark:bg-blue-900 p-2 rounded">
+                                <span className="text-blue-900 dark:text-blue-50">Final Incentive per Author:</span>
+                                <span className="text-right text-green-700 dark:text-green-400">₹{breakdown.finalAmount.toLocaleString('en-IN')}</span>
+                            </div>
+                        </div>
+                    </div>
+                </>
+            )}
+            {isChecklistEnabled && <FormMessage>{form.formState.errors.verifiedFields?.message}</FormMessage>}
         </div>
     );
 }
-
 
 function MembershipClaimDetails({ claim, claimant }: { claim: IncentiveClaim, claimant: User | null }) {
   const renderDetail = (label: string, value?: string | number | null) => {
@@ -404,37 +624,30 @@ export function ApprovalDialog({ claim, approver, claimant, stageIndex, isOpen, 
     
     const isConferenceClaim = claim.claimType === 'Conference Presentations';
     const isResearchPaperClaim = claim.claimType === 'Research Papers';
+    const isDisbursementEligible = isEligibleForFinancialDisbursement(claim);
     const isChecklistEnabled = (isResearchPaperClaim && (stageIndex === 0 || stageIndex === 1)) || (isConferenceClaim && stageIndex === 0);
     const showActionButtons = !isChecklistEnabled;
     
     const approvalSchema = createApprovalSchema(stageIndex, claim.claimType);
-
-    const claimWithUserData = useMemo(() => ({
-        ...claim,
-        name: claimant?.name,
-        designation: `${claimant?.designation || 'N/A'}, ${claimant?.department || 'N/A'}`,
-        authorRoleAndPosition: `${claim.authorType || 'N/A'} / ${claim.authorPosition || 'N/A'}`,
-        totalInternalAuthors: (claim.authors || []).filter(a => !a.isExternal).length,
-        conferenceDuration: claim.conferenceDuration ? `${claim.conferenceDuration} Days` : 'N/A',
-    }), [claim, claimant]);
     
     const fieldsToVerify = useMemo(() => {
         let fieldList;
+        let claimData: Record<string, any>;
+
         if (isConferenceClaim) {
             fieldList = conferenceChecklistFields;
+            claimData = { ...claim, name: claimant?.name, designation: `${claimant?.designation}, ${claimant?.department}` };
         } else if (isResearchPaperClaim) {
             fieldList = allPossibleResearchPaperFields;
+            claimData = { ...claim, name: claimant?.name, designation: `${claimant?.designation}, ${claimant?.department}`, authorRoleAndPosition: `${claim.authorType} / ${claim.authorPosition}`, totalInternalAuthors: (claim.authors || []).filter(a => !a.isExternal).length };
         } else {
             return [];
         }
         
         return fieldList
-            .filter(field => {
-                const value = (claimWithUserData as any)[field.id];
-                return value !== undefined && value !== null && value !== '' && (!Array.isArray(value) || value.length > 0) && value !== 'N/A / N/A' && value !== 'N/A, N/A';
-            })
-            .map(field => field.id);
-    }, [isConferenceClaim, isResearchPaperClaim, claimWithUserData]);
+            .filter(f => (claimData as any)[f.id] !== undefined && (claimData as any)[f.id] !== null && (claimData as any)[f.id] !== '')
+            .map(f => f.id);
+    }, [isConferenceClaim, isResearchPaperClaim, claim, claimant]);
 
     const formSchemaWithVerification = useMemo(() => approvalSchema.refine(data => {
         if (!isChecklistEnabled) return true;
@@ -458,7 +671,8 @@ export function ApprovalDialog({ claim, approver, claimant, stageIndex, isOpen, 
     }, [stageIndex, claim]);
     
     const getDefaultAction = useCallback(() => {
-        return isChecklistEnabled ? 'verify' : 'approve';
+        if (isChecklistEnabled) return 'verify';
+        return 'approve';
     }, [isChecklistEnabled]);
 
     const form = useForm<ApprovalFormData>({
@@ -519,24 +733,13 @@ export function ApprovalDialog({ claim, approver, claimant, stageIndex, isOpen, 
             setIsSubmitting(false);
         }
     };
-    
-    const handleInvalidSubmit = (errors: any) => {
-        if (errors.verifiedFields) {
-            toast({
-                variant: 'destructive',
-                title: 'Action Required',
-                description: 'For each item in the checklist below, please click the check (✓) to confirm it is correct, or the cross (✗) to flag it. You must verify all items to proceed.',
-                duration: 7000,
-            });
-        } else {
-            console.log("Unhandled form validation errors", errors);
-        }
-    };
 
     const previousApprovals = (claim.approvals || []).filter(a => a?.stage < stageIndex + 1);
     
-    const profileLink = claimant?.campus === 'Goa' ? `/goa/${claimant.misId}` : `/profile/${claimant.misId}`;
-    const hasProfileLink = claimant && claimant.misId;
+        const hasProfileLink = !!claimant?.misId;
+        const profileLink = hasProfileLink
+            ? (claimant?.campus === 'Goa' ? `/goa/${claimant?.misId}` : `/profile/${claimant?.misId}`)
+            : '#';
     const isViewerAdminOrApprover =
       approver?.role === 'Super-admin' ||
       approver?.role === 'admin' ||
@@ -569,7 +772,7 @@ export function ApprovalDialog({ claim, approver, claimant, stageIndex, isOpen, 
                     </div>
                 </DialogHeader>
                 
-                <div className="max-h-[70vh] overflow-y-auto pr-4 space-y-4">
+                <div className="max-h-[60vh] overflow-y-auto pr-4 space-y-4">
                     {isViewerAdminOrApprover && previousApprovals.length > 0 && (
                         <div className="space-y-4">
                             <h4 className="font-semibold text-sm">Previous Approval History</h4>
@@ -599,20 +802,25 @@ export function ApprovalDialog({ claim, approver, claimant, stageIndex, isOpen, 
                         </div>
                     )}
                     
-                     {stageIndex === 0 && claim.calculatedIncentive !== undefined && claim.calculatedIncentive !== null && (
-                        <div className="p-4 bg-blue-100 dark:bg-blue-900/30 rounded-md text-center">
-                            <p className="text-sm font-medium text-blue-800 dark:text-blue-200">Tentatively Eligible Incentive Amount:</p>
-                            <p className="font-bold text-2xl text-blue-600 dark:text-blue-400 mt-1">₹{claim.calculatedIncentive.toLocaleString('en-IN')}</p>
+                    {stageIndex === 0 && claim.calculatedIncentive !== undefined && claim.calculatedIncentive !== null && (
+                        <div className={`p-4 rounded-md text-center ${isEligibleForFinancialDisbursement(claim) ? 'bg-blue-100 dark:bg-blue-900/30' : 'bg-yellow-100 dark:bg-yellow-900/30'}`}>
+                            <p className={`text-sm font-medium ${isEligibleForFinancialDisbursement(claim) ? 'text-blue-800 dark:text-blue-200' : 'text-yellow-800 dark:text-yellow-200'}`}>
+                                {isEligibleForFinancialDisbursement(claim) ? 'Tentatively Eligible Incentive Amount:' : 'ARPS-Only Claim (No Financial Disbursement):'}
+                            </p>
+                            <p className={`font-bold text-2xl mt-1 ${isEligibleForFinancialDisbursement(claim) ? 'text-blue-600 dark:text-blue-400' : 'text-yellow-600 dark:text-yellow-400'}`}>₹{(isEligibleForFinancialDisbursement(claim) ? claim.calculatedIncentive : 0).toLocaleString('en-IN')}</p>
+                            {!isEligibleForFinancialDisbursement(claim) && (
+                                <p className="text-xs text-yellow-700 dark:text-yellow-300 mt-2">This co-author research paper claim is beyond the 5th position and qualifies for ARPS score but not monetary incentive.</p>
+                            )}
                         </div>
                     )}
 
                     <Form {...form}>
                         {claim.claimType === 'Membership of Professional Bodies' && <MembershipClaimDetails claim={claim} claimant={claimant} />}
-                        {isResearchPaperClaim && <ResearchPaperClaimDetails claimWithUserData={claimWithUserData} form={form} isChecklistEnabled={isChecklistEnabled} stageIndex={stageIndex} previousApprovals={claim.approvals || []} />}
+                        {isResearchPaperClaim && <ResearchPaperClaimDetails claim={claim} claimant={claimant} form={form} isChecklistEnabled={isChecklistEnabled} stageIndex={stageIndex} previousApprovals={claim.approvals || []} />}
                         {isConferenceClaim && <ConferenceClaimDetails claim={claim} claimant={claimant} form={form} isChecklistEnabled={isChecklistEnabled} stageIndex={stageIndex} previousApprovals={claim.approvals || []} />}
 
 
-                        <form id="approval-form" onSubmit={form.handleSubmit(handleSubmit, handleInvalidSubmit)} className="space-y-4">
+                        <form id="approval-form" onSubmit={form.handleSubmit(handleSubmit)} className="space-y-4">
                             {showActionButtons && (
                                 <FormField
                                     name="action"
@@ -672,7 +880,7 @@ export function ApprovalDialog({ claim, approver, claimant, stageIndex, isOpen, 
                     <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
                     <Button type="submit" form="approval-form" disabled={isSubmitting}>
                         {isSubmitting ? <><Loader2 className="mr-2 h-4 w-4 animate-spin"/> Submitting...</> : (
-                            isChecklistEnabled ? 'Submit & Forward' : 'Submit Action'
+                            showActionButtons ? 'Submit Action' : 'Submit & Forward'
                         )}
                     </Button>
                 </DialogFooter>

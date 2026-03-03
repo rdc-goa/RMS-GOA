@@ -1,28 +1,31 @@
-'use client';
 
-import { useForm, useFieldArray } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
-import * as z from 'zod';
-import Link from 'next/link';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardFooter, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
-import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
-import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
-import { Separator } from '@/components/ui/separator';
-import { useState, useEffect, useMemo, useCallback } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
-import { useToast } from '@/hooks/use-toast';
-import { auth, db } from '@/lib/config';
-import { collection, doc, getDoc, setDoc } from 'firebase/firestore';
-import type { User, IncentiveClaim, Author } from '@/types';
+
+"use client"
+
+import { useForm, useFieldArray } from "react-hook-form"
+import { zodResolver } from "@hookform/resolvers/zod"
+import * as z from "zod"
+import Link from "next/link"
+import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardFooter, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
+import { Input } from '@/components/ui/input'
+import { Textarea } from '@/components/ui/textarea'
+import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
+import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert'
+import { Separator } from '@/components/ui/separator'
+import { useState, useEffect, useMemo, useCallback } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
+import { useToast } from '@/hooks/use-toast'
+import { db } from '@/lib/config'
+import { collection, doc, getDoc, setDoc } from 'firebase/firestore'
+import type { User, IncentiveClaim, Author } from '@/types'
+import { uploadFileToApi } from '@/lib/upload-client'
 import { fetchAdvancedScopusData } from "@/app/scopus-actions";
 import { fetchWosDataByUrl } from "@/app/wos-actions";
 import { fetchScienceDirectData } from "@/app/sciencedirect-actions";
-import { Loader2, AlertCircle, Bot, ChevronDown, Trash2, Plus, Search, UserPlus, Edit } from 'lucide-react';
+import { Loader2, AlertCircle, Bot, ChevronDown, Trash2, Plus, Search, UserPlus, Edit, Info } from 'lucide-react'
 import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
@@ -30,16 +33,18 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import { Checkbox } from "../ui/checkbox";
-import { calculateResearchPaperIncentive } from "@/app/incentive-calculation";
-import { submitIncentiveClaim } from "@/app/incentive-approval-actions";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../ui/table";
-import { Badge } from "../ui/badge";
-import { findUserByMisId } from "@/app/userfinding";
+} from "@/components/ui/dropdown-menu"
+import { Checkbox } from "../ui/checkbox"
+import { calculateResearchPaperIncentive } from "@/app/incentive-calculation"
+import { submitIncentiveClaimViaApi } from "@/lib/incentive-claim-client"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../ui/table"
+import { Badge } from "../ui/badge"
+import { findUserByMisId } from "@/app/userfinding"
+import { isEligibleForFinancialDisbursement } from "@/lib/incentive-eligibility"
+
 
 const MAX_FILES = 10
-const MAX_FILE_SIZE = 5 * 1024 * 1024 // 5MB
+const MAX_FILE_SIZE = 10 * 1024 * 1024 // 10MB
 const ACCEPTED_FILE_TYPES = ["application/pdf"]
 
 const researchPaperSchema = z
@@ -62,22 +67,33 @@ const researchPaperSchema = z
     publicationMonth: z.string({ required_error: "Publication month is required." }),
     publicationYear: z.string({ required_error: "Publication year is required." }),
     sdgGoals: z.array(z.string()).refine((value) => value.length > 0, { message: "Please select at least one SDG." }),
-    publicationProof: z.any().optional(),
+    publicationProof: z
+      .any()
+      .optional()
+      .refine(
+        (files) => !files || Array.from(files as FileList).every((file) => file.size <= MAX_FILE_SIZE),
+        'File must be less than 10 MB.'
+      ),
     isPuNameInPublication: z
       .boolean()
-      .refine((val) => val === true, { message: "PU Goa name must be present in the publication for an incentive." }),
+      .default(true),
     wasApcPaidByUniversity: z.boolean().default(false),
-    authorPosition: z.enum(['1st', '2nd', '3rd', '4th', '5th', '6th'], { required_error: 'Please select your author position.' }),
+    authorPosition: z.enum(['1st', '2nd', '3rd', '4th', '5th', '6th', '7th', '8th', '9th', '10th'], { required_error: 'Please select your author position.' }),
     authors: z
       .array(
-        z.object({
-          name: z.string(),
-          email: z.string().email(),
-          uid: z.string().optional().nullable(),
-          role: z.enum(["First Author", "Corresponding Author", "Co-Author", "First & Corresponding Author", "Presenting Author", "First & Presenting Author"]),
-          isExternal: z.boolean(),
-          status: z.enum(['approved', 'pending', 'Applied'])
-        }),
+        z
+          .object({
+            name: z.string(),
+            email: z.string().email('Invalid email format.').or(z.literal('')),
+            uid: z.string().optional().nullable(),
+            role: z.enum(["First Author", "Corresponding Author", "Co-Author", "First & Corresponding Author", "Presenting Author", "First & Presenting Author"]),
+            isExternal: z.boolean(),
+            status: z.enum(['approved', 'pending', 'Applied'])
+          })
+          .refine((data) => data.isExternal || !!data.email, {
+            message: 'Email is required for internal authors.',
+            path: ['email'],
+          }),
       )
       .min(1, "At least one author is required.").refine(data => {
       const firstAuthors = data.filter(author => author.role === 'First Author' || author.role === 'First & Corresponding Author');
@@ -143,15 +159,6 @@ const researchPaperSchema = z
   )
   .refine(
     (data) => {
-      const correspondingAuthors = data.authors.filter(
-        (author) => author.role === "Corresponding Author" || author.role === "First & Corresponding Author",
-      )
-      return correspondingAuthors.length <= 1
-    },
-    { message: "Only one author can be designated as the Corresponding Author.", path: ["authors"] },
-  )
-  .refine(
-    (data) => {
       if (data.publicationType === 'Scopus Indexed Conference Proceedings') {
         const presentingAuthors = data.authors.filter(author => author.role === 'Presenting Author' || author.role === 'First & Presenting Author');
         return presentingAuthors.length <= 1;
@@ -194,7 +201,7 @@ const sdgGoalsList = [
 const coAuthorRoles: Author['role'][] = ["First Author", "Corresponding Author", "Co-Author", "First & Corresponding Author"];
 const conferenceAuthorRoles: Author['role'][] = ['Presenting Author', 'First & Presenting Author', 'Co-Author'];
 
-const authorPositions = ['1st', '2nd', '3rd', '4th', '5th', '6th'];
+const authorPositions = ['1st', '2nd', '3rd', '4th', '5th', '6th', '7th', '8th', '9th', '10th'];
 
 const wosTypeOptions = [
   { value: "SCIE", label: "SCIE" },
@@ -233,22 +240,6 @@ const months = [
   "December",
 ]
 const years = Array.from({ length: 10 }, (_, i) => (new Date().getFullYear() - i).toString())
-
-const uploadFileViaApi = async (file: File, token: string): Promise<string> => {
-  const formData = new FormData();
-  formData.append('file', file);
-  const response = await fetch('/api/upload', {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${token}` },
-    body: formData,
-  });
-  if (!response.ok) {
-    const errorData = await response.json();
-    throw new Error(errorData.error || 'File upload failed');
-  }
-  const result = await response.json();
-  return result.file.uploadedUrl;
-};
 
 const SPECIAL_POLICY_FACULTIES = [
     "Faculty of Applied Sciences",
@@ -377,8 +368,8 @@ export function ResearchPaperForm() {
       publicationType: '',
       indexType: undefined,
       doi: '',
-      scopusLink: '',
-      wosLink: '',
+      scopusLink: 'https://www.scopus.com/pages/publications/',
+      wosLink: 'https://www.webofscience.com/wos/woscc/full-record/WOS:',
       journalClassification: undefined,
       wosType: undefined,
       journalName: '',
@@ -413,7 +404,22 @@ export function ResearchPaperForm() {
     if (!user || !user.faculty) return;
     const result = await calculateResearchPaperIncentive({ ...formValues, userEmail: user.email }, user.faculty, user.designation);
     if (result.success) {
-        setCalculatedIncentive(result.amount ?? null);
+        // Apply eligibility policy check: if co-author beyond 5th position, set to 0
+        let finalAmount = result.amount ?? null;
+        
+        // Build claim object for eligibility check
+        const claimForEligibility: Partial<IncentiveClaim> = {
+          claimType: 'Research Papers',
+          userEmail: user.email,
+          authors: formValues.authors,
+          authorType: formValues.authors.find(a => a.email.toLowerCase() === user.email.toLowerCase())?.role as any,
+          authorPosition: formValues.authorPosition,
+        };
+        
+        if (!isEligibleForFinancialDisbursement(claimForEligibility as IncentiveClaim)) {
+          finalAmount = 0;
+        }
+        setCalculatedIncentive(finalAmount);
     } else {
         console.error("Incentive calculation failed:", result.error);
         setCalculatedIncentive(null);
@@ -617,14 +623,24 @@ export function ResearchPaperForm() {
   };
 
 
-  const handleSearchCoPi = async (name: string) => {
-    if (name.length < 3) {
+  const handleSearchCoPi = async (searchTerm: string) => {
+    if (searchTerm.length < 2) {
       setFoundCoPis([]);
       return;
     }
     setIsSearching(true);
     try {
-        const res = await fetch(`/api/find-users-by-name?name=${encodeURIComponent(name)}`);
+        // Check if search term looks like a MIS ID (numeric or alphanumeric)
+        const isMisIdSearch = /^[a-zA-Z0-9]+$/.test(searchTerm) && searchTerm.length <= 10;
+        
+        let url = '';
+        if (isMisIdSearch) {
+            url = `/api/find-users-by-name?misId=${encodeURIComponent(searchTerm)}`;
+        } else {
+            url = `/api/find-users-by-name?name=${encodeURIComponent(searchTerm)}`;
+        }
+        
+        const res = await fetch(url);
         const result = await res.json();
         if (result.success && result.users) {
             setFoundCoPis(result.users);
@@ -660,15 +676,15 @@ export function ResearchPaperForm() {
   const addExternalAuthor = () => {
     const name = externalAuthorName.trim();
     const email = externalAuthorEmail.trim().toLowerCase();
-    if (!name || !email) {
-        toast({ title: 'Name and email are required for external authors', variant: 'destructive' });
+    if (!name) {
+        toast({ title: 'Name is required for external authors', variant: 'destructive' });
         return;
     }
-     if (fields.some(a => a.email.toLowerCase() === email)) {
+    if (email && fields.some(a => a.email?.toLowerCase() === email)) {
         toast({ title: 'Author already added', variant: 'destructive' });
         return;
     }
-    append({ name, email, role: externalAuthorRole, isExternal: true, uid: null, status: 'pending' });
+    append({ name, email: email || '', role: externalAuthorRole, isExternal: true, uid: null, status: 'pending' });
     setExternalAuthorName('');
     setExternalAuthorEmail('');
     setExternalAuthorRole('Co-Author'); // Reset role selector
@@ -740,92 +756,73 @@ export function ResearchPaperForm() {
 
     setIsSubmitting(true)
     try {
-        const token = await auth.currentUser?.getIdToken(true);
-        if (!token) {
-            throw new Error("Authentication token not found. Please log in again.");
-        }
-        
-        const data = form.getValues();
-        const publicationProofFiles = data.publicationProof ? Array.from(data.publicationProof as FileList) : [];
-        
-        if (status === 'Pending' && publicationProofFiles.length === 0 && !claimId) {
-          form.setError('publicationProof', { type: 'manual', message: 'Proof of publication is required for submission.' });
-          setIsSubmitting(false);
-          return;
-        }
-
+      const data = form.getValues()
+      
+      const publicationProofFiles = data.publicationProof ? Array.from(data.publicationProof as FileList) : [];
+      
+      if (status === 'Pending' && publicationProofFiles.length === 0 && !claimId) {
+        form.setError('publicationProof', { type: 'manual', message: 'Proof of publication is required for submission.' });
+        setIsSubmitting(false);
+        return;
+      }
+      
         const publicationProofUrls = await Promise.all(
-            publicationProofFiles.map(file => uploadFileViaApi(file, token))
+          publicationProofFiles.map(async (file, index) => {
+            const path = `incentive-proofs/${user.uid}/publication-proof/${new Date().toISOString()}-${index}-${file.name}`;
+            const result = await uploadFileToApi(file, { path });
+            if (!result.success || !result.url) {
+              throw new Error(result.error || `Failed to upload file ${file.name}`);
+            }
+            return result.url;
+          })
         );
 
-        const claimData: Omit<IncentiveClaim, 'id' | 'claimId'> = {
-            publicationType: data.publicationType,
-            indexType: data.indexType,
-            doi: data.doi,
-            scopusLink: data.scopusLink,
-            wosLink: data.wosLink,
-            wosAccessionNumber: data.wosAccessionNumber,
-            journalClassification: data.journalClassification,
-            wosType: data.wosType,
-            journalName: data.journalName,
-            journalWebsite: data.journalWebsite,
-            paperTitle: data.paperTitle,
-            relevantLink: data.relevantLink,
-            locale: data.locale,
-            printIssn: data.printIssn,
-            electronicIssn: data.electronicIssn,
-            publicationMonth: data.publicationMonth,
-            publicationYear: data.publicationYear,
-            sdgGoals: data.sdgGoals,
-            authors: data.authors,
-            isPuNameInPublication: data.isPuNameInPublication,
-            wasApcPaidByUniversity: data.wasApcPaidByUniversity,
-            authorPosition: data.authorPosition,
-            totalPuStudentAuthors: data.totalPuStudentAuthors,
-            puStudentNames: data.puStudentNames,
-            autoFetchedFields: data.autoFetchedFields,
-            publicationProofUrls,
-            calculatedIncentive,
-            misId: user.misId || null,
-            orcidId: user.orcidId || null,
-            claimType: "Research Papers",
-            benefitMode: "incentives",
-            uid: user.uid,
-            userName: user.name,
-            userEmail: user.email,
-            faculty: user.faculty,
-            institute: user.institute || '',
-            status,
-            submissionDate: new Date().toISOString(),
-            bankDetails: user.bankDetails || null,
-            authorType: data.authors.find(a => a.email.toLowerCase() === user.email.toLowerCase())?.role || 'Co-Author',
-        };
+      const { publicationProof, ...restOfData } = data;
 
-        const result = await submitIncentiveClaim(claimData);
-        if (!result.success) {
-            throw new Error(result.error);
+      const claimData: Omit<IncentiveClaim, 'id' | 'claimId'> = {
+          ...restOfData,
+          publicationProofUrls,
+          calculatedIncentive,
+          misId: user.misId || null,
+          orcidId: user.orcidId || null,
+          claimType: "Research Papers",
+          benefitMode: "incentives",
+          uid: user.uid,
+          userName: user.name,
+          userEmail: user.email,
+          faculty: user.faculty,
+          status,
+          submissionDate: new Date().toISOString(),
+          bankDetails: user.bankDetails || null,
+          authorType: data.authors.find(a => a.email.toLowerCase() === user.email.toLowerCase())?.role || 'Co-Author',
+      };
+
+      const result = await submitIncentiveClaimViaApi(claimData);
+
+      if (!result.success) {
+        throw new Error(result.error)
+      }
+
+      const newClaimId = result.claimId;
+
+      if (status === "Draft") {
+        toast({ title: "Draft Saved!", description: "You can continue editing from the 'Incentive Claim' page." })
+        if (!claimId) { // Only redirect if it's a new draft
+            router.push(`/dashboard/incentive-claim/research-paper?claimId=${newClaimId}`);
         }
-
-        const newClaimId = result.claimId;
-
-        if (status === "Draft") {
-            toast({ title: "Draft Saved!", description: "You can continue editing from the 'Incentive Claim' page." })
-            if (!claimId) { // Only redirect if it's a new draft
-                router.push(`/dashboard/incentive-claim/research-paper?claimId=${newClaimId}`);
-            }
-        } else {
-            toast({ title: "Success", description: "Your incentive claim has been submitted." })
-            router.push("/dashboard/incentive-claim")
-        }
+      } else {
+        toast({ title: "Success", description: "Your incentive claim has been submitted." })
+        router.push("/dashboard/incentive-claim")
+      }
     } catch (error: any) {
-        console.error("Error submitting claim: ", error)
-        toast({
-            variant: "destructive",
-            title: "Error",
-            description: error.message || "Failed to submit claim. Please try again.",
-        })
+      console.error("Error submitting claim: ", error)
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: error.message || "Failed to submit claim. Please try again.",
+      })
     } finally {
-        setIsSubmitting(false)
+      setIsSubmitting(false)
     }
   }
 
@@ -1036,7 +1033,7 @@ export function ResearchPaperForm() {
                   />
                 )}
 
-                {(indexType === 'scopus' || indexType === 'wos' || indexType === 'both') && (
+                {(indexType === 'scopus' || indexType === 'wos' || indexType === 'both' || indexType === 'sci') && (
                     <FormField
                         control={form.control}
                         name="journalClassification"
@@ -1320,12 +1317,12 @@ export function ResearchPaperForm() {
                         <FormLabel className="text-sm">Add External Co-Author</FormLabel>
                          <div className="flex flex-col md:flex-row gap-2 mt-1">
                             <Input value={externalAuthorName} onChange={(e) => setExternalAuthorName(e.target.value)} placeholder="External author's name"/>
-                            <Input value={externalAuthorEmail} onChange={(e) => setExternalAuthorEmail(e.target.value)} placeholder="External author's email"/>
+                            <Input value={externalAuthorEmail} onChange={(e) => setExternalAuthorEmail(e.target.value)} placeholder="External author's email (optional)"/>
                             <Select value={externalAuthorRole} onValueChange={(value) => setExternalAuthorRole(value as Author['role'])}>
                                 <SelectTrigger><SelectValue/></SelectTrigger>
                                 <SelectContent>{getAvailableRoles(undefined).map(role => (<SelectItem key={role} value={role}>{role}</SelectItem>))}</SelectContent>
                             </Select>
-                            <Button type="button" onClick={addExternalAuthor} variant="outline" size="icon" disabled={!externalAuthorName.trim() || !externalAuthorEmail.trim()}><UserPlus className="h-4 w-4"/></Button>
+                            <Button type="button" onClick={addExternalAuthor} variant="outline" size="icon" disabled={!externalAuthorName.trim()}><UserPlus className="h-4 w-4"/></Button>
                         </div>
                     </div>
                   </div>
@@ -1394,7 +1391,7 @@ export function ResearchPaperForm() {
                     <FormItem className="flex flex-row items-center justify-between rounded-lg border p-4">
                       <div className="space-y-0.5">
                         <FormLabel className="text-base">
-                          Is "Parul University Goa" name present in the publication?
+                          Is "Parul University" name present in the publication?
                         </FormLabel>
                          <FormDescription>If not, the final incentive amount will be reduced by 50%.</FormDescription>
                       </div>
@@ -1426,9 +1423,20 @@ export function ResearchPaperForm() {
                 />
 
                 {calculatedIncentive !== null && (
-                    <div className="p-4 bg-secondary rounded-md">
+                    <div className={`p-4 rounded-md ${calculatedIncentive === 0 ? 'bg-yellow-100 dark:bg-yellow-900/30' : 'bg-secondary'}`}>
                         <p className="text-sm font-medium">Tentative Eligible Incentive Amount: <span className="font-bold text-lg text-primary">₹{calculatedIncentive.toLocaleString('en-IN')}</span></p>
-                        <p className="text-xs text-muted-foreground">This is your individual share based on the policy, publication type, and author roles.</p>
+                        {calculatedIncentive === 0 && formValues.authorPosition && ['6th', '7th', '8th', '9th', '10th'].includes(formValues.authorPosition) && (
+                            (() => {
+                              const userRole = formValues.authors.find(a => a.email.toLowerCase() === user?.email.toLowerCase())?.role;
+                              if (userRole === 'Co-Author') {
+                                return <p className="text-xs text-yellow-700 dark:text-yellow-300 mt-2">As a co-author beyond the 5th position, this claim qualifies for ARPS score but not monetary incentive.</p>;
+                              }
+                              return null;
+                            })()
+                        )}
+                        {!(calculatedIncentive === 0 && formValues.authorPosition && ['6th', '7th', '8th', '9th', '10th'].includes(formValues.authorPosition) && formValues.authors.find(a => a.email.toLowerCase() === user?.email.toLowerCase())?.role === 'Co-Author') && (
+                            <p className="text-xs text-muted-foreground">This is your individual share based on the policy, publication type, and author roles.</p>
+                        )}
                     </div>
                 )}
                 
@@ -1474,7 +1482,7 @@ export function ResearchPaperForm() {
                   render={({ field: { value, onChange, ...fieldProps } }) => (
                     <FormItem>
                       <FormLabel>
-                        Attach Proof: Publication: Copy of paper, title of the paper details with PU Name.*
+                        Attach Proof of Publication: Copy of paper, title of the paper details with PU Name. [Max 10 MB]*
                       </FormLabel>
                       <FormControl>
                         <Input

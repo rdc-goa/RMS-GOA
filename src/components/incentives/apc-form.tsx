@@ -1,4 +1,5 @@
 
+
 'use client';
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useForm, useFieldArray } from 'react-hook-form';
@@ -16,12 +17,14 @@ import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
 import { Separator } from '@/components/ui/separator';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useToast } from '@/hooks/use-toast';
-import { auth, db } from '@/lib/config';
+import { db } from '@/lib/config';
 import { collection, addDoc, doc, setDoc, getDoc } from 'firebase/firestore';
 import type { User, IncentiveClaim, Author } from '@/types';
+import { checkPatentUniqueness } from '@/app/actions';
+import { uploadFileToApi } from '@/lib/upload-client';
 import { findUserByMisId } from '@/app/userfinding';
 import { Loader2, AlertCircle, Info, Plus, Trash2, Search, Bot, Edit } from 'lucide-react';
-import { submitIncentiveClaim } from '@/app/incentive-approval-actions';
+import { submitIncentiveClaimViaApi } from '@/lib/incentive-claim-client';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { calculateApcIncentive } from '@/app/incentive-calculation';
 import { fetchAdvancedScopusData } from '@/app/scopus-actions';
@@ -32,14 +35,21 @@ import { Label } from '@/components/ui/label';
 import { Table, TableHeader, TableRow, TableHead, TableBody, TableCell } from '../ui/table';
 import { Badge } from '../ui/badge';
 
-const authorSchema = z.object({
+const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
+
+const authorSchema = z
+  .object({
     name: z.string().min(2, 'Author name is required.'),
-    email: z.string().email('Invalid email format.'),
+    email: z.string().email('Invalid email format.').or(z.literal('')),
     uid: z.string().optional().nullable(),
     role: z.enum(['First Author', 'Corresponding Author', 'Co-Author', 'First & Corresponding Author', "Presenting Author", "First & Presenting Author"]),
     isExternal: z.boolean(),
     status: z.enum(['approved', 'pending', 'Applied'])
-});
+  })
+  .refine((data) => data.isExternal || !!data.email, {
+    message: 'Email is required for internal authors.',
+    path: ['email'],
+  });
 
 const apcSchema = z.object({
   apcTypeOfArticle: z.string({ required_error: 'Please select an article type.' }),
@@ -59,12 +69,14 @@ const apcSchema = z.object({
   apcApcWaiverRequested: z.boolean().refine(val => val === true, {
     message: 'You must request an APC waiver and provide proof to be eligible.',
   }),
-  apcApcWaiverProof: z.any(),
+  apcApcWaiverProof: z.any().refine(files => files?.length > 0, {
+    message: 'Proof of APC waiver request is required.',
+  }).refine(files => !files?.[0] || files?.[0]?.size <= MAX_FILE_SIZE, 'File must be less than 10 MB.'),
   apcJournalWebsite: z.string().url('Please enter a valid URL.'),
   apcIssnNo: z.string().min(5, 'ISSN is required.'),
   apcSciImpactFactor: z.coerce.number().optional(),
-  apcPublicationProof: z.any(),
-  apcInvoiceProof: z.any(),
+  apcPublicationProof: z.any().refine((files) => files?.length > 0, 'Proof of publication is required.').refine(files => !files?.[0] || files?.[0]?.size <= MAX_FILE_SIZE, 'File must be less than 10 MB.'),
+  apcInvoiceProof: z.any().refine((files) => files?.length > 0, 'Proof of payment/invoice is required.').refine(files => !files?.[0] || files?.[0]?.size <= MAX_FILE_SIZE, 'File must be less than 10 MB.'),
   apcPuNameInPublication: z.boolean().optional(),
   apcAmountClaimed: z.coerce.number().positive('Claimed amount must be positive.'),
   apcTotalAmount: z.coerce.number().positive('Total amount must be a positive number greater than 0.'),
@@ -78,22 +90,6 @@ type ApcFormValues = z.infer<typeof apcSchema>;
 
 const articleTypes = ['Research Paper Publication', 'Review Article', 'Letter to Editor', 'Other'];
 const coAuthorRoles: Author['role'][] = ['First Author', 'Corresponding Author', 'Co-Author', 'First & Corresponding Author'];
-
-const uploadFileViaApi = async (file: File, token: string): Promise<string> => {
-  const formData = new FormData();
-  formData.append('file', file);
-  const response = await fetch('/api/upload', {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${token}` },
-    body: formData,
-  });
-  if (!response.ok) {
-    const errorData = await response.json();
-    throw new Error(errorData.error || 'File upload failed');
-  }
-  const result = await response.json();
-  return result.file.uploadedUrl;
-};
 
 const SPECIAL_POLICY_FACULTIES = [
     "Faculty of Applied Sciences",
@@ -152,7 +148,7 @@ function ReviewDetails({ data, onEdit }: { data: ApcFormValues; onEdit: () => vo
         );
     };
 
-    const apcApcWaiverProofFile = data.apcApcWaiverProof?.[0] as File | undefined;
+    const apcWaiverProofFile = data.apcApcWaiverProof?.[0] as File | undefined;
     const apcPublicationProofFile = data.apcPublicationProof?.[0] as File | undefined;
     const apcInvoiceProofFile = data.apcInvoiceProof?.[0] as File | undefined;
 
@@ -177,10 +173,10 @@ function ReviewDetails({ data, onEdit }: { data: ApcFormValues; onEdit: () => vo
                 {renderDetail("Journal Website", data.apcJournalWebsite)}
                 {renderDetail("ISSN", data.apcIssnNo)}
                 {renderDetail("SCI Impact Factor", data.apcSciImpactFactor)}
-                {renderDetail("PU Goa Name in Publication", data.apcPuNameInPublication)}
+                {renderDetail("PU Name in Publication", data.apcPuNameInPublication)}
                 {renderDetail("Total Amount of APC (INR)", `₹${data.apcTotalAmount.toLocaleString('en-IN')}`)}
                 {renderDetail("Amount Claimed (INR)", `₹${data.apcAmountClaimed.toLocaleString('en-IN')}`)}
-                {renderDetail("Proof of APC Waiver Request", apcApcWaiverProofFile?.name)}
+                {renderDetail("Proof of APC Waiver Request", apcWaiverProofFile?.name)}
                 {renderDetail("Proof of Publication", apcPublicationProofFile?.name)}
                 {renderDetail("Proof of Invoice/Payment", apcInvoiceProofFile?.name)}
             </CardContent>
@@ -352,7 +348,7 @@ useEffect(() => {
         fetchDraft();
     }
   }, [searchParams, user, form, toast]);
-
+  
   const watchAuthors = form.watch('authors');
   const firstAuthorExists = useMemo(() => 
     watchAuthors.some(author => author.role === 'First Author' || author.role === 'First & Corresponding Author'),
@@ -435,23 +431,33 @@ useEffect(() => {
     }
   };
 
-  const handleSearchCoPi = async () => {
-    if (!coPiSearchTerm) return;
+  const handleSearchCoPi = async (searchTerm: string) => {
+    if (!searchTerm || searchTerm.length < 2) {
+      setFoundCoPis([]);
+      return;
+    }
     setIsSearching(true);
     try {
-        const result = await findUserByMisId(coPiSearchTerm);
-        if (result.success && result.users && result.users.length > 0) {
-            if (result.users.length === 1) {
-                handleAddCoPi(result.users[0]);
-            } else {
-                setFoundCoPis(result.users);
-                setIsSelectionOpen(true);
-            }
+        // Check if search term looks like a MIS ID (numeric or alphanumeric, max 10 chars)
+        const isMisIdSearch = /^[a-zA-Z0-9]+$/.test(searchTerm) && searchTerm.length <= 10;
+        
+        let url = '';
+        if (isMisIdSearch) {
+            url = `/api/find-users-by-name?misId=${encodeURIComponent(searchTerm)}`;
         } else {
-            toast({ variant: 'destructive', title: 'User Not Found', description: result.error });
+            url = `/api/find-users-by-name?name=${encodeURIComponent(searchTerm)}`;
         }
-    } catch (error: any) {
-        toast({ variant: 'destructive', title: 'Search Failed', description: error.message || 'An error occurred while searching.' });
+        
+        const res = await fetch(url);
+        const result = await res.json();
+        if (result.success && result.users) {
+            setFoundCoPis(result.users);
+            setIsSelectionOpen(true);
+        } else {
+            setFoundCoPis([]);
+        }
+    } catch (error) {
+        toast({ variant: 'destructive', title: 'Search Failed', description: 'An error occurred while searching.' });
     } finally {
         setIsSearching(false);
     }
@@ -477,22 +483,22 @@ useEffect(() => {
     setIsSelectionOpen(false);
   };
   
-   const addExternalAuthor = () => {
-        const name = externalAuthorName.trim();
-        const email = externalAuthorEmail.trim().toLowerCase();
-        if (!name || !email) {
-            toast({ title: 'Name and email are required for external authors', variant: 'destructive' });
-            return;
-        }
-         if (fields.some(a => a.email.toLowerCase() === email)) {
-            toast({ title: 'Author already added', variant: 'destructive' });
-            return;
-        }
-        append({ name, email, role: externalAuthorRole, isExternal: true, uid: null, status: 'pending' });
-        setExternalAuthorName('');
-        setExternalAuthorEmail('');
-        setExternalAuthorRole('Co-Author'); // Reset role selector
-    };
+  const addExternalAuthor = () => {
+    const name = externalAuthorName.trim();
+    const email = externalAuthorEmail.trim().toLowerCase();
+    if (!name) {
+        toast({ title: 'Name is required for external authors', variant: 'destructive' });
+        return;
+    }
+    if (email && fields.some(a => a.email?.toLowerCase() === email)) {
+        toast({ title: 'Author already added', variant: 'destructive' });
+        return;
+    }
+    append({ name, email: email || '', role: externalAuthorRole, isExternal: true, uid: null, status: 'pending' });
+    setExternalAuthorName('');
+    setExternalAuthorEmail('');
+    setExternalAuthorRole('Co-Author'); // Reset role selector
+  };
 
 
   const removeAuthor = (index: number) => {
@@ -503,7 +509,7 @@ useEffect(() => {
     }
     remove(index);
   };
-  
+
   const updateAuthorRole = (index: number, role: Author['role']) => {
     const currentAuthors = form.getValues('authors');
     const author = currentAuthors[index];
@@ -537,65 +543,56 @@ useEffect(() => {
     try {
         const data = form.getValues();
         
-        const token = await auth.currentUser?.getIdToken(true);
-        if (!token) {
-            throw new Error("Authentication token not found. Please log in again.");
-        }
+        const uploadFileHelper = async (file: File | undefined, folderName: string): Promise<string | undefined> => {
+          if (!file || !user) return undefined;
+          const path = `incentive-proofs/${user.uid}/${folderName}/${new Date().toISOString()}-${file.name}`;
+          const result = await uploadFileToApi(file, { path });
+          if (!result.success || !result.url) {
+          throw new Error(result.error || `File upload failed for ${folderName}`);
+          }
+          return result.url;
+        };
 
         const [apcApcWaiverProofUrl, apcPublicationProofUrl, apcInvoiceProofUrl] = await Promise.all([
-            data.apcApcWaiverProof?.[0] ? uploadFileViaApi(data.apcApcWaiverProof[0], token) : Promise.resolve(undefined),
-            data.apcPublicationProof?.[0] ? uploadFileViaApi(data.apcPublicationProof[0], token) : Promise.resolve(undefined),
-            data.apcInvoiceProof?.[0] ? uploadFileViaApi(data.apcInvoiceProof[0], token) : Promise.resolve(undefined),
+            uploadFileHelper(data.apcApcWaiverProof?.[0], 'apc-waiver-proof'),
+            uploadFileHelper(data.apcPublicationProof?.[0], 'apc-publication-proof'),
+            uploadFileHelper(data.apcInvoiceProof?.[0], 'apc-invoice-proof'),
         ]);
 
+        const { apcPublicationProof, apcInvoiceProof, apcApcWaiverProof, ...restOfData } = data;
+
         const claimData: Omit<IncentiveClaim, 'id' | 'claimId'> = {
+            ...restOfData,
+            calculatedIncentive,
+            misId: user.misId || null,
+            orcidId: user.orcidId || null,
             claimType: 'Seed Money for APC',
             benefitMode: 'reimbursement',
             uid: user.uid,
             userName: user.name,
             userEmail: user.email,
             faculty: user.faculty,
-            institute: user.institute || '',
             status,
             submissionDate: new Date().toISOString(),
             bankDetails: user.bankDetails || null,
-            misId: user.misId || null,
-            orcidId: user.orcidId || null,
-            calculatedIncentive,
-            apcTypeOfArticle: data.apcTypeOfArticle,
-            apcOtherArticleType: data.apcOtherArticleType,
-            apcIndexingStatus: data.apcIndexingStatus,
-            apcQRating: data.apcQRating,
-            doi: data.doi,
-            apcPaperTitle: data.apcPaperTitle,
-            authors: data.authors,
-            apcTotalStudentAuthors: data.apcTotalStudentAuthors,
-            apcStudentNames: data.apcStudentNames,
-            apcJournalDetails: data.apcJournalDetails,
-            apcApcWaiverRequested: data.apcApcWaiverRequested,
-            apcJournalWebsite: data.apcJournalWebsite,
-            apcIssnNo: data.apcIssnNo,
-            apcSciImpactFactor: data.apcSciImpactFactor,
-            apcPuNameInPublication: data.apcPuNameInPublication,
-            apcAmountClaimed: data.apcAmountClaimed,
-            apcTotalAmount: data.apcTotalAmount,
-            apcSelfDeclaration: data.apcSelfDeclaration,
-            apcApcWaiverProofUrl,
-            apcPublicationProofUrl,
-            apcInvoiceProofUrl,
         };
+
+        if (apcApcWaiverProofUrl) claimData.apcApcWaiverProofUrl = apcApcWaiverProofUrl;
+        if (apcPublicationProofUrl) claimData.apcPublicationProofUrl = apcPublicationProofUrl;
+        if (apcInvoiceProofUrl) claimData.apcInvoiceProofUrl = apcInvoiceProofUrl;
         
-        const result = await submitIncentiveClaim(claimData);
+        const claimId = searchParams.get('claimId');
+        const result = await submitIncentiveClaimViaApi(claimData, claimId || undefined);
 
         if (!result.success) {
             throw new Error(result.error);
         }
         
-        const claimId = searchParams.get('claimId') || result.claimId;
+        const newClaimId = claimId || result.claimId;
 
         if (status === 'Draft') {
           toast({ title: 'Draft Saved!', description: "You can continue editing from the 'Incentive Claim' page." });
-          router.push(`/dashboard/incentive-claim/apc?claimId=${claimId}`);
+          router.push(`/dashboard/incentive-claim/apc?claimId=${newClaimId}`);
         } else {
           toast({ title: 'Success', description: 'Your incentive claim for APC has been submitted.' });
           router.push('/dashboard/incentive-claim');
@@ -633,6 +630,7 @@ useEffect(() => {
   }
 
   return (
+    <>
     <Card>
       <Form {...form}>
         <form>
@@ -657,9 +655,8 @@ useEffect(() => {
                 </AlertDescription>
             </Alert>
 
-            <div className="rounded-lg border p-4 space-y-6 animate-in fade-in-0">
-                <h3 className="font-semibold text-sm -mb-2">ARTICLE & JOURNAL DETAILS</h3>
-                <Separator />
+            <div className="space-y-6">
+                <h3 className="font-semibold text-sm">ARTICLE & JOURNAL DETAILS</h3>
                 <FormField control={form.control} name="apcTypeOfArticle" render={({ field }) => ( <FormItem><FormLabel>Type of Article</FormLabel><FormControl><RadioGroup onValueChange={field.onChange} value={field.value} className="flex flex-col space-y-2 md:flex-row md:space-y-0 md:space-x-6">{articleTypes.map(type => (<FormItem key={type} className="flex items-center space-x-2 space-y-0"><FormControl><RadioGroupItem value={type} /></FormControl><FormLabel className="font-normal">{type}</FormLabel></FormItem>))}</RadioGroup></FormControl><FormMessage /></FormItem> )} />
                 {watchArticleType === 'Other' && <FormField name="apcOtherArticleType" control={form.control} render={({ field }) => ( <FormItem><FormLabel>Please specify other article type</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem> )} />}
                 <FormField name="apcIndexingStatus" control={form.control} render={({ field }) => ( <FormItem><FormLabel>Indexing/Listing status of the Journal</FormLabel>{availableIndexingStatuses.map(item => (<FormField key={item} control={form.control} name="apcIndexingStatus" render={({ field }) => ( <FormItem key={item} className="flex flex-row items-start space-x-3 space-y-0"><FormControl><Checkbox checked={field.value?.includes(item)} onCheckedChange={(checked) => { return checked ? field.onChange([...(field.value || []), item]) : field.onChange(field.value?.filter(value => value !== item)); }} /></FormControl><FormLabel className="font-normal">{item}</FormLabel></FormItem> )} />))}<FormMessage /></FormItem> )} />
@@ -718,25 +715,41 @@ useEffect(() => {
                         ))}
                     </div>
                     
-                    <Separator className="my-4" />
-
                     <div className="space-y-2 p-3 border rounded-md">
                         <FormLabel>Add Internal Co-Author</FormLabel>
-                        <div className="flex items-center gap-2">
-                            <Input placeholder="Search by Co-Author's Name or MIS ID" value={coPiSearchTerm} onChange={(e) => setCoPiSearchTerm(e.target.value)} />
-                            <Button type="button" onClick={handleSearchCoPi} disabled={isSearching}>{isSearching ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Search'}</Button>
+                        <div className="relative">
+                            <Input 
+                                placeholder="Search by Co-Author's Name or MIS ID" 
+                                value={coPiSearchTerm} 
+                                onChange={(e) => {
+                                    setCoPiSearchTerm(e.target.value);
+                                    handleSearchCoPi(e.target.value);
+                                }} 
+                            />
+                            {isSearching && <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 animate-spin" />}
                         </div>
+                        {foundCoPis.length > 0 && isSelectionOpen && (
+                            <div className="relative">
+                                <div className="absolute w-full bg-background border rounded-md shadow-lg z-10 max-h-48 overflow-y-auto mt-1">
+                                    {foundCoPis.map(coPi => (
+                                        <div key={coPi.email} className="p-2 hover:bg-muted cursor-pointer" onClick={() => handleAddCoPi(coPi)}>
+                                            {coPi.name} ({coPi.misId})
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
                     </div>
                     <div className="space-y-2 p-3 border rounded-md">
                         <FormLabel className="text-sm">Add External Co-Author</FormLabel>
                         <div className="flex flex-col md:flex-row gap-2 mt-1">
                             <Input value={externalAuthorName} onChange={(e) => setExternalAuthorName(e.target.value)} placeholder="External author's name"/>
-                            <Input value={externalAuthorEmail} onChange={(e) => setExternalAuthorEmail(e.target.value)} placeholder="External author's email"/>
+                            <Input value={externalAuthorEmail} onChange={(e) => setExternalAuthorEmail(e.target.value)} placeholder="External author's email (optional)"/>
                             <Select value={externalAuthorRole} onValueChange={(value) => setExternalAuthorRole(value as Author['role'])}>
                                 <SelectTrigger><SelectValue/></SelectTrigger>
                                 <SelectContent>{getAvailableRoles(undefined).map(role => (<SelectItem key={role} value={role}>{role}</SelectItem>))}</SelectContent>
                             </Select>
-                            <Button type="button" onClick={addExternalAuthor} variant="outline" size="icon" disabled={!externalAuthorName.trim() || !externalAuthorEmail.trim()}><Plus className="h-4 w-4"/></Button>
+                            <Button type="button" onClick={addExternalAuthor} variant="outline" size="icon" disabled={!externalAuthorName.trim()}><Plus className="h-4 w-4"/></Button>
                         </div>
                         <FormDescription className="!mt-2 text-destructive text-xs">
                            Important: If an internal/external co-author is found at the approval stage that was not declared here, the claim will be rejected.
@@ -751,7 +764,7 @@ useEffect(() => {
                 <FormField name="apcJournalWebsite" control={form.control} render={({ field }) => ( <FormItem><FormLabel>Journal Website</FormLabel><FormControl><Input type="url" {...field} /></FormControl><FormMessage /></FormItem> )} />
                 <FormField name="apcIssnNo" control={form.control} render={({ field }) => ( <FormItem><FormLabel>ISSN No.</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem> )} />
                 <FormField name="apcSciImpactFactor" control={form.control} render={({ field }) => ( <FormItem><FormLabel>SCI Impact Factor</FormLabel><FormControl><Input type="number" step="any" {...field} min="0" /></FormControl><FormMessage /></FormItem> )} />
-                <FormField name="apcPuNameInPublication" control={form.control} render={({ field }) => ( <FormItem><div className="flex items-center justify-between"><FormLabel>Is "PU Goa" name present in the publication?</FormLabel><FormControl><Checkbox checked={field.value} onCheckedChange={field.onChange} /></FormControl></div><FormMessage /></FormItem> )} />
+                <FormField name="apcPuNameInPublication" control={form.control} render={({ field }) => ( <FormItem><div className="flex items-center justify-between"><FormLabel>Is "PU" name present in the publication?</FormLabel><FormControl><Checkbox checked={field.value} onCheckedChange={field.onChange} /></FormControl></div><FormMessage /></FormItem> )} />
                 <FormField name="apcPublicationProof" control={form.control} render={({ field: { value, onChange, ...fieldProps } }) => ( <FormItem><FormLabel>Attachment Proof of publication (PDF)</FormLabel><FormControl><Input {...fieldProps} type="file" onChange={(e) => onChange(e.target.files)} accept="application/pdf" /></FormControl><FormMessage /></FormItem> )} />
             </div>
 
@@ -788,7 +801,7 @@ useEffect(() => {
                     control={form.control}
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Amount Claimed (INR)</FormLabel>
+                        <FormLabel>Amount claimed (INR)</FormLabel>
                         <FormControl>
                           <Input
                             type="text"
@@ -834,5 +847,6 @@ useEffect(() => {
         </form>
       </Form>
     </Card>
+    </>
   );
 }
