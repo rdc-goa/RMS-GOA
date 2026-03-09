@@ -1,4 +1,5 @@
 
+
 "use client"
 
 import type React from "react"
@@ -8,8 +9,8 @@ import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import * as z from "zod"
 
-import { PageHeader } from "@/components/page-header"
-import { Button } from "@/components/ui/button"
+import { PageHeader } from '@/components/page-header'
+import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage, FormDescription } from "@/components/ui/form"
@@ -24,8 +25,8 @@ import {
   getSystemSettings,
   updateSystemSettings,
   checkMisIdExists,
-} from "@/app/server-actions"
-import type { User, SystemSettings, CroAssignment, ApproverSetting, ApiIntegrations, DefaultModules } from "@/types"
+} from "@/app/actions"
+import type { User, SystemSettings, CroAssignment, ApproverSetting, ApiIntegrations } from "@/types"
 import { Skeleton } from "@/components/ui/skeleton"
 import {
   onAuthStateChanged,
@@ -35,14 +36,14 @@ import {
   updatePassword,
 } from "firebase/auth"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { Banknote, Bot, ShieldCheck, Plus, X, Award, CalendarIcon, Clock, Mail, FileText, Blocks, Search, Loader2 } from "lucide-react"
+import { Banknote, Bot, Loader2, ShieldCheck, Plus, X, Award, Upload, Image as ImageIcon, Calendar as CalendarIcon, Clock, Mail, BellOff, FileText, FileSpreadsheet } from "lucide-react"
 import { Combobox } from "@/components/ui/combobox"
 import { Switch } from "@/components/ui/switch"
 import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import NextImage from 'next/image';
 import { Checkbox } from "@/components/ui/checkbox"
-import { ALL_MODULES } from '@/lib/modules';
 
 const profileSchema = z.object({
   name: z.string().min(2, "Name must be at least 2 characters."),
@@ -84,45 +85,55 @@ const bankDetailsSchema = z.object({
 type BankDetailsFormValues = z.infer<typeof bankDetailsSchema>
 
 const croAssignmentSchema = z.object({
-  email: z.string().email("Please enter a valid email address."),
-  faculty: z.string().min(1, "Please select a faculty."),
-  campus: z.string().min(1, "Please select a campus."),
+    email: z.string().email("Please enter a valid email address."),
+    faculty: z.string().min(1, "Please select a faculty."),
+    campus: z.string().min(1, "Please select a campus."),
 })
 type CroAssignmentFormValues = z.infer<typeof croAssignmentSchema>
 
+const faculties = [
+    "Faculty of Engineering, IT & CS",
+    "Faculty of Management Studies",
+    "Faculty of Pharmacy",
+    "Faculty of Applied and Health Sciences",
+    "Faculty of Nursing",
+    "Faculty of Physiotherapy",
+    "University Office"
+];
+
 const goaFaculties = [
-  "Faculty of Engineering, IT & CS",
-  "Faculty of Management Studies",
-  "Faculty of Pharmacy",
-  "Faculty of Applied and Health Sciences",
-  "Faculty of Nursing",
-  "Faculty of Physiotherapy",
-  "University Office",
-]
+    "Faculty of Engineering, IT & CS",
+    "Faculty of Management Studies",
+    "Faculty of Pharmacy",
+    "Faculty of Applied and Health Sciences",
+    "Faculty of Nursing",
+    "Faculty of Physiotherapy",
+    "University Office"
+];
 
-const campuses = ["Goa"]
+const campuses = ["Goa"];
 
-const goaInstitutes = [
-  "Parul College of Applied and Health Sciences",
-  "Parul College of Engineering",
-  "Parul College of Information Technology & Computer Science",
-  "Parul College of Management",
-  "Parul College of Nursing",
-  "Parul College of Pharmacy",
-  "Parul College of Physiotherapy",
-  "University Office",
-]
+const institutes = [
+    "Parul College of Applied and Health Sciences",
+    "Parul College of Engineering",
+    "Parul College of Information Technology & Computer Science",
+    "Parul College of Management",
+    "Parul College of Nursing",
+    "Parul College of Pharmacy",
+    "Parul College of Physiotherapy",
+    "University Office"
+];
 
 const salaryBanks = ["AU Bank", "HDFC Bank", "Central Bank of India"]
 
 const incentiveClaimTypes = [
-  "Research Papers",
-  "Patents",
-  "Conference Presentations",
-  "Books",
-  "Membership of Professional Bodies",
-  "Seed Money for APC",
-]
+    'Research Papers',
+    'Patents',
+    'Conference Presentations',
+    'Books',
+    'Membership of Professional Bodies',
+    'Seed Money for APC'
+];
 
 const fileToDataUrl = (file: File): Promise<string> => {
   return new Promise((resolve, reject) => {
@@ -151,7 +162,6 @@ export default function SettingsPage() {
   const [systemSettings, setSystemSettings] = useState<SystemSettings | null>(null)
   const [isSavingSettings, setIsSavingSettings] = useState(false)
   const [newAllowedDomain, setNewAllowedDomain] = useState("")
-  const [isPrefilling, setIsPrefilling] = useState(false);
 
   const profileForm = useForm<ProfileFormValues>({
     resolver: zodResolver(profileSchema),
@@ -192,28 +202,27 @@ export default function SettingsPage() {
       ifscCode: "",
     },
   })
-
+  
   const croAssignmentForm = useForm<CroAssignmentFormValues>({
     resolver: zodResolver(croAssignmentSchema),
     defaultValues: {
-      email: "",
-      faculty: "",
-      campus: "Goa",
+        email: '',
+        faculty: '',
+        campus: '',
     },
   })
 
-  const dummyForm = useForm() // For the incentive approvers and theme section
+  const dummyForm = useForm(); // For the incentive approvers section
 
-  const selectedCampusForCro = croAssignmentForm.watch("campus")
-  const facultyOptionsForCro = goaFaculties
+  const facultyOptionsForCro = faculties;
 
   useEffect(() => {
     // When campus changes, reset faculty if it's not in the new list
-    const currentFaculty = croAssignmentForm.getValues("faculty")
+    const currentFaculty = croAssignmentForm.getValues('faculty');
     if (currentFaculty && !facultyOptionsForCro.includes(currentFaculty)) {
-      croAssignmentForm.setValue("faculty", "")
+        croAssignmentForm.setValue('faculty', '');
     }
-  }, [selectedCampusForCro, facultyOptionsForCro, croAssignmentForm])
+  }, [facultyOptionsForCro, croAssignmentForm]);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser: FirebaseUser | null) => {
@@ -233,7 +242,7 @@ export default function SettingsPage() {
           profileForm.reset({
             name: appUser.name || "",
             email: appUser.email || "",
-            campus: "Goa",
+            campus: appUser.campus || "",
             faculty: appUser.faculty || "",
             institute: appUser.institute || "",
             department: appUser.department || "",
@@ -257,59 +266,33 @@ export default function SettingsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  const selectedCampus = profileForm.watch("campus")
-
   useEffect(() => {
     async function fetchDepartments() {
-      const endpoint = selectedCampus === "Goa" ? "/api/get-goa-departments" : "/api/get-departments"
+      const endpoint = '/api/get-goa-departments';
       try {
-        const res = await fetch(endpoint)
-        const result = await res.json()
+        const res = await fetch(endpoint);
+        const result = await res.json();
         if (result.success) {
-          setDepartments(result.data)
+          setDepartments(result.data);
           // If current department is not in the new list, reset it
-          const currentDepartment = profileForm.getValues("department")
+          const currentDepartment = profileForm.getValues('department');
           if (currentDepartment && !result.data.includes(currentDepartment)) {
-            profileForm.setValue("department", "")
+              profileForm.setValue('department', '');
           }
         }
       } catch (error) {
-        console.error(`Failed to fetch departments from ${endpoint}`, error)
+        console.error(`Failed to fetch departments from ${endpoint}`, error);
       }
     }
-    fetchDepartments()
-  }, [selectedCampus, profileForm])
+    fetchDepartments();
+  }, [profileForm]);
 
   useEffect(() => {
-    const currentInstitute = profileForm.getValues("institute")
-    if (currentInstitute && !goaInstitutes.includes(currentInstitute)) {
-      profileForm.setValue("institute", "")
+    const currentInstitute = profileForm.getValues('institute');
+    if (currentInstitute && !institutes.includes(currentInstitute)) {
+        profileForm.setValue('institute', '');
     }
-  }, [profileForm])
-
-  const handlePrefillData = async () => {
-      const misId = profileForm.getValues('misId');
-      if (!misId || !user?.email) {
-          toast({ variant: 'destructive', title: 'MIS ID Required', description: 'Please enter your MIS ID to fetch data.' });
-          return;
-      };
-      setIsPrefilling(true);
-      try {
-          const res = await fetch(`/api/get-staff-data?misId=${misId}&userEmailForFileCheck=${user.email}`);
-          const result = await res.json();
-          if (result.success && result.data.length > 0) {
-              profileForm.reset({ ...profileForm.getValues(), ...result.data[0] });
-              toast({ title: 'Profile Pre-filled', description: 'Your information has been pre-filled. Please review and save.' });
-          } else {
-             toast({ variant: 'destructive', title: 'Not Found', description: "Could not find your details using that MIS ID. Please enter them manually." });
-          }
-      } catch (error) {
-          console.error("Failed to fetch prefill data", error);
-          toast({ variant: 'destructive', title: 'Error', description: "Could not fetch your data. Please try again or enter manually." });
-      } finally {
-          setIsPrefilling(false);
-      }
-  };
+  }, [profileForm]);
 
   async function onProfileSubmit(data: ProfileFormValues) {
     if (!user) return
@@ -330,14 +313,14 @@ export default function SettingsPage() {
         }
       }
       if (data.misId && data.campus) {
-        const misIdCheck = await checkMisIdExists(data.misId, user.uid, data.campus)
+        const misIdCheck = await checkMisIdExists(data.misId, user.uid, data.campus);
         if (misIdCheck.exists) {
-          profileForm.setError("misId", {
-            type: "manual",
-            message: "This MIS ID is already registered for this campus.",
-          })
-          setIsSubmittingProfile(false)
-          return
+            profileForm.setError("misId", {
+                type: "manual",
+                message: "This MIS ID is already registered for this campus.",
+            });
+            setIsSubmittingProfile(false);
+            return;
         }
       }
 
@@ -369,21 +352,25 @@ export default function SettingsPage() {
     if (!user) return
     setIsSubmittingBank(true)
     try {
-        const userDocRef = doc(db, 'users', user.uid);
-        await updateDoc(userDocRef, { bankDetails: data });
-        toast({ title: 'Bank details updated successfully!' });
+      const userDocRef = doc(db, "users", user.uid)
+      await updateDoc(userDocRef, { bankDetails: data })
+      const updatedUser = { ...user, bankDetails: data }
+      localStorage.setItem("user", JSON.stringify(updatedUser))
+      setUser(updatedUser)
+      toast({ title: "Bank details updated successfully!" })
     } catch (error: any) {
-        console.error("Bank details update error:", error);
-        toast({ variant: 'destructive', title: 'Update Failed', description: 'Could not update your bank details.' });
+      console.error("Bank details update error:", error)
+      toast({ variant: "destructive", title: "Update Failed", description: "Could not update your bank details." })
     } finally {
-        setIsSubmittingBank(false);
+      setIsSubmittingBank(false)
     }
   }
+  
 
   async function onPasswordSubmit(data: PasswordFormValues) {
     setIsSubmittingPassword(true)
 
-    const currentUser = auth.currentUser
+    const currentUser = auth.currentUser;
     if (!currentUser || !currentUser.email) {
       toast({
         variant: "destructive",
@@ -459,44 +446,27 @@ export default function SettingsPage() {
   }
 
   const handleSystemSettingsSave = async (newSettings: SystemSettings) => {
-    setIsSavingSettings(true)
-    const result = await updateSystemSettings(newSettings)
+    setIsSavingSettings(true);
+    const result = await updateSystemSettings(newSettings);
     if (result.success) {
-      setSystemSettings(newSettings)
-      toast({ title: "System settings updated." })
+      setSystemSettings(newSettings);
+      toast({ title: 'System settings updated.' });
     } else {
-      toast({ variant: "destructive", title: "Error", description: result.error })
+      toast({ variant: 'destructive', title: 'Error', description: result.error });
     }
-    setIsSavingSettings(false)
-  }
-
-  const handleDefaultModuleChange = async (
-    role: keyof DefaultModules,
-    moduleId: string,
-    checked: boolean
-  ) => {
-    if (!systemSettings) return;
-
-    const currentModules = systemSettings.defaultModules?.[role] || [];
-    const newModules = checked
-      ? [...currentModules, moduleId]
-      : currentModules.filter(id => id !== moduleId);
-      
-    const newDefaultModules = { ...systemSettings.defaultModules, [role]: newModules };
-    await handleSystemSettingsSave({ ...systemSettings, defaultModules: newDefaultModules });
+    setIsSavingSettings(false);
   };
 
-
   const handleApiIntegrationToggle = async (api: keyof ApiIntegrations, enabled: boolean) => {
-    if (!systemSettings) return
-    const newApiSettings = { ...systemSettings.apiIntegrations, [api]: enabled }
-    await handleSystemSettingsSave({ ...systemSettings, apiIntegrations: newApiSettings })
-  }
+    if (!systemSettings) return;
+    const newApiSettings = { ...systemSettings.apiIntegrations, [api]: enabled };
+    await handleSystemSettingsSave({ ...systemSettings, apiIntegrations: newApiSettings });
+  };
 
   const handle2faToggle = async (enabled: boolean) => {
-    if (!systemSettings) return
-    await handleSystemSettingsSave({ ...systemSettings, is2faEnabled: enabled })
-  }
+    if (!systemSettings) return;
+    await handleSystemSettingsSave({ ...systemSettings, is2faEnabled: enabled });
+  };
 
   const addAllowedDomain = async () => {
     if (!systemSettings || !newAllowedDomain.trim()) return
@@ -513,160 +483,143 @@ export default function SettingsPage() {
       return
     }
 
-    await handleSystemSettingsSave({ ...systemSettings, allowedDomains: [...currentDomains, domain] })
-    setNewAllowedDomain("")
+    await handleSystemSettingsSave({ ...systemSettings, allowedDomains: [...currentDomains, domain] });
+    setNewAllowedDomain("");
   }
 
   const removeAllowedDomain = async (domainToRemove: string) => {
     if (!systemSettings) return
     const currentDomains = systemSettings.allowedDomains || []
-    await handleSystemSettingsSave({
-      ...systemSettings,
-      allowedDomains: currentDomains.filter((d) => d !== domainToRemove),
-    })
+    await handleSystemSettingsSave({ ...systemSettings, allowedDomains: currentDomains.filter((d) => d !== domainToRemove) });
   }
 
   const addCroAssignment = async (values: CroAssignmentFormValues) => {
-    if (!systemSettings) return
+    if (!systemSettings) return;
 
     const newAssignment: CroAssignment = {
-      email: values.email.toLowerCase(),
-      faculty: values.faculty,
-      campus: values.campus,
+        email: values.email.toLowerCase(),
+        faculty: values.faculty,
+        campus: values.campus,
+    };
+
+    const currentAssignments = systemSettings.croAssignments || [];
+    if (currentAssignments.some(c => c.email === newAssignment.email)) {
+        toast({ variant: "destructive", title: "Email exists", description: "This email is already assigned." });
+        return;
     }
 
-    const currentAssignments = systemSettings.croAssignments || []
-    if (currentAssignments.some((c) => c.email === newAssignment.email)) {
-      toast({ variant: "destructive", title: "Email exists", description: "This email is already assigned." })
-      return
-    }
-
-    await handleSystemSettingsSave({ ...systemSettings, croAssignments: [...currentAssignments, newAssignment] })
-    croAssignmentForm.reset()
-  }
-
-  const removeCroAssignment = async (emailToRemove: string) => {
-    if (!systemSettings) return
-    const currentAssignments = systemSettings.croAssignments || []
-    await handleSystemSettingsSave({
-      ...systemSettings,
-      croAssignments: currentAssignments.filter((c) => c.email !== emailToRemove),
-    })
-  }
-
-  const handleApproverChange = async (stage: 1 | 2 | 3 | 4 | 5, email: string) => {
-    if (!systemSettings) return
-    const approvers = systemSettings.incentiveApprovers || []
-    const otherApprovers = approvers.filter((a) => a.stage !== stage)
-    const newApprovers: ApproverSetting[] = [...otherApprovers]
-
-    const previousApproverEmail = approvers.find((a) => a.stage === stage)?.email
-
-    if (email) {
-      newApprovers.push({ stage, email })
-    }
-    newApprovers.sort((a, b) => a.stage - b.stage)
-
-    await handleSystemSettingsSave({ ...systemSettings, incentiveApprovers: newApprovers })
-
-    const usersRef = collection(db, "users")
-
-    if (previousApproverEmail) {
-      const oldApproverQuery = query(usersRef, where("email", "==", previousApproverEmail))
-      const oldApproverSnapshot = await getDocs(oldApproverQuery)
-      if (!oldApproverSnapshot.empty) {
-        const userDoc = oldApproverSnapshot.docs[0]
-        const userData = userDoc.data() as User
-        const updatedModules = (userData.allowedModules || []).filter(
-          (m) => !m.startsWith("incentive-approver-") && m !== "incentive-approvals",
-        )
-        await updateDoc(userDoc.ref, { allowedModules: updatedModules })
-      }
-    }
-
-    if (email) {
-      const newApproverQuery = query(usersRef, where("email", "==", email))
-      const newApproverSnapshot = await getDocs(newApproverQuery)
-      if (!newApproverSnapshot.empty) {
-        const userDoc = newApproverSnapshot.docs[0]
-        const userData = userDoc.data() as User
-        const approverModule = `incentive-approver-${stage}`
-        const updatedModules = userData.allowedModules || []
-        if (!updatedModules.includes(approverModule)) updatedModules.push(approverModule)
-        if (!updatedModules.includes("incentive-approvals")) updatedModules.push("incentive-approvals")
-        await updateDoc(userDoc.ref, { allowedModules: updatedModules })
-      }
-    }
-  }
-
-  const handleIncentiveTypeToggle = async (type: string, enabled: boolean) => {
-    if (!systemSettings) return
-    const currentSettings = systemSettings.enabledIncentiveTypes || {}
-    const newSettings = { ...currentSettings, [type]: enabled }
-    await handleSystemSettingsSave({ ...systemSettings, enabledIncentiveTypes: newSettings })
-  }
-
-  const handleWorkflowChange = async (claimType: string, stage: number, isChecked: boolean) => {
-    if (!systemSettings) return
-    const currentWorkflows = systemSettings.incentiveApprovalWorkflows || {}
-    const currentStages = currentWorkflows[claimType] || [1, 2, 3, 4, 5]
-
-    let newStages
-    if (isChecked) {
-      newStages = [...new Set([...currentStages, stage])].sort((a, b) => a - b)
-    } else {
-      newStages = currentStages.filter((s) => s !== stage)
-    }
-
-    const newWorkflows = { ...currentWorkflows, [claimType]: newStages }
-    await handleSystemSettingsSave({ ...systemSettings, incentiveApprovalWorkflows: newWorkflows })
-  }
-
-  const handleImrMidTermReviewChange = async (months: number) => {
-    if (!systemSettings) return
-    await handleSystemSettingsSave({ ...systemSettings, imrMidTermReviewMonths: months })
-  }
-
-  const handleImrEvaluationDaysChange = async (days: number) => {
-    if (!systemSettings) return
-    await handleSystemSettingsSave({ ...systemSettings, imrEvaluationDays: days })
-  }
-
-  const handleTemplateUrlChange = async (
-    templateKey: keyof NonNullable<SystemSettings["templateUrls"]>,
-    url: string,
-  ) => {
-    if (!systemSettings) return
-    const newTemplateUrls = { ...systemSettings.templateUrls, [templateKey]: url }
-    await handleSystemSettingsSave({ ...systemSettings, templateUrls: newTemplateUrls })
-  }
-  
-  const handleThemeColorChange = async (colorType: 'primary' | 'accent' | 'background', value: string) => {
-      if (!systemSettings) return;
-      const newThemeSettings = {
-          ...systemSettings.theme,
-          [colorType]: value,
-      };
-      await handleSystemSettingsSave({ ...systemSettings, theme: newThemeSettings });
+    await handleSystemSettingsSave({ ...systemSettings, croAssignments: [...currentAssignments, newAssignment] });
+    croAssignmentForm.reset();
   };
 
-  const templateFields: { key: keyof NonNullable<SystemSettings["templateUrls"]>; label: string }[] = [
-    { key: "INCENTIVE_RESEARCH_PAPER", label: "Incentive - Research Paper" },
-    { key: "INCENTIVE_PATENT", label: "Incentive - Patent" },
-    { key: "INCENTIVE_CONFERENCE", label: "Incentive - Conference" },
-    { key: "INCENTIVE_BOOK_PUBLICATION", label: "Incentive - Book Publication" },
-    { key: "INCENTIVE_BOOK_CHAPTER", label: "Incentive - Book Chapter" },
-    { key: "INCENTIVE_MEMBERSHIP", label: "Incentive - Membership" },
-    { key: "IMR_RECOMMENDATION", label: "IMR Recommendation Form" },
-    { key: "IMR_INSTALLMENT_NOTING", label: "IMR Installment Office Noting" },
-    { key: "IMR_OFFICE_NOTING", label: "IMR Initial Office Noting" },
-    { key: "INCENTIVE_PAYMENT_SHEET", label: "Incentive Payment Sheet" },
-    { key: "IMR_SANCTION_ORDER", label: "IMR Sanction Order" },
-  ]
+  const removeCroAssignment = async (emailToRemove: string) => {
+    if (!systemSettings) return;
+    const currentAssignments = systemSettings.croAssignments || [];
+    await handleSystemSettingsSave({ ...systemSettings, croAssignments: currentAssignments.filter(c => c.email !== emailToRemove) });
+  };
+
+  const handleApproverChange = async (stage: 2 | 3 | 4 | 5, email: string) => {
+    if (!systemSettings) return;
+    const approvers = systemSettings.incentiveApprovers || [];
+    const otherApprovers = approvers.filter(a => a.stage !== stage);
+    const newApprovers: ApproverSetting[] = [...otherApprovers];
+    
+    // Find the previous approver for this stage to remove their access
+    const previousApproverEmail = approvers.find(a => a.stage === stage)?.email;
+
+    if (email) {
+      newApprovers.push({ stage, email });
+    }
+    newApprovers.sort((a, b) => a.stage - b.stage);
+
+    await handleSystemSettingsSave({ ...systemSettings, incentiveApprovers: newApprovers });
+    
+    // After saving, update user permissions
+    const usersRef = collection(db, 'users');
+
+    // Remove permissions from old approver
+    if (previousApproverEmail) {
+        const oldApproverQuery = query(usersRef, where("email", "==", previousApproverEmail));
+        const oldApproverSnapshot = await getDocs(oldApproverQuery);
+        if (!oldApproverSnapshot.empty) {
+            const userDoc = oldApproverSnapshot.docs[0];
+            const userData = userDoc.data() as User;
+            const updatedModules = (userData.allowedModules || []).filter(m => !m.startsWith('incentive-approver-') && m !== 'incentive-approvals');
+            await updateDoc(userDoc.ref, { allowedModules: updatedModules });
+        }
+    }
+
+    // Add permissions to new approver
+    if (email) {
+        const newApproverQuery = query(usersRef, where("email", "==", email));
+        const newApproverSnapshot = await getDocs(newApproverQuery);
+        if (!newApproverSnapshot.empty) {
+            const userDoc = newApproverSnapshot.docs[0];
+            const userData = userDoc.data() as User;
+            const approverModule = `incentive-approver-${stage}`;
+            let updatedModules = userData.allowedModules || [];
+            if (!updatedModules.includes(approverModule)) updatedModules.push(approverModule);
+            if (!updatedModules.includes('incentive-approvals')) updatedModules.push('incentive-approvals');
+            await updateDoc(userDoc.ref, { allowedModules: updatedModules });
+        }
+    }
+  };
+
+  const handleIncentiveTypeToggle = async (type: string, enabled: boolean) => {
+    if (!systemSettings) return;
+    const currentSettings = systemSettings.enabledIncentiveTypes || {};
+    const newSettings = { ...currentSettings, [type]: enabled };
+    await handleSystemSettingsSave({ ...systemSettings, enabledIncentiveTypes: newSettings });
+  };
+
+  const handleWorkflowChange = async (claimType: string, stage: number, isChecked: boolean) => {
+    if (!systemSettings) return;
+    const currentWorkflows = systemSettings.incentiveApprovalWorkflows || {};
+    const currentStages = currentWorkflows[claimType] || [1, 2, 3, 4, 5]; // Default to all 5 stages if not set
+
+    let newStages;
+    if (isChecked) {
+        newStages = [...new Set([...currentStages, stage])].sort((a, b) => a - b);
+    } else {
+        newStages = currentStages.filter(s => s !== stage);
+    }
+    
+    const newWorkflows = { ...currentWorkflows, [claimType]: newStages };
+    await handleSystemSettingsSave({ ...systemSettings, incentiveApprovalWorkflows: newWorkflows });
+  };
+  
+  const handleImrMidTermReviewChange = async (months: number) => {
+    if (!systemSettings) return;
+    await handleSystemSettingsSave({ ...systemSettings, imrMidTermReviewMonths: months });
+  };
+
+  const handleImrEvaluationDaysChange = async (days: number) => {
+    if (!systemSettings) return;
+    await handleSystemSettingsSave({ ...systemSettings, imrEvaluationDays: days });
+  };
+  
+   const handleTemplateUrlChange = async (templateKey: keyof NonNullable<SystemSettings['templateUrls']>, url: string) => {
+    if (!systemSettings) return;
+    const newTemplateUrls = { ...systemSettings.templateUrls, [templateKey]: url };
+    await handleSystemSettingsSave({ ...systemSettings, templateUrls: newTemplateUrls });
+  };
+
+  const templateFields: { key: keyof NonNullable<SystemSettings['templateUrls']>, label: string }[] = [
+    { key: 'INCENTIVE_RESEARCH_PAPER', label: 'Incentive - Research Paper' },
+    { key: 'INCENTIVE_PATENT', label: 'Incentive - Patent' },
+    { key: 'INCENTIVE_CONFERENCE', label: 'Incentive - Conference' },
+    { key: 'INCENTIVE_BOOK_PUBLICATION', label: 'Incentive - Book Publication' },
+    { key: 'INCENTIVE_BOOK_CHAPTER', label: 'Incentive - Book Chapter' },
+    { key: 'INCENTIVE_MEMBERSHIP', label: 'Incentive - Membership' },
+    { key: 'IMR_RECOMMENDATION', label: 'IMR Recommendation Form' },
+    { key: 'IMR_INSTALLMENT_NOTING', label: 'IMR Installment Office Noting' },
+    { key: 'IMR_OFFICE_NOTING', label: 'IMR Initial Office Noting' },
+    { key: 'INCENTIVE_PAYMENT_SHEET', label: 'Incentive Payment Sheet' },
+    { key: 'IMR_SANCTION_ORDER', label: 'IMR Sanction Order' },
+  ];
+
 
   const isAcademicInfoLocked = isCro || isPrincipal
-
-  const defaultModuleRoles: (keyof DefaultModules)[] = ['faculty', 'CRO', 'Evaluator', 'Principal', 'HOD', 'IQAC'];
 
   if (loading) {
     return (
@@ -721,355 +674,59 @@ export default function SettingsPage() {
               <CardDescription>Global settings for the application. Changes affect all users.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
-                <Form {...dummyForm}>
-                    <div className="space-y-4">
-                        <Label className="text-base">Theme Management</Label>
-                        <p className="text-sm text-muted-foreground">Customize the portal's appearance. Use valid hex color codes (e.g., #3b8ee8).</p>
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                            <FormField name="theme.primary" control={dummyForm.control} render={({ field }) => (
-                                <FormItem><FormLabel>Primary Color (Buttons)</FormLabel><Input type="text" defaultValue={systemSettings.theme?.primary} onBlur={(e) => handleThemeColorChange('primary', e.target.value)} disabled={isSavingSettings} /></FormItem>
-                            )} />
-                            <FormField name="theme.accent" control={dummyForm.control} render={({ field }) => (
-                                <FormItem><FormLabel>Accent Color</FormLabel><Input type="text" defaultValue={systemSettings.theme?.accent} onBlur={(e) => handleThemeColorChange('accent', e.target.value)} disabled={isSavingSettings} /></FormItem>
-                            )} />
-                            <FormField name="theme.background" control={dummyForm.control} render={({ field }) => (
-                                <FormItem><FormLabel>Background Color</FormLabel><Input type="text" defaultValue={systemSettings.theme?.background} onBlur={(e) => handleThemeColorChange('background', e.target.value)} disabled={isSavingSettings} /></FormItem>
-                            )} />
-                        </div>
+                <div className="space-y-4">
+                    <div className="flex items-center gap-2"><Bot className="h-5 w-5" /><Label className="text-base">API Integrations</Label></div>
+                    <p className="text-sm text-muted-foreground">Enable or disable external data fetching services.</p>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div className="flex items-center justify-between rounded-lg border p-3"><Label htmlFor="scopus-toggle">Scopus</Label><Switch id="scopus-toggle" checked={systemSettings.apiIntegrations?.scopus !== false} onCheckedChange={(c) => handleApiIntegrationToggle('scopus', c)} disabled={isSavingSettings} /></div>
+                        <div className="flex items-center justify-between rounded-lg border p-3"><Label htmlFor="wos-toggle">Web of Science</Label><Switch id="wos-toggle" checked={systemSettings.apiIntegrations?.wos !== false} onCheckedChange={(c) => handleApiIntegrationToggle('wos', c)} disabled={isSavingSettings} /></div>
+                        <div className="flex items-center justify-between rounded-lg border p-3"><Label htmlFor="sci-toggle">ScienceDirect</Label><Switch id="sci-toggle" checked={systemSettings.apiIntegrations?.sci !== false} onCheckedChange={(c) => handleApiIntegrationToggle('sci', c)} disabled={isSavingSettings} /></div>
                     </div>
-                </Form>
-              <Separator />
-               <div className="space-y-4">
-                <div className="flex items-center gap-2">
-                    <Blocks className="h-5 w-5" />
-                    <Label className="text-base">Default Modules for New Users</Label>
                 </div>
-                <p className="text-sm text-muted-foreground">
-                    Configure the default sidebar modules that are enabled for newly registered users of each role.
-                </p>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    {defaultModuleRoles.map(role => (
-                        <div key={role} className="p-4 border rounded-lg">
-                            <h4 className="font-semibold text-base mb-3">{role} Defaults</h4>
-                            <div className="grid grid-cols-2 gap-x-4 gap-y-2">
-                                {ALL_MODULES.map(module => {
-                                    const defaultForRole = systemSettings.defaultModules?.[role] || [];
-                                    const isChecked = defaultForRole.includes(module.id);
-                                    return (
-                                        <div key={`${role}-${module.id}`} className="flex items-center space-x-2">
-                                            <Checkbox
-                                                id={`${role}-${module.id}`}
-                                                checked={isChecked}
-                                                onCheckedChange={(checked) => handleDefaultModuleChange(role, module.id, !!checked)}
-                                                disabled={isSavingSettings}
-                                            />
-                                            <Label htmlFor={`${role}-${module.id}`} className="text-sm font-normal">{module.label}</Label>
-                                        </div>
-                                    );
-                                })}
-                            </div>
-                        </div>
-                    ))}
-                </div>
-              </div>
-              <Separator />
-              <div className="space-y-4">
-                <div className="flex items-center gap-2">
-                  <Bot className="h-5 w-5" />
-                  <Label className="text-base">API Integrations</Label>
-                </div>
-                <p className="text-sm text-muted-foreground">Enable or disable external data fetching services.</p>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div className="flex items-center justify-between rounded-lg border p-3">
-                    <Label htmlFor="scopus-toggle">Scopus</Label>
-                    <Switch
-                      id="scopus-toggle"
-                      checked={systemSettings.apiIntegrations?.scopus !== false}
-                      onCheckedChange={(c) => handleApiIntegrationToggle("scopus", c)}
-                      disabled={isSavingSettings}
-                    />
-                  </div>
-                  <div className="flex items-center justify-between rounded-lg border p-3">
-                    <Label htmlFor="wos-toggle">Web of Science</Label>
-                    <Switch
-                      id="wos-toggle"
-                      checked={systemSettings.apiIntegrations?.wos !== false}
-                      onCheckedChange={(c) => handleApiIntegrationToggle("wos", c)}
-                      disabled={isSavingSettings}
-                    />
-                  </div>
-                  <div className="flex items-center justify-between rounded-lg border p-3">
-                    <Label htmlFor="sci-toggle">ScienceDirect</Label>
-                    <Switch
-                      id="sci-toggle"
-                      checked={systemSettings.apiIntegrations?.sci !== false}
-                      onCheckedChange={(c) => handleApiIntegrationToggle("sci", c)}
-                      disabled={isSavingSettings}
-                    />
-                  </div>
-                </div>
-              </div>
-              <Separator />
-               <div className="space-y-4">
-                <div className="flex items-center gap-2">
-                    <ShieldCheck className="h-5 w-5" />
-                    <Label className="text-base">Two-Factor Authentication (2FA)</Label>
-                </div>
-                <div className="flex items-center justify-between rounded-lg border p-4">
-                    <div className="space-y-0.5">
-                      <Label htmlFor="2fa-switch">Enable Email OTP on Login</Label>
-                      <p className="text-sm text-muted-foreground">
-                        When enabled, all users (except for a few hardcoded exceptions) will be required to enter a one-time password sent to their email upon login.
-                      </p>
+                <Separator />
+                <div className="space-y-4">
+                    <div className="flex items-center gap-2"><FileText className="h-5 w-5" /><Label className="text-base">Template Management</Label></div>
+                    <p className="text-sm text-muted-foreground">Provide the direct download URLs for the DOCX templates used to generate office notings and other documents.</p>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4">
+                        {templateFields.map(({ key, label }) => (<div key={key} className="space-y-1"><Label htmlFor={`template-${key}`} className="text-sm">{label}</Label><Input id={`template-${key}`} placeholder="https://..." value={systemSettings?.templateUrls?.[key] || ''} onChange={(e) => handleTemplateUrlChange(key, e.target.value)} disabled={isSavingSettings} /></div>))}
                     </div>
-                    <Switch
-                      id="2fa-switch"
-                      checked={systemSettings.is2faEnabled}
-                      onCheckedChange={handle2faToggle}
-                      disabled={isSavingSettings}
-                    />
                 </div>
-              </div>
-              <Separator />
-              <div className="space-y-4">
-                <div className="flex items-center gap-2">
-                  <FileText className="h-5 w-5" />
-                  <Label className="text-base">Template Management</Label>
+                <Separator />
+                <div className="flex items-center justify-between">
+                    <div className="space-y-0.5"><Label className="text-base">Two-Factor Authentication (2FA)</Label><p className="text-sm text-muted-foreground">{systemSettings.is2faEnabled ? "Enabled" : "Disabled"} - Require users to verify their identity with an email OTP upon login.</p></div>
+                    <Switch checked={systemSettings.is2faEnabled} onCheckedChange={handle2faToggle} disabled={isSavingSettings}/>
                 </div>
-                <p className="text-sm text-muted-foreground">
-                  Provide the direct download URLs for the DOCX templates used to generate office notings and other
-                  documents.
-                </p>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4">
-                  {templateFields.map(({ key, label }) => (
-                    <div key={key} className="space-y-1">
-                      <Label htmlFor={`template-${key}`} className="text-sm">
-                        {label}
-                      </Label>
-                      <Input
-                        id={`template-${key}`}
-                        placeholder="https://..."
-                        defaultValue={systemSettings.templateUrls?.[key] || ""}
-                        onBlur={(e) => handleTemplateUrlChange(key, e.target.value)}
-                        disabled={isSavingSettings}
-                      />
+                <Separator />
+                <div className="space-y-4"><div className="flex items-center gap-2"><Clock className="h-5 w-5" /><Label className="text-base">IMR Mid-term Review Window</Label></div><p className="text-sm text-muted-foreground">Set the number of months after a grant is awarded that a project becomes eligible for a mid-term review.</p><div className="flex items-center gap-2"><Input type="number" className="w-24" value={systemSettings?.imrMidTermReviewMonths || 6} onChange={(e) => handleImrMidTermReviewChange(parseInt(e.target.value, 10) || 6)} disabled={isSavingSettings} min="1" /><span className="text-sm text-muted-foreground">months</span></div></div>
+                <Separator />
+                <div className="space-y-4"><div className="flex items-center gap-2"><CalendarIcon className="h-5 w-5" /><Label className="text-base">IMR Evaluation Window</Label></div><p className="text-sm text-muted-foreground">Set the number of days evaluators have to submit their feedback after the scheduled meeting date. Set to 0 to only allow same-day evaluations.</p><div className="flex items-center gap-2"><Input type="number" className="w-24" value={systemSettings?.imrEvaluationDays || 0} onChange={(e) => handleImrEvaluationDaysChange(parseInt(e.target.value, 10) || 0)} disabled={isSavingSettings} min="0" /><span className="text-sm text-muted-foreground">days</span></div></div>
+                <Separator />
+                <div className="space-y-4"><div className="flex items-center gap-2"><Award className="h-5 w-5" /><Label className="text-base">Incentive Claim Management</Label></div><p className="text-sm text-muted-foreground">Enable or disable specific types of incentive claims for all users.</p><div className="grid grid-cols-2 md:grid-cols-3 gap-4">{incentiveClaimTypes.map(type => (<div key={type} className="flex items-center space-x-2"><Switch id={`incentive-${type.replace(/\s+/g, '-')}`} checked={systemSettings.enabledIncentiveTypes?.[type] !== false} onCheckedChange={(checked) => handleIncentiveTypeToggle(type, checked)} disabled={isSavingSettings} /><Label htmlFor={`incentive-${type.replace(/\s+/g, '-')}`}>{type}</Label></div>))}</div></div>
+                <Separator />
+                <div className="space-y-4"><div className="flex items-center gap-2"><Award className="h-5 w-5" /><Label className="text-base">Incentive Approval Workflow</Label></div><p className="text-sm text-muted-foreground">Select which approval stages are required for each claim type. Stage 1 is automatically the Principal. Stages 2-5 are configured below.</p><Table><TableHeader><TableRow><TableHead>Claim Type</TableHead><TableHead className="text-center">Stage 1 (Principal)</TableHead><TableHead className="text-center">Stage 2</TableHead><TableHead className="text-center">Stage 3</TableHead><TableHead className="text-center">Stage 4</TableHead><TableHead className="text-center">Stage 5</TableHead></TableRow></TableHeader><TableBody>{incentiveClaimTypes.map(type => { const workflow = systemSettings.incentiveApprovalWorkflows?.[type] || [1, 2, 3, 4, 5]; return (<TableRow key={type}><TableCell className="font-medium">{type}</TableCell>{[1, 2, 3, 4, 5].map(stage => (<TableCell key={stage} className="text-center"><Checkbox checked={workflow.includes(stage)} onCheckedChange={(checked) => handleWorkflowChange(type, stage, !!checked)} disabled={isSavingSettings} /></TableCell>))}</TableRow>);})}</TableBody></Table></div>
+                <Separator />
+                <div className="space-y-4"><div className="flex items-center gap-2"><Mail className="h-5 w-5" /><Label className="text-base">Do Not Disturb (DND) Email</Label></div><p className="text-sm text-muted-foreground">The email address entered here will be excluded from all automated system email notifications.</p><Input placeholder="dnd.user@paruluniversity.ac.in" value={systemSettings.dndEmail || ''} onChange={(e) => setSystemSettings(prev => prev ? { ...prev, dndEmail: e.target.value } : null)} onBlur={(e) => handleSystemSettingsSave({ ...systemSettings, dndEmail: e.target.value })} disabled={isSavingSettings} /></div>
+                <Separator />
+                <div className="space-y-4"><Label className="text-base">Allowed Email Domains</Label><p className="text-sm text-muted-foreground">Users with these email domains can register and access the portal.</p><div className="flex gap-2"><Input placeholder="@newcampus.paruluniversity.ac.in" value={newAllowedDomain} onChange={(e) => setNewAllowedDomain(e.target.value)} /><Button onClick={addAllowedDomain} disabled={isSavingSettings || !newAllowedDomain.trim()}><Plus className="h-4 w-4" /></Button></div><div className="flex flex-wrap gap-2">{(systemSettings.allowedDomains || []).map((domain) => (<Badge key={domain} variant="secondary" className="flex items-center gap-1">{domain}<Button variant="ghost" size="icon" className="h-4 w-4 hover:bg-destructive hover:text-destructive-foreground" onClick={() => removeAllowedDomain(domain)} disabled={isSavingSettings}><X className="h-3 w-3" /></Button></Badge>))}</div></div>
+                <Separator />
+                <div className="space-y-4"><Label className="text-base">CRO Pre-assignment</Label><p className="text-sm text-muted-foreground">Pre-assign the CRO role and their primary faculty/campus to a specific email. This will be automatically applied upon sign-up.</p><Form {...croAssignmentForm}><form onSubmit={croAssignmentForm.handleSubmit(addCroAssignment)} className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end p-4 border rounded-lg"><FormField control={croAssignmentForm.control} name="email" render={({ field }) => ( <FormItem><FormLabel>CRO Email</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem> )} /><FormField control={croAssignmentForm.control} name="campus" render={({ field }) => ( <FormItem><FormLabel>Campus</FormLabel><Select onValueChange={field.onChange} value={field.value}><FormControl><SelectTrigger><SelectValue placeholder="Select campus" /></SelectTrigger></FormControl><SelectContent>{campuses.map(c => (<SelectItem key={c} value={c}>{c}</SelectItem>))}</SelectContent></Select><FormMessage /></FormItem> )} /><FormField control={croAssignmentForm.control} name="faculty" render={({ field }) => ( <FormItem><FormLabel>Faculty</FormLabel><Select onValueChange={field.onChange} value={field.value}><FormControl><SelectTrigger><SelectValue placeholder="Select faculty" /></SelectTrigger></FormControl><SelectContent>{facultyOptionsForCro.map(f => (<SelectItem key={f} value={f}>{f}</SelectItem>))}</SelectContent></Select><FormMessage /></FormItem> )} /><Button type="submit" disabled={isSavingSettings}><Plus className="h-4 w-4 mr-2" /> Add CRO</Button></form></Form>{(systemSettings.croAssignments || []).length > 0 && (<Table><TableHeader><TableRow><TableHead>Email</TableHead><TableHead>Faculty</TableHead><TableHead>Campus</TableHead><TableHead className="text-right">Action</TableHead></TableRow></TableHeader><TableBody>{systemSettings.croAssignments?.map((assignment) => (<TableRow key={assignment.email}><TableCell>{assignment.email}</TableCell><TableCell>{assignment.faculty}</TableCell><TableCell>{assignment.campus}</TableCell><TableCell className="text-right"><Button variant="ghost" size="icon" onClick={() => removeCroAssignment(assignment.email)} disabled={isSavingSettings}><X className="h-4 w-4" /></Button></TableCell></TableRow>))}</TableBody></Table>)}</div>
+                <Separator />
+                <div className="space-y-4"><div className="flex items-center gap-2"><Mail className="h-5 w-5" /><Label className="text-base">Utilization Report Email Recipient</Label></div><p className="text-sm text-muted-foreground">The email address that will receive a notification when a PI submits a utilization report and requests the next grant phase.</p><Input placeholder="finance.rdc@paruluniversity.ac.in" value={systemSettings?.utilizationNotificationEmail || ''} onChange={(e) => handleSystemSettingsSave({ ...systemSettings, utilizationNotificationEmail: e.target.value })} disabled={isSavingSettings} /></div>
+                <Separator />
+                <div className="space-y-4"><Label className="text-base">IQAC Email Address</Label><p className="text-sm text-muted-foreground">The user who signs up with this email will be automatically assigned the IQAC role.</p><Input placeholder="iqac@paruluniversity.ac.in" value={systemSettings?.iqacEmail || ''} onChange={(e) => handleSystemSettingsSave({ ...systemSettings, iqacEmail: e.target.value })} disabled={isSavingSettings} /></div>
+                <Separator />
+                <div className="space-y-4">
+                  <Form {...dummyForm}>
+                    <Label className="text-base">Incentive Approval Stages</Label>
+                    <p className="text-sm text-muted-foreground">Configure the approver email addresses for stages 2-5. Stage 1 is automatically assigned to the Principal of the institution.</p>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        {[2, 3, 4, 5].map(stage => {
+                            const approver = systemSettings?.incentiveApprovers?.find(a => a.stage === stage);
+                            return (<div key={stage} className="p-4 border rounded-lg space-y-3"><FormItem><FormLabel>Stage {stage} Approver Email</FormLabel><Input type="email" placeholder={`approver.stage${stage}@paruluniversity.ac.in`} value={approver?.email || ''} onChange={(e) => handleApproverChange(stage as 2 | 3 | 4 | 5, e.target.value)} disabled={isSavingSettings} /></FormItem></div>);
+                        })}
                     </div>
-                  ))}
+                  </Form>
                 </div>
-              </div>
-              <Separator />
-              <div className="space-y-4">
-                <div className="flex items-center gap-2">
-                  <Clock className="h-5 w-5" />
-                  <Label className="text-base">IMR Mid-term Review Window</Label>
-                </div>
-                <p className="text-sm text-muted-foreground">
-                  Set the number of months after a grant is awarded that a project becomes eligible for a mid-term
-                  review.
-                </p>
-                <div className="flex items-center gap-2">
-                  <Input
-                    type="number"
-                    className="w-24"
-                    defaultValue={systemSettings.imrMidTermReviewMonths || 6}
-                    onBlur={(e) => handleImrMidTermReviewChange(Number.parseInt(e.target.value, 10) || 6)}
-                    disabled={isSavingSettings}
-                    min="1"
-                  />
-                  <span className="text-sm text-muted-foreground">months</span>
-                </div>
-              </div>
-              <Separator />
-              <div className="space-y-4">
-                <div className="flex items-center gap-2">
-                  <CalendarIcon className="h-5 w-5" />
-                  <Label className="text-base">IMR Evaluation Window</Label>
-                </div>
-                <p className="text-sm text-muted-foreground">
-                  Set the number of days evaluators have to submit their feedback after the scheduled meeting date. Set
-                  to 0 to only allow same-day evaluations.
-                </p>
-                <div className="flex items-center gap-2">
-                  <Input
-                    type="number"
-                    className="w-24"
-                    defaultValue={systemSettings.imrEvaluationDays || 0}
-                    onBlur={(e) => handleImrEvaluationDaysChange(Number.parseInt(e.target.value, 10) || 0)}
-                    disabled={isSavingSettings}
-                    min="0"
-                  />
-                  <span className="text-sm text-muted-foreground">days</span>
-                </div>
-              </div>
-              <Separator />
-              <div className="space-y-4">
-                <div className="flex items-center gap-2">
-                  <Award className="h-5 w-5" />
-                  <Label className="text-base">Incentive Claim Management</Label>
-                </div>
-                <p className="text-sm text-muted-foreground">
-                  Enable or disable specific types of incentive claims for all users.
-                </p>
-                <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                  {incentiveClaimTypes.map((type) => (
-                    <div key={type} className="flex items-center space-x-2">
-                      <Switch
-                        id={`incentive-${type.replace(/\s+/g, "-")}`}
-                        checked={systemSettings.enabledIncentiveTypes?.[type] !== false}
-                        onCheckedChange={(checked) => handleIncentiveTypeToggle(type, checked)}
-                        disabled={isSavingSettings}
-                      />
-                      <Label htmlFor={`incentive-${type.replace(/\s+/g, "-")}`}>{type}</Label>
-                    </div>
-                  ))}
-                </div>
-              </div>
-              <Separator />
-              <div className="space-y-4">
-                <div className="flex items-center gap-2">
-                  <Award className="h-5 w-5" />
-                  <Label className="text-base">Incentive Approval Workflow</Label>
-                </div>
-                <p className="text-sm text-muted-foreground">
-                  Select which approval stages are required for each claim type. Stage 1 is always the Principal.
-                </p>
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Claim Type</TableHead>
-                      {[2, 3, 4, 5].map(stage => <TableHead key={stage} className="text-center">Stage {stage}</TableHead>)}
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {incentiveClaimTypes.map((type) => {
-                      const workflow = systemSettings.incentiveApprovalWorkflows?.[type] || [1, 2, 3, 4, 5]
-                      return (
-                        <TableRow key={type}>
-                          <TableCell className="font-medium">{type}</TableCell>
-                          {[2, 3, 4, 5].map((stage) => (
-                            <TableCell key={stage} className="text-center">
-                              <Checkbox
-                                checked={workflow.includes(stage)}
-                                onCheckedChange={(checked) => handleWorkflowChange(type, stage, !!checked)}
-                                disabled={isSavingSettings}
-                              />
-                            </TableCell>
-                          ))}
-                        </TableRow>
-                      )
-                    })}
-                  </TableBody>
-                </Table>
-              </div>
-              <Separator />
-              <div className="space-y-4">
-                <Form {...dummyForm}>
-                  <Label className="text-base">Incentive Approver Configuration</Label>
-                  <p className="text-sm text-muted-foreground">
-                    Define the email addresses for the approval stages. Stage 1 is automatically routed to the claimant's Principal.
-                  </p>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    {[2, 3, 4, 5].map((stage) => {
-                      const approver = systemSettings.incentiveApprovers?.find((a) => a.stage === stage)
-                      return (
-                        <div key={stage} className="p-4 border rounded-lg space-y-3">
-                          <FormItem>
-                            <FormLabel>Stage {stage} Approver Email</FormLabel>
-                            <Input
-                              type="email"
-                              placeholder={`approver.stage${stage}@paruluniversity.ac.in`}
-                              defaultValue={approver?.email || ""}
-                              onBlur={(e) => handleApproverChange(stage as 2 | 3 | 4 | 5, e.target.value)}
-                              disabled={isSavingSettings}
-                            />
-                          </FormItem>
-                        </div>
-                      )
-                    })}
-                  </div>
-                </Form>
-              </div>
-              <Separator />
-              <div className="space-y-4">
-                <div className="flex items-center gap-2">
-                  <Mail className="h-5 w-5" />
-                  <Label className="text-base">Do Not Disturb (DND) Email</Label>
-                </div>
-                <p className="text-sm text-muted-foreground">
-                  The email address entered here will be excluded from all automated system email notifications.
-                </p>
-                <Input
-                  placeholder="dnd.user@paruluniversity.ac.in"
-                  defaultValue={systemSettings.dndEmail || ""}
-                  onBlur={(e) => handleSystemSettingsSave({ ...systemSettings, dndEmail: e.target.value })}
-                  disabled={isSavingSettings}
-                />
-              </div>
-              <Separator />
-              <div className="space-y-4">
-                <Label className="text-base">Allowed Email Domains</Label>
-                <p className="text-sm text-muted-foreground">
-                  Users with these email domains can register and access the portal.
-                </p>
-                <div className="flex gap-2">
-                  <Input
-                    placeholder="@newcampus.paruluniversity.ac.in"
-                    value={newAllowedDomain}
-                    onChange={(e) => setNewAllowedDomain(e.target.value)}
-                  />
-                  <Button onClick={addAllowedDomain} disabled={isSavingSettings || !newAllowedDomain.trim()}>
-                    <Plus className="h-4 w-4" />
-                  </Button>
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  {(systemSettings.allowedDomains || []).map((domain) => (
-                    <Badge key={domain} variant="secondary" className="flex items-center gap-1">
-                      {domain}
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-4 w-4 hover:bg-destructive hover:text-destructive-foreground"
-                        onClick={() => removeAllowedDomain(domain)}
-                        disabled={isSavingSettings}
-                      >
-                        <X className="h-3 w-3" />
-                      </Button>
-                    </Badge>
-                  ))}
-                </div>
-              </div>
-              <Separator />
-              <div className="space-y-4">
-                <div className="flex items-center gap-2">
-                  <Mail className="h-5 w-5" />
-                  <Label className="text-base">Utilization Report Email Recipient</Label>
-                </div>
-                <p className="text-sm text-muted-foreground">
-                  The email address that will receive a notification when a PI submits a utilization report and requests
-                  the next grant phase.
-                </p>
-                <Input
-                  placeholder="finance.rdc@paruluniversity.ac.in"
-                  defaultValue={systemSettings.utilizationNotificationEmail || ""}
-                  onBlur={(e) =>
-                    handleSystemSettingsSave({ ...systemSettings, utilizationNotificationEmail: e.target.value })
-                  }
-                  disabled={isSavingSettings}
-                />
-              </div>
-              <Separator />
-              <div className="space-y-4">
-                <Label className="text-base">IQAC Email Address</Label>
-                <p className="text-sm text-muted-foreground">
-                  The user who signs up with this email will be automatically assigned the IQAC role.
-                </p>
-                <Input
-                  placeholder="iqac@paruluniversity.ac.in"
-                  defaultValue={systemSettings.iqacEmail || ""}
-                  onBlur={(e) => handleSystemSettingsSave({ ...systemSettings, iqacEmail: e.target.value })}
-                  disabled={isSavingSettings}
-                />
-              </div>
             </CardContent>
           </Card>
         )}
@@ -1109,25 +766,6 @@ export default function SettingsPage() {
                 <CardDescription>Update your personal information.</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
-                 <div className="flex items-end gap-2">
-                    <FormField
-                      control={profileForm.control}
-                      name="misId"
-                      render={({ field }) => (
-                        <FormItem className="flex-grow">
-                          <FormLabel>MIS ID</FormLabel>
-                          <FormControl>
-                            <Input placeholder="Your MIS ID" {...field} />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                     <Button type="button" variant="outline" onClick={handlePrefillData} disabled={isPrefilling || !profileForm.getValues('misId')}>
-                        {isPrefilling ? <Loader2 className="h-4 w-4 animate-spin"/> : <Search className="h-4 w-4"/>}
-                         <span className="ml-2 hidden sm:inline">Fetch Data</span>
-                     </Button>
-                  </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <FormField
                     control={profileForm.control}
@@ -1156,34 +794,16 @@ export default function SettingsPage() {
                     )}
                   />
                 </div>
-                <FormField
-                  name="campus"
-                  control={profileForm.control}
-                  render={({ field }) => (
+                 <FormField name="campus" control={profileForm.control} render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Campus</FormLabel>
-                      <Select
-                        onValueChange={field.onChange}
-                        value={field.value}
-                        disabled={user?.email?.endsWith("@goa.paruluniversity.ac.in")}
-                      >
-                        <FormControl>
-                          <SelectTrigger>
-                            <SelectValue placeholder="Select your campus" />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          {campuses.map((campus) => (
-                            <SelectItem key={campus} value={campus}>
-                              {campus}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <FormMessage />
+                        <FormLabel>Campus</FormLabel>
+                        <Select onValueChange={field.onChange} value={field.value} disabled={user?.email?.endsWith('@goa.paruluniversity.ac.in')}>
+                            <FormControl><SelectTrigger><SelectValue placeholder="Select your campus" /></SelectTrigger></FormControl>
+                            <SelectContent>{campuses.map(campus => (<SelectItem key={campus} value={campus}>{campus}</SelectItem>))}</SelectContent>
+                        </Select>
+                        <FormMessage />
                     </FormItem>
-                  )}
-                />
+                 )} />
                 <FormField
                   name="faculty"
                   control={profileForm.control}
@@ -1197,7 +817,7 @@ export default function SettingsPage() {
                           </SelectTrigger>
                         </FormControl>
                         <SelectContent>
-                          {goaFaculties.map((f) => (
+                          {faculties.map((f) => (
                             <SelectItem key={f} value={f}>
                               {f}
                             </SelectItem>
@@ -1221,7 +841,7 @@ export default function SettingsPage() {
                           </SelectTrigger>
                         </FormControl>
                         <SelectContent>
-                          {[...new Set(goaInstitutes)].map((i, index) => (
+                          {[...new Set(institutes)].map((i, index) => (
                             <SelectItem key={`${i}-${index}`} value={i}>
                               {i}
                             </SelectItem>
@@ -1283,12 +903,12 @@ export default function SettingsPage() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <FormField
                     control={profileForm.control}
-                    name="orcidId"
+                    name="misId"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>ORCID iD</FormLabel>
+                        <FormLabel>MIS ID</FormLabel>
                         <FormControl>
-                          <Input placeholder="e.g., 0000-0001-2345-6789" {...field} />
+                          <Input placeholder="Your MIS ID" {...field} />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -1296,18 +916,31 @@ export default function SettingsPage() {
                   />
                   <FormField
                     control={profileForm.control}
-                    name="scopusId"
+                    name="orcidId"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Scopus ID (Optional)</FormLabel>
-                        <FormControl>
-                          <Input placeholder="Your Scopus Author ID" {...field} />
-                        </FormControl>
+                        <FormLabel>ORCID iD</FormLabel>
+                          <FormControl>
+                            <Input placeholder="e.g., 0000-0001-2345-6789" {...field} />
+                          </FormControl>
                         <FormMessage />
                       </FormItem>
                     )}
                   />
                 </div>
+                <FormField
+                  control={profileForm.control}
+                  name="scopusId"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Scopus ID (Optional)</FormLabel>
+                      <FormControl>
+                        <Input placeholder="Your Scopus Author ID" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
                 <FormField
                   control={profileForm.control}
                   name="vidwanId"
@@ -1353,8 +986,8 @@ export default function SettingsPage() {
                   <CardTitle>Salary Bank Account Details</CardTitle>
                 </div>
                 <CardDescription>
-                  This information is required for grant disburssal. These details would be only visible to admin if
-                  your project is approved.
+                  This information is required for grant disbursal. These details would be only visible to admin if your
+                  project is approved.
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">

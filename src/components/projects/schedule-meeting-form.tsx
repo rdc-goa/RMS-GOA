@@ -23,7 +23,7 @@ import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Input } from '@/components/ui/input';
-import { scheduleMeeting } from '@/app/server-actions';
+import { scheduleMeeting } from '@/app/actions';
 import {
   DropdownMenu,
   DropdownMenuCheckboxItem,

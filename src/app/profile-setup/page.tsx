@@ -1,3 +1,4 @@
+
   'use client';
 
 import { useRouter } from 'next/navigation';
@@ -13,7 +14,7 @@ import { Logo } from '@/components/logo';
 import { useToast } from '@/hooks/use-toast';
 import { auth, db } from '@/lib/config';
 import { doc, getDoc, updateDoc } from 'firebase/firestore';
-import { uploadFileToServer, checkMisIdExists, linkEmrInterestsByMisId } from '@/app/server-actions';
+import { uploadFileToServer, checkMisIdExists, linkEmrInterestsByMisId } from '@/app/actions';
 import type { User } from '@/types';
 import { useState, useEffect, useCallback } from 'react';
 import { onAuthStateChanged, type User as FirebaseUser } from 'firebase/auth';
@@ -27,49 +28,32 @@ import { Combobox } from '@/components/ui/combobox';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from '@/components/ui/dialog';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 
-const profileSetupSchema = (userType: string | null) => z.object({
+const profileSetupSchema = z.object({
   name: z.string().min(2, 'A full name is required.'),
+  campus: z.string().min(1, 'Please select a campus.'),
   faculty: z.string().min(1, 'Please select a faculty.'),
   institute: z.string().min(1, 'Please select an institute.'),
   department: z.string().optional(),
   designation: z.string().min(2, 'Designation is required.'),
-  misId: z.string().optional(),
+  misId: z.string().min(1, 'MIS ID is required.'),
   orcidId: z.string().optional(),
   scopusId: z.string().optional(),
   vidwanId: z.string().optional(),
   googleScholarId: z.string().optional(),
-  phoneNumber: z.string().optional(),
-}).superRefine((data, ctx) => {
-    if (userType !== 'Institutional') {
-        if (!data.misId || data.misId.length < 1) {
-            ctx.addIssue({
-                code: z.ZodIssueCode.custom,
-                message: 'MIS ID is required.',
-                path: ['misId'],
-            });
-        }
-        if (!data.phoneNumber || !/^\d{10}$/.test(data.phoneNumber)) {
-            ctx.addIssue({
-                code: z.ZodIssueCode.custom,
-                message: 'A valid 10-digit phone number is required.',
-                path: ['phoneNumber'],
-            });
-        }
-    }
+  phoneNumber: z.string().min(10, 'A valid 10-digit phone number is required.').max(10, 'A valid 10-digit phone number is required.'),
 });
 
-
-type ProfileSetupFormValues = z.infer<ReturnType<typeof profileSetupSchema>>;
+type ProfileSetupFormValues = z.infer<typeof profileSetupSchema>;
 
 
 const faculties = [
-    "Faculty of Engineering & Technology", "Faculty of Applied Sciences", "Faculty of Library & Information Science",
-    "Faculty of IT & Computer Science", "Faculty of Agriculture", "Faculty of Architecture & Planning",
-    "Faculty of Design", "Faculty of Fine Arts", "Faculty of Arts", "Faculty of Commerce",
-    "Faculty of Social Work", "Faculty of Management Studies", "Faculty of Hotel Management & Catering Technology",
-    "Faculty of Law", "Faculty of Medicine", "Faculty of Homoeopathy", "Faculty of Ayurved",
-    "Faculty of Nursing", "Faculty of Pharmacy", "Faculty of Physiotherapy", "Faculty of Public Health", 
-    "Parul Sevashram Hospital", "RDC", "University Office", "Parul Aarogya Seva Mandal"
+    "Faculty of Engineering, IT & CS",
+    "Faculty of Management Studies",
+    "Faculty of Pharmacy",
+    "Faculty of Applied and Health Sciences",
+    "Faculty of Nursing",
+    "Faculty of Physiotherapy",
+    "University Office"
 ];
 
 const campuses = ["Goa"];
@@ -85,6 +69,17 @@ const goaFaculties = [
 ];
 
 const goaInstitutes = [
+    "Parul College of Applied and Health Sciences",
+    "Parul College of Engineering",
+    "Parul College of Information Technology & Computer Science",
+    "Parul College of Management",
+    "Parul College of Nursing",
+    "Parul College of Pharmacy",
+    "Parul College of Physiotherapy",
+    "University Office"
+];
+
+const institutes = [
     "Parul College of Applied and Health Sciences",
     "Parul College of Engineering",
     "Parul College of Information Technology & Computer Science",
@@ -120,9 +115,10 @@ export default function ProfileSetupPage() {
   const [isSelectionOpen, setIsSelectionOpen] = useState(false);
 
   const form = useForm<ProfileSetupFormValues>({
-    resolver: zodResolver(profileSetupSchema(userType)),
+    resolver: zodResolver(profileSetupSchema),
     defaultValues: {
       name: '',
+      campus: '',
       faculty: '',
       institute: '',
       department: '',
@@ -136,6 +132,8 @@ export default function ProfileSetupPage() {
     },
   });
 
+  const isGoaCampusUser = user?.email?.endsWith('@goa.paruluniversity.ac.in');
+
   const prefillData = useCallback(async () => {
       if (!misIdToFetch || !user?.email) return;
       setIsPrefilling(true);
@@ -144,13 +142,13 @@ export default function ProfileSetupPage() {
           const result = await res.json();
           
           if (result.success && result.data.length > 0) {
-              if (result.data.length > 1) { 
+              if (result.data.length > 1) { // This case is now less likely but kept for robustness
                   setFoundUsers(result.data);
                   setIsSelectionOpen(true);
               } else {
                   form.reset(result.data[0]);
                   setUserType(result.data[0].type);
-                  form.setValue("misId", misIdToFetch); 
+                  form.setValue("misId", misIdToFetch); // Ensure the searched MIS ID is set
                   toast({ title: 'Profile Pre-filled', description: 'Your information has been pre-filled. Please review and save.' });
               }
           } else {
@@ -188,12 +186,17 @@ export default function ProfileSetupPage() {
           setPreviewUrl(appUser.photoURL || null);
           form.setValue('name', appUser.name);
           
+          if (appUser.email?.endsWith('@goa.paruluniversity.ac.in')) {
+            form.setValue('campus', 'Goa');
+          }
+
+          // Pre-fetch user type based on email to determine if MIS ID is needed.
           const staffRes = await fetch(`/api/get-staff-data?email=${appUser.email!}`);
           const staffResult = await staffRes.json();
-          if (staffResult.success && staffResult.data.length > 0) {
+          if (staffResult.success) {
               setUserType(staffResult.data[0]?.type || 'faculty');
           } else {
-              setUserType('faculty');
+              setUserType('faculty'); // Default to faculty if not found
           }
           
         } else {
@@ -217,6 +220,7 @@ export default function ProfileSetupPage() {
         const result = await res.json();
         if (result.success) {
           setDepartments(result.data);
+          // If current department is not in the new list, reset it
           const currentDepartment = form.getValues('department');
           if (currentDepartment && !result.data.includes(currentDepartment)) {
               form.setValue('department', '');
@@ -228,6 +232,7 @@ export default function ProfileSetupPage() {
     }
     fetchDepartments();
   }, [form]);
+
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
@@ -241,8 +246,8 @@ export default function ProfileSetupPage() {
   if (!user) return;
   setIsSubmitting(true);
   try {
-    if (data.misId && userType !== 'Institutional') {
-      const misIdCheck = await checkMisIdExists(data.misId, user.uid, 'Goa');
+    if (data.misId && data.campus) {
+      const misIdCheck = await checkMisIdExists(data.misId, user.uid, data.campus);
       if (misIdCheck.exists) {
         form.setError("misId", {
           type: "manual",
@@ -273,7 +278,6 @@ export default function ProfileSetupPage() {
 
     const updateData: Partial<User> = {
       ...data,
-      campus: 'Goa',
       photoURL: photoURL,
       profileComplete: true,
     };
@@ -283,6 +287,7 @@ export default function ProfileSetupPage() {
     const updatedUser = { ...user, ...updateData };
     localStorage.setItem('user', JSON.stringify(updatedUser));
     
+    // After profile is saved, link historical data
     if (updatedUser.misId) {
         const linkResult = await linkEmrInterestsByMisId(updatedUser.uid, updatedUser.misId);
         if (linkResult.success && linkResult.count > 0) {
@@ -322,6 +327,7 @@ export default function ProfileSetupPage() {
   const departmentOptions = departments.map(dept => ({ label: dept, value: dept }));
 
   return (
+    <>
     <div className="flex flex-col min-h-screen bg-background dark:bg-transparent">
       <main className="flex-1 flex min-h-screen items-center justify-center bg-muted/40 p-4">
         <div className="w-full max-w-lg">
@@ -338,14 +344,12 @@ export default function ProfileSetupPage() {
             <CardContent>
                {userType !== 'Institutional' && (
                 <div className="space-y-4 mb-6 p-4 border rounded-lg bg-muted/50">
-                  <Label htmlFor="misIdFetch">Fetch Details with MIS ID (Optional)</Label>
+                  <Label>Fetch Details with MIS ID (Optional)</Label>
                    <div className="flex items-center gap-2">
                       <Input
-                        id="misIdFetch"
                         placeholder="Enter your MIS ID"
                         value={misIdToFetch}
                         onChange={(e) => setMisIdToFetch(e.target.value)}
-                        autoComplete="off"
                       />
                       <Button type="button" onClick={prefillData} disabled={isPrefilling || !misIdToFetch}>
                         {isPrefilling ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
@@ -388,28 +392,73 @@ export default function ProfileSetupPage() {
                       <Input value={user.email} disabled />
                   </div>
 
-                  <FormField name="faculty" control={form.control} render={({ field }) => (
+                   <FormField name="campus" control={form.control} render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Faculty</FormLabel>
-                      <Select onValueChange={field.onChange} value={field.value}>
-                        <FormControl><SelectTrigger><SelectValue placeholder="Select your faculty" /></SelectTrigger></FormControl>
-                        <SelectContent>{goaFaculties.map(f => (<SelectItem key={f} value={f}>{f}</SelectItem>))}</SelectContent>
+                      <FormLabel>Campus</FormLabel>
+                      <Select
+                        onValueChange={(value) => {
+                          field.onChange(value);
+                          if (value === "Goa") {
+                            if (!goaFaculties.includes(form.getValues("faculty"))) {
+                              form.setValue("faculty", "");
+                            }
+                          }
+                        }}
+                        value={field.value}
+                        disabled={isGoaCampusUser}
+                      >
+                        <FormControl><SelectTrigger><SelectValue placeholder="Select your campus" /></SelectTrigger></FormControl>
+                        <SelectContent>{campuses.map(campus => (<SelectItem key={campus} value={campus}>{campus}</SelectItem>))}</SelectContent>
                       </Select>
                       <FormMessage />
                     </FormItem>
                   )} />
-                 <FormField name="institute" control={form.control} render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Institute</FormLabel>
-                      <Select onValueChange={field.onChange} value={field.value}>
-                        <FormControl><SelectTrigger><SelectValue placeholder="Select your institute" /></SelectTrigger></FormControl>
-                        <SelectContent>{[...new Set(goaInstitutes)].map((i, index) => (<SelectItem key={`${i}-${index}`} value={i}>{i}</SelectItem>))}</SelectContent>
-                      </Select>
-                      <FormMessage />
-                    </FormItem>
-                  )} />
+
+                  <FormField name="faculty" control={form.control} render={({ field }) => {
+                    const facultyOptions = form.getValues("campus") === "Goa" ? goaFaculties : faculties;
+                    return (
+                      <FormItem>
+                        <FormLabel>Faculty</FormLabel>
+                        <Select onValueChange={field.onChange} value={field.value}>
+                          <FormControl>
+                            <SelectTrigger>
+                              <SelectValue placeholder="Select your faculty" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            {facultyOptions.map(f => (
+                              <SelectItem key={f} value={f}>{f}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    );
+                  }} />
+                 <FormField name="institute" control={form.control} render={({ field }) => {
+                    const instituteOptions = institutes;
+                    return (
+                      <FormItem>
+                        <FormLabel>Institute</FormLabel>
+                        <Select onValueChange={field.onChange} value={field.value}>
+                          <FormControl>
+                            <SelectTrigger>
+                              <SelectValue placeholder="Select your institute" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            {instituteOptions.map(i => (
+                              <SelectItem key={i} value={i}>{i}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    );
+                  }} />
                   <h3 className="text-lg font-semibold border-t pt-4">Academic & Contact Details</h3>
-                   {userType !== 'Institutional' && (
+                   {/* Removed duplicate faculty field here since it's rendered conditionally above */}
+                  {userType !== 'Institutional' && (
                      <FormField
                       control={form.control}
                       name="department"
@@ -432,30 +481,26 @@ export default function ProfileSetupPage() {
                   <FormField control={form.control} name="designation" render={({ field }) => (
                     <FormItem><FormLabel>Designation</FormLabel><FormControl><Input placeholder="e.g., Professor" {...field} /></FormControl><FormMessage /></FormItem>
                   )} />
-                   {userType !== 'Institutional' && (
-                    <FormField control={form.control} name="phoneNumber" render={({ field }) => (
-                        <FormItem><FormLabel>Phone Number</FormLabel><FormControl><Input type="tel" placeholder="e.g. 9876543210" {...field} /></FormControl><FormMessage /></FormItem>
-                    )} />
-                   )}
+                  <FormField control={form.control} name="phoneNumber" render={({ field }) => (
+                    <FormItem><FormLabel>Phone Number</FormLabel><FormControl><Input type="tel" placeholder="e.g. 9876543210" {...field} /></FormControl><FormMessage /></FormItem>
+                  )} />
                   
                   <Separator />
                   <h3 className="text-md font-semibold pt-2">Academic & Researcher IDs</h3>
                   
-                   {userType !== 'Institutional' && (
-                    <FormField
-                        control={form.control}
-                        name="misId"
-                        render={({ field }) => (
-                        <FormItem>
-                            <FormLabel>MIS ID</FormLabel>
-                            <FormControl>
-                            <Input placeholder="Your MIS ID" {...field} />
-                            </FormControl>
-                            <FormMessage />
-                        </FormItem>
-                        )}
-                    />
-                   )}
+                  <FormField
+                    control={form.control}
+                    name="misId"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>MIS ID</FormLabel>
+                        <FormControl>
+                          <Input placeholder="Your MIS ID" {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
                    <FormField control={form.control} name="orcidId" render={({ field }) => (
                       <FormItem>
                           <FormLabel>ORCID iD</FormLabel>
@@ -498,7 +543,8 @@ export default function ProfileSetupPage() {
           </Link>
         </nav>
       </footer>
-       <Dialog open={isSelectionOpen} onOpenChange={setIsSelectionOpen}>
+    </div>
+    <Dialog open={isSelectionOpen} onOpenChange={setIsSelectionOpen}>
         <DialogContent>
             <DialogHeader>
                 <DialogTitle>Multiple Users Found</DialogTitle>
@@ -525,6 +571,6 @@ export default function ProfileSetupPage() {
             </DialogFooter>
         </DialogContent>
     </Dialog>
-    </div>
+    </>
   );
 }

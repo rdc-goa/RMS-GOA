@@ -1,4 +1,3 @@
-
 import { Logo } from '@/components/logo';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
@@ -70,7 +69,7 @@ export default function PrivacyPolicyPage() {
                 <p>You are advised to review this Privacy Policy periodically for any changes. Changes to this Privacy Policy are effective when they are posted on this page.</p>
                 
                 <h2>Contact Us</h2>
-                <p>If you have any questions about this Privacy Policy, You can contact us at: <a href="mailto:rdc@goa.paruluniversity.ac.in">rdc@goa.paruluniversity.ac.in</a></p>
+                <p>If you have any questions about this Privacy Policy, You can contact us at: <a href="mailto:helpdesk.rdc@paruluniversity.ac.in">helpdesk.rdc@paruluniversity.ac.in</a></p>
             </div>
         </div>
       </main>

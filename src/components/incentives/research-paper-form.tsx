@@ -1391,7 +1391,7 @@ export function ResearchPaperForm() {
                     <FormItem className="flex flex-row items-center justify-between rounded-lg border p-4">
                       <div className="space-y-0.5">
                         <FormLabel className="text-base">
-                          Is "Parul University" name present in the publication?
+                          Is "Parul University Goa" name present in the publication?
                         </FormLabel>
                          <FormDescription>If not, the final incentive amount will be reduced by 50%.</FormDescription>
                       </div>

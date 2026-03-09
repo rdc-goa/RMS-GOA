@@ -15,7 +15,7 @@ import type { Project, User, EmrInterest, FundingCall, CoPiDetails } from '@/typ
 import { Skeleton } from '@/components/ui/skeleton';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Download, Calendar as CalendarIcon, Eye, Upload, Loader2, Edit, Search, ChevronDown } from 'lucide-react';
+import { Download, Calendar as CalendarIcon, Eye, Upload, Loader2, Edit, Search, ChevronDown, Plus } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -35,13 +35,13 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
-import { updateEmrFinalStatus, updateEmrInterestCoPis } from '@/app/emr-actions';
-import { updateEmrInterestDetails } from '@/app/server-actions';
+import { updateEmrFinalStatus, updateEmrInterestCoPis, updateEmrInterestDetails, addSanctionedEmrProject } from '@/app/emr-actions';
 import { findUserByMisId } from '@/app/userfinding';
 import { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 
 
 const STATUSES: Project['status'][] = ['Submitted', 'Under Review', 'Recommended', 'Not Recommended', 'In Progress', 'Completed', 'Pending Completion Approval', 'Sanctioned'];
+const CAMPUSES = ['Vadodara', 'Goa', 'Ahmedabad', 'Rajkot'];
 
 const IMR_EXPORT_COLUMNS = [
   { id: 'title', label: 'Project Title' },
@@ -56,6 +56,7 @@ const IMR_EXPORT_COLUMNS = [
   { id: 'faculty', label: 'Faculty' },
   { id: 'institute', label: 'Institute' },
   { id: 'departmentName', label: 'Department' },
+  { id: 'campus', label: 'Campus' },
   { id: 'status', label: 'Status' },
   { id: 'coPiNames', label: 'Co-PI Names' },
 ];
@@ -67,11 +68,179 @@ const EMR_EXPORT_COLUMNS = [
     { id: 'piEmail', label: 'PI Email' },
     { id: 'piInstitute', label: 'PI Institute' },
     { id: 'piDepartment', label: 'PI Department' },
+    { id: 'campus', label: 'Campus' },
     { id: 'coPiNames', label: 'Co-PI Names' },
     { id: 'status', label: 'Status' },
     { id: 'sanctionDate', label: 'Sanction Date' },
     { id: 'durationAmount', label: 'Duration & Amount' },
 ];
+
+const addEmrSchema = z.object({
+    title: z.string().min(5, 'Project title is required.'),
+    agency: z.string().min(2, 'Funding agency is required.'),
+    sanctionDate: z.date().optional(),
+    amount: z.coerce.number().min(0, 'Amount cannot be negative.').optional(),
+    duration: z.coerce.number().min(0, 'Duration cannot be negative.').optional(),
+});
+
+function AddSanctionedEmrDialog({ isOpen, onOpenChange, onActionComplete }: { isOpen: boolean; onOpenChange: (open: boolean) => void; onActionComplete: () => void; }) {
+    const { toast } = useToast();
+    const [isSubmitting, setIsSubmitting] = useState(false);
+    const [pi, setPi] = useState<any>(null);
+    const [coPis, setCoPis] = useState<CoPiDetails[]>([]);
+    const [searchTerm, setSearchTerm] = useState('');
+    const [foundUsers, setFoundUsers] = useState<any[]>([]);
+    const [isSearching, setIsSearching] = useState(false);
+    const [searchFor, setSearchFor] = useState<'pi' | 'copi'>('pi');
+    const [isSelectionOpen, setIsSelectionOpen] = useState(false);
+
+    const form = useForm<z.infer<typeof addEmrSchema>>({
+        resolver: zodResolver(addEmrSchema),
+    });
+
+    const handleSearch = async () => {
+        if (!searchTerm) return;
+        setIsSearching(true);
+        try {
+            const result = await findUserByMisId(searchTerm);
+            if (result.success && result.users) {
+                if (result.users.length === 1) {
+                    handleUserSelect(result.users[0]);
+                } else {
+                    setFoundUsers(result.users);
+                    setIsSelectionOpen(true);
+                }
+            } else {
+                toast({ variant: 'destructive', title: 'User Not Found', description: result.error });
+            }
+        } finally { setIsSearching(false); }
+    };
+
+    const handleUserSelect = (user: any) => {
+        if (searchFor === 'pi') {
+            setPi(user);
+        } else {
+            if (!coPis.some(c => c.email === user.email)) {
+                setCoPis(prev => [...prev, user]);
+            }
+        }
+        setSearchTerm('');
+        setFoundUsers([]);
+        setIsSelectionOpen(false);
+    };
+
+    const handleSave = async (values: z.infer<typeof addEmrSchema>) => {
+        if (!pi) {
+            toast({ variant: 'destructive', title: 'PI Required', description: 'Please select a Principal Investigator.' });
+            return;
+        }
+        setIsSubmitting(true);
+        try {
+            // Construct durationAmount from separate fields
+            let durationAmount = '';
+            if (values.amount !== undefined && values.amount > 0) {
+                durationAmount += `Amount: ₹${values.amount.toLocaleString('en-IN')}`;
+            }
+            if (values.duration !== undefined && values.duration > 0) {
+                if (durationAmount) durationAmount += ' | ';
+                durationAmount += `Duration: ${values.duration} Years`;
+            }
+            if (!durationAmount) {
+                durationAmount = 'Not specified';
+            }
+
+            const result = await addSanctionedEmrProject({
+                title: values.title,
+                agency: values.agency,
+                sanctionDate: values.sanctionDate,
+                durationAmount,
+                pi: { uid: pi.uid, name: pi.name, email: pi.email },
+                coPis,
+            });
+            if (result.success) {
+                toast({ title: 'Success', description: 'EMR project added and PI notified.' });
+                onActionComplete();
+                onOpenChange(false);
+            } else {
+                throw new Error(result.error);
+            }
+        } catch (error: any) {
+            toast({ variant: 'destructive', title: 'Save Failed', description: error.message });
+        } finally {
+            setIsSubmitting(false);
+        }
+    };
+    
+    return (
+        <Dialog open={isOpen} onOpenChange={onOpenChange}>
+            <DialogContent className="sm:max-w-xl">
+                <DialogHeader>
+                    <DialogTitle>Add Sanctioned EMR Project</DialogTitle>
+                    <DialogDescription>Manually add a historical or newly sanctioned EMR project.</DialogDescription>
+                </DialogHeader>
+                 <Form {...form}>
+                    <form id="add-emr-form" onSubmit={form.handleSubmit(handleSave)} className="space-y-4 py-4 max-h-[60vh] overflow-y-auto pr-4">
+                        <div className="space-y-2">
+                            <Label>Principal Investigator (PI) *</Label>
+                            {pi ? (
+                                <div className="flex justify-between items-center p-2 bg-muted rounded-md text-sm">
+                                    <span>{pi.name} ({pi.misId})</span>
+                                    <Button variant="ghost" size="sm" onClick={() => setPi(null)}>Change</Button>
+                                </div>
+                            ) : (
+                                <div className="flex gap-2">
+                                    <Input placeholder="Search PI by MIS ID or Name..." value={searchTerm} onChange={e => { setSearchTerm(e.target.value); setSearchFor('pi'); }} />
+                                    <Button onClick={handleSearch} disabled={isSearching}>{isSearching ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Search'}</Button>
+                                </div>
+                            )}
+                        </div>
+                        
+                        <div className="space-y-2">
+                            <Label>Co-Principal Investigators (Co-PIs)</Label>
+                            <div className="flex gap-2">
+                                <Input placeholder="Search Co-PI by MIS ID or Name..." value={searchTerm} onChange={e => { setSearchTerm(e.target.value); setSearchFor('copi'); }}/>
+                                <Button onClick={handleSearch} disabled={isSearching}>{isSearching ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Search'}</Button>
+                            </div>
+                             <div className="space-y-2 mt-2">
+                                {coPis.map(c => <div key={c.email} className="flex justify-between items-center p-2 bg-muted rounded-md text-sm"><span>{c.name}</span><Button variant="ghost" size="sm" onClick={() => setCoPis(coPis.filter(cp => cp.email !== c.email))}>Remove</Button></div>)}
+                            </div>
+                        </div>
+
+                        <FormField name="title" control={form.control} render={({ field }) => ( <FormItem><FormLabel>Project Title *</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem> )} />
+                        <FormField name="agency" control={form.control} render={({ field }) => ( <FormItem><FormLabel>Funding Agency *</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem> )} />
+                        <FormField name="sanctionDate" control={form.control} render={({ field }) => ( <FormItem className="flex flex-col"><FormLabel>Date of Sanction</FormLabel><Popover><PopoverTrigger asChild><FormControl><Button variant={"outline"} className={cn("pl-3 text-left font-normal w-full", !field.value && "text-muted-foreground")}>{field.value ? format(field.value, "PPP") : (<span>Pick a date</span>)}<CalendarIcon className="ml-auto h-4 w-4 opacity-50" /></Button></FormControl></PopoverTrigger><PopoverContent className="w-auto p-0" align="start"><Calendar captionLayout="dropdown-buttons" fromYear={2015} toYear={new Date().getFullYear() + 5} mode="single" selected={field.value} onSelect={field.onChange} initialFocus /></PopoverContent></Popover><FormMessage /></FormItem> )} />
+                        <FormField name="amount" control={form.control} render={({ field }) => ( <FormItem><FormLabel>Amount (₹)</FormLabel><FormControl><Input type="number" min="0" placeholder="e.g., 5000000" {...field} /></FormControl><FormMessage /></FormItem> )} />
+                        <FormField name="duration" control={form.control} render={({ field }) => ( <FormItem><FormLabel>Duration (Years)</FormLabel><FormControl><Input type="number" min="0" step="0.5" placeholder="e.g., 3" {...field} /></FormControl><FormMessage /></FormItem> )} />
+                    </form>
+                </Form>
+                 <DialogFooter>
+                    <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
+                    <Button type="submit" form="add-emr-form" disabled={isSubmitting}>{isSubmitting ? 'Saving...' : 'Add Project'}</Button>
+                </DialogFooter>
+
+                 <Dialog open={isSelectionOpen} onOpenChange={setIsSelectionOpen}>
+                    <DialogContent>
+                        <DialogHeader>
+                            <DialogTitle>Multiple Users Found</DialogTitle>
+                            <DialogDescription>Please select the correct user.</DialogDescription>
+                        </DialogHeader>
+                        <RadioGroup onValueChange={(value) => handleUserSelect(JSON.parse(value))} className="py-4 space-y-2">
+                            {foundUsers.map((user, i) => (
+                                <div key={i} className="flex items-center space-x-2 border rounded-md p-3">
+                                    <RadioGroupItem value={JSON.stringify(user)} id={`user-${i}`} />
+                                    <Label htmlFor={`user-${i}`} className="flex flex-col">
+                                        <span className="font-semibold">{user.name}</span>
+                                        <span className="text-muted-foreground text-xs">{user.email} ({user.campus})</span>
+                                    </Label>
+                                </div>
+                            ))}
+                        </RadioGroup>
+                    </DialogContent>
+                </Dialog>
+            </DialogContent>
+        </Dialog>
+    );
+}
 
 const editEmrSchema = z.object({
     status: z.enum(['Sanctioned', 'Not Sanctioned'], { required_error: 'Please select a final status.' }),
@@ -276,7 +445,12 @@ export default function AllProjectsPage() {
   const [searchTerm, setSearchTerm] = useState(searchParams.get('q') || '');
   const [statusFilter, setStatusFilter] = useState(searchParams.get('status') || 'all');
   const [facultyFilter, setFacultyFilter] = useState<string[]>(searchParams.get('faculty')?.split(',').filter(Boolean) || []);
+  const [campusFilter, setCampusFilter] = useState(searchParams.get('campus') || 'all');
   const [activeTab, setActiveTab] = useState(searchParams.get('tab') || 'imr');
+  const [isAddEmrDialogOpen, setIsAddEmrDialogOpen] = useState(false);
+  const [currentPageImr, setCurrentPageImr] = useState(1);
+  const [currentPageEmr, setCurrentPageEmr] = useState(1);
+  const itemsPerPage = 30;
 
   const isMobile = useIsMobile();
 
@@ -285,7 +459,7 @@ export default function AllProjectsPage() {
   const [selectedExportColumns, setSelectedExportColumns] = useState<string[]>(IMR_EXPORT_COLUMNS.map(c => c.id));
   const [projectToEdit, setProjectToEdit] = useState<EmrInterest | null>(null);
   
-  const updateUrlParams = useCallback((newValues: { q?: string; status?: string; faculty?: string, tab?: string }) => {
+  const updateUrlParams = useCallback((newValues: { q?: string; status?: string; faculty?: string, campus?: string, tab?: string }) => {
     const params = new URLSearchParams(searchParams.toString());
     Object.entries(newValues).forEach(([key, value]) => {
       if (value) {
@@ -309,9 +483,13 @@ export default function AllProjectsPage() {
 
         const projectsCol = collection(db, 'projects');
         const emrInterestsCol = collection(db, 'emrInterests');
+        const isSuperAdmin = user?.role === 'Super-admin';
+        const isAdmin = user?.role === 'admin';
+        const isIqac = user?.role === 'IQAC';
         const isCro = user?.role === 'CRO';
         const isPrincipal = user?.designation === 'Principal';
         const isHod = user?.designation === 'HOD';
+        const isGoaHead = user?.designation === 'Head of Goa Campus';
 
         let imrConstraints: any[] = [orderBy('submissionDate', 'desc')];
         let emrConstraints: any[] = [where('isBulkUploaded', '==', true)];
@@ -319,6 +497,9 @@ export default function AllProjectsPage() {
         if (isCro && user.faculties && user.faculties.length > 0) {
             imrConstraints.unshift(where('faculty', 'in', user.faculties));
             emrConstraints.unshift(where('faculty', 'in', user.faculties));
+        } else if (isGoaHead) {
+            imrConstraints.unshift(where('campus', '==', 'Goa'));
+            emrConstraints.unshift(where('campus', '==', 'Goa'));
         } else if (isPrincipal && user.institute) {
             imrConstraints.unshift(where('institute', '==', user.institute));
             emrConstraints.unshift(where('faculty', '==', user.faculty));
@@ -371,7 +552,10 @@ export default function AllProjectsPage() {
   useEffect(() => {
       setSelectedExportColumns(activeTab === 'imr' ? IMR_EXPORT_COLUMNS.map(c => c.id) : EMR_EXPORT_COLUMNS.map(c => c.id));
       updateUrlParams({ tab: activeTab });
-  }, [activeTab, updateUrlParams]);
+      setCurrentPageImr(1);
+      setCurrentPageEmr(1);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab]);
 
   useEffect(() => {
     if(user) {
@@ -379,8 +563,8 @@ export default function AllProjectsPage() {
     }
   }, [user, fetchAllData]);
   
-  const hasAdminView = ['Super-admin', 'admin', 'CRO', 'IQAC'].includes(user?.role || '') || user?.designation === 'Principal' || user?.designation === 'HOD';
-  const canEditCoPis = user?.role === 'Super-admin';
+  const hasAdminView = ['Super-admin', 'admin', 'CRO', 'IQAC'].includes(user?.role || '') || user?.designation === 'Principal' || user?.designation === 'HOD' || user?.designation === 'Head of Goa Campus';
+  const isSuperAdmin = user?.role === 'Super-admin';
 
   const allFaculties = useMemo(() => {
     const facultySet = new Set<string>();
@@ -398,6 +582,7 @@ export default function AllProjectsPage() {
           return false;
         }
       }
+      if (campusFilter !== 'all' && project.campus !== campusFilter) return false;
       if (facultyFilter.length > 0 && !facultyFilter.includes(project.faculty)) return false;
       if (!searchTerm) return true;
       
@@ -413,23 +598,39 @@ export default function AllProjectsPage() {
         (installmentRefNumbers && installmentRefNumbers.toLowerCase().includes(lowerCaseSearch))
       );
     });
-  }, [allImrProjects, searchTerm, statusFilter, facultyFilter]);
+  }, [allImrProjects, searchTerm, statusFilter, facultyFilter, campusFilter]);
+
+  const totalPagesImr = Math.ceil(filteredImrProjects.length / itemsPerPage);
+  
+  const paginatedImrProjects = filteredImrProjects.slice(
+    (currentPageImr - 1) * itemsPerPage,
+    currentPageImr * itemsPerPage
+  );
   
   const filteredEmrProjects = useMemo(() => {
       return allEmrProjects.filter(project => {
+          if (campusFilter !== 'all' && project.campus !== campusFilter) return false;
           if (facultyFilter.length > 0 && project.faculty && !facultyFilter.includes(project.faculty)) return false;
           if (!searchTerm) return true;
           const lowerCaseSearch = searchTerm.toLowerCase();
           const title = project.callTitle || '';
           return title.toLowerCase().includes(lowerCaseSearch) || project.userName.toLowerCase().includes(lowerCaseSearch) || (project.agency || '').toLowerCase().includes(lowerCaseSearch);
       })
-  }, [allEmrProjects, searchTerm, facultyFilter]);
+  }, [allEmrProjects, searchTerm, facultyFilter, campusFilter]);
+
+  const totalPagesEmr = Math.ceil(filteredEmrProjects.length / itemsPerPage);
+  
+  const paginatedEmrProjects = filteredEmrProjects.slice(
+    (currentPageEmr - 1) * itemsPerPage,
+    currentPageEmr * itemsPerPage
+  );
 
   let pageTitle = "All Projects";
   let pageDescription = "Browse and manage all projects in the system.";
   
   if (user?.designation === 'Principal' && user?.institute) pageTitle = `Projects from ${user.institute}`;
   if (user?.designation === 'HOD' && user?.department) pageTitle = `Projects from ${user.department}`;
+  if (user?.designation === 'Head of Goa Campus') pageTitle = `Projects from Goa Campus`;
   if (user?.role === 'CRO' && facultyFilter.length === 1) pageTitle = `Projects from ${facultyFilter[0]}`;
   if (user?.role === 'CRO' && facultyFilter.length > 1) pageTitle = `Projects from multiple faculties`;
 
@@ -460,7 +661,7 @@ export default function AllProjectsPage() {
       const row: { [key: string]: any } = {};
       selectedExportColumns.forEach(colId => {
         const column = IMR_EXPORT_COLUMNS.find(c => c.id === colId);
-        if (column) row[column.label] = { title: p.title, type: p.type, submissionDate: new Date(p.submissionDate).toLocaleDateString(), abstract: p.abstract, pi: p.pi, pi_email: p.pi_email, pi_phoneNumber: p.pi_phoneNumber, misId: userDetails?.misId, designation: userDetails?.designation, faculty: p.faculty, institute: p.institute, departmentName: p.departmentName, status: p.status, coPiNames: coPiNames || 'N/A' }[colId];
+        if (column) row[column.label] = { title: p.title, type: p.type, submissionDate: new Date(p.submissionDate).toLocaleDateString(), abstract: p.abstract, pi: p.pi, pi_email: p.pi_email, pi_phoneNumber: p.pi_phoneNumber, misId: userDetails?.misId, designation: userDetails?.designation, faculty: p.faculty, institute: p.institute, departmentName: p.departmentName, campus: p.campus || userDetails?.campus || 'Vadodara', status: p.status, coPiNames: coPiNames || 'N/A' }[colId];
       });
       return row;
     });
@@ -482,7 +683,7 @@ export default function AllProjectsPage() {
           const row: { [key: string]: any } = {};
           selectedExportColumns.forEach(colId => {
                const column = EMR_EXPORT_COLUMNS.find(c => c.id === colId);
-               if(column) row[column.label] = { callTitle: p.callTitle, agency: p.agency, piName: p.userName, piEmail: p.userEmail, piInstitute: userDetails?.institute, piDepartment: userDetails?.department, coPiNames: p.coPiNames?.join(', ') || 'N/A', status: p.status, sanctionDate: p.sanctionDate ? new Date(p.sanctionDate).toLocaleDateString() : 'N/A', durationAmount: p.durationAmount }[colId];
+               if(column) row[column.label] = { callTitle: p.callTitle, agency: p.agency, piName: p.userName, piEmail: p.userEmail, piInstitute: userDetails?.institute, piDepartment: userDetails?.department, campus: p.campus || userDetails?.campus || 'Vadodara', coPiNames: p.coPiNames?.join(', ') || 'N/A', status: p.status, sanctionDate: p.sanctionDate ? new Date(p.sanctionDate).toLocaleDateString() : 'N/A', durationAmount: p.durationAmount }[colId];
           });
           return row;
       });
@@ -506,52 +707,59 @@ export default function AllProjectsPage() {
     <>
     <div className="container mx-auto py-10">
       <PageHeader title={pageTitle} description={pageDescription}>
-        {hasAdminView && (
-            <Dialog open={isExportDialogOpen} onOpenChange={setIsExportDialogOpen}>
-                <DialogTrigger asChild>
-                    <Button disabled={loading || (activeTab === 'imr' && filteredImrProjects.length === 0) || (activeTab === 'emr' && filteredEmrProjects.length === 0)}>
-                        <Download className="mr-2 h-4 w-4" /> Export XLSX
-                    </Button>
-                </DialogTrigger>
-                <DialogContent className="sm:max-w-3xl">
-                    <DialogHeader>
-                        <DialogTitle>Custom Export for {activeTab.toUpperCase()} Projects</DialogTitle>
-                        <DialogDescription>Select filters and columns for your Excel export.</DialogDescription>
-                    </DialogHeader>
-                    <div className="grid gap-6 py-4">
-                        {activeTab === 'imr' && (
+        <div className="flex items-center gap-2">
+            {isSuperAdmin && activeTab === 'emr' && (
+                <Button onClick={() => setIsAddEmrDialogOpen(true)}>
+                    <Plus className="mr-2 h-4 w-4" /> Add Sanctioned EMR
+                </Button>
+            )}
+            {hasAdminView && (
+                <Dialog open={isExportDialogOpen} onOpenChange={setIsExportDialogOpen}>
+                    <DialogTrigger asChild>
+                        <Button disabled={loading || (activeTab === 'imr' && filteredImrProjects.length === 0) || (activeTab === 'emr' && filteredEmrProjects.length === 0)}>
+                            <Download className="mr-2 h-4 w-4" /> Export XLSX
+                        </Button>
+                    </DialogTrigger>
+                    <DialogContent className="sm:max-w-3xl">
+                        <DialogHeader>
+                            <DialogTitle>Custom Export for {activeTab.toUpperCase()} Projects</DialogTitle>
+                            <DialogDescription>Select filters and columns for your Excel export.</DialogDescription>
+                        </DialogHeader>
+                        <div className="grid gap-6 py-4">
+                            {activeTab === 'imr' && (
+                                <div>
+                                    <Label>Filter by Submission Date</Label>
+                                    {isMobile ? (
+                                        <div className="flex items-center gap-2 mt-2">
+                                        <Input type="date" value={exportDateRange?.from ? format(exportDateRange.from, 'yyyy-MM-dd') : ''} onChange={(e) => setExportDateRange(prev => ({ ...prev, from: e.target.value ? parseISO(e.target.value) : undefined }))} />
+                                        <span>-</span>
+                                        <Input type="date" value={exportDateRange?.to ? format(exportDateRange.to, 'yyyy-MM-dd') : ''} onChange={(e) => setExportDateRange(prev => ({ ...prev, to: e.target.value ? parseISO(e.target.value) : undefined }))} />
+                                        </div>
+                                    ) : (
+                                        <Popover><PopoverTrigger asChild><Button id="date" variant={"outline"} className={cn("w-full justify-start text-left font-normal mt-2", !exportDateRange && "text-muted-foreground")}><CalendarIcon className="mr-2 h-4 w-4" />{exportDateRange?.from ? (exportDateRange.to ? (`${format(exportDateRange.from, "LLL dd, y")} - ${format(exportDateRange.to, "LLL dd, y")}`) : format(exportDateRange.from, "LLL dd, y")) : (<span>Pick a date range</span>)}</Button></PopoverTrigger><PopoverContent className="w-auto p-0" align="start"><Calendar captionLayout="dropdown-buttons" fromYear={2015} toYear={new Date().getFullYear()} initialFocus mode="range" defaultMonth={exportDateRange?.from} selected={exportDateRange} onSelect={setExportDateRange} /></PopoverContent></Popover>
+                                    )}
+                                </div>
+                            )}
                             <div>
-                                <Label>Filter by Submission Date</Label>
-                                {isMobile ? (
-                                    <div className="flex items-center gap-2 mt-2">
-                                    <Input type="date" value={exportDateRange?.from ? format(exportDateRange.from, 'yyyy-MM-dd') : ''} onChange={(e) => setExportDateRange(prev => ({ ...prev, from: e.target.value ? parseISO(e.target.value) : undefined }))} />
-                                    <span>-</span>
-                                    <Input type="date" value={exportDateRange?.to ? format(exportDateRange.to, 'yyyy-MM-dd') : ''} onChange={(e) => setExportDateRange(prev => ({ ...prev, to: e.target.value ? parseISO(e.target.value) : undefined }))} />
-                                    </div>
-                                ) : (
-                                    <Popover><PopoverTrigger asChild><Button id="date" variant={"outline"} className={cn("w-full justify-start text-left font-normal mt-2", !exportDateRange && "text-muted-foreground")}><CalendarIcon className="mr-2 h-4 w-4" />{exportDateRange?.from ? (exportDateRange.to ? (`${format(exportDateRange.from, "LLL dd, y")} - ${format(exportDateRange.to, "LLL dd, y")}`) : format(exportDateRange.from, "LLL dd, y")) : (<span>Pick a date range</span>)}</Button></PopoverTrigger><PopoverContent className="w-auto p-0" align="start"><Calendar captionLayout="dropdown-buttons" fromYear={2015} toYear={new Date().getFullYear()} initialFocus mode="range" defaultMonth={exportDateRange?.from} selected={exportDateRange} onSelect={setExportDateRange} /></PopoverContent></Popover>
-                                )}
-                            </div>
-                        )}
-                        <div>
-                            <Label>Select Columns to Export</Label>
-                            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 mt-2 p-4 border rounded-md max-h-60 overflow-y-auto">
-                                {EXPORT_COLUMNS.map(column => (
-                                    <div key={column.id} className="flex items-center space-x-2">
-                                        <Checkbox id={`col-${column.id}`} checked={selectedExportColumns.includes(column.id)} onCheckedChange={(checked) => handleColumnSelectionChange(column.id, !!checked)} />
-                                        <label htmlFor={`col-${column.id}`} className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">{column.label}</label>
-                                    </div>
-                                ))}
+                                <Label>Select Columns to Export</Label>
+                                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 mt-2 p-4 border rounded-md max-h-60 overflow-y-auto">
+                                    {EXPORT_COLUMNS.map(column => (
+                                        <div key={column.id} className="flex items-center space-x-2">
+                                            <Checkbox id={`col-${column.id}`} checked={selectedExportColumns.includes(column.id)} onCheckedChange={(checked) => handleColumnSelectionChange(column.id, !!checked)} />
+                                            <label htmlFor={`col-${column.id}`} className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">{column.label}</label>
+                                        </div>
+                                    ))}
+                                </div>
                             </div>
                         </div>
-                    </div>
-                    <DialogFooter>
-                        <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
-                        <Button onClick={handleConfirmExport}>Confirm & Export</Button>
-                    </DialogFooter>
-                </DialogContent>
-            </Dialog>
-        )}
+                        <DialogFooter>
+                            <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
+                            <Button onClick={handleConfirmExport}>Confirm & Export</Button>
+                        </DialogFooter>
+                    </DialogContent>
+                </Dialog>
+            )}
+        </div>
       </PageHeader>
       
       <div className="flex flex-col sm:flex-row flex-wrap items-center py-4 gap-2 sm:gap-4">
@@ -586,6 +794,10 @@ export default function AllProjectsPage() {
                         ))}
                     </DropdownMenuContent>
                 </DropdownMenu>
+                <Select value={campusFilter} onValueChange={(value) => { setCampusFilter(value); updateUrlParams({ campus: value === 'all' ? undefined : value }); }}>
+                    <SelectTrigger className="w-full sm:w-[180px]"><SelectValue placeholder="Filter by campus" /></SelectTrigger>
+                    <SelectContent><SelectItem value="all">All Campuses</SelectItem>{CAMPUSES.map(c => (<SelectItem key={c} value={c}>{c}</SelectItem>))}</SelectContent>
+                </Select>
               </>
             )}
         </div>
@@ -598,72 +810,166 @@ export default function AllProjectsPage() {
             <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
                 <TabsList><TabsTrigger value="imr">IMR Projects</TabsTrigger><TabsTrigger value="emr">EMR Projects</TabsTrigger></TabsList>
                 <TabsContent value="imr" className="mt-4">
-                    {loading ? <Skeleton className="h-64 w-full" /> : <ProjectList projects={filteredImrProjects} currentUser={user!} allUsers={users} />}
+                    {loading ? <Skeleton className="h-64 w-full" /> : (
+                        <>
+                            <ProjectList projects={paginatedImrProjects} currentUser={user!} allUsers={users} />
+                            {filteredImrProjects.length > itemsPerPage && (
+                                <div className="flex items-center justify-between pt-6">
+                                    <div className="text-sm text-muted-foreground">
+                                        Showing {((currentPageImr - 1) * itemsPerPage) + 1} to {Math.min(currentPageImr * itemsPerPage, filteredImrProjects.length)} of {filteredImrProjects.length}
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            onClick={() => setCurrentPageImr(prev => Math.max(prev - 1, 1))}
+                                            disabled={currentPageImr === 1}
+                                        >
+                                            Previous
+                                        </Button>
+                                        <div className="text-sm">
+                                            Page {currentPageImr} of {totalPagesImr}
+                                        </div>
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            onClick={() => setCurrentPageImr(prev => Math.min(prev + 1, totalPagesImr))}
+                                            disabled={currentPageImr === totalPagesImr}
+                                        >
+                                            Next
+                                        </Button>
+                                    </div>
+                                </div>
+                            )}
+                        </>
+                    )}
                 </TabsContent>
                 <TabsContent value="emr" className="mt-4">
                      {loading ? <Skeleton className="h-64 w-full" /> : (
-                         <Card>
-                            <CardContent className="pt-6">
-                                <Table>
-                                    <TableHeader><TableRow><TableHead>Project Title</TableHead><TableHead>PI</TableHead><TableHead>Co-PIs</TableHead><TableHead>Agency</TableHead><TableHead>Sanction Date</TableHead><TableHead>Amount</TableHead><TableHead>Actions</TableHead></TableRow></TableHeader>
-                                    <TableBody>{filteredEmrProjects.map(p => {
-                                        const pi = users.find(u => u.uid === p.userId);
-                                        const proofLink = p.finalProofUrl || p.proofUrl;
-                                        return (
-                                        <TableRow key={p.id}>
-                                            <TableCell className="font-medium">
-                                                {proofLink ? (
-                                                    <a href={proofLink} target="_blank" rel="noopener noreferrer" className="hover:underline text-primary">
-                                                        {p.callTitle || 'N/A'}
-                                                    </a>
-                                                ) : (
-                                                    p.callTitle || 'N/A'
-                                                )}
-                                            </TableCell>
-                                            <TableCell>
-                                                {pi?.misId ? (
-                                                    <Link href={`/profile/${pi.misId}`} className="hover:underline text-primary" target="_blank" rel="noopener noreferrer">
-                                                        {p.userName}
-                                                    </Link>
-                                                ) : p.userName}
-                                            </TableCell>
-                                            <TableCell>
-                                                <div className="flex flex-col text-xs">
-                                                    {(p.coPiDetails || []).map(copi => {
-                                                        const coPiUser = users.find(u => u.uid === copi.uid);
-                                                        return (
-                                                            <div key={copi.email}>
-                                                                {coPiUser?.misId ? (
-                                                                    <Link href={`/profile/${coPiUser.misId}`} className="hover:underline text-primary" target="_blank" rel="noopener noreferrer">
-                                                                        {copi.name}
-                                                                    </Link>
-                                                                ) : copi.name}
-                                                            </div>
-                                                        )
-                                                    })}
-                                                </div>
-                                            </TableCell>
-                                            <TableCell>{p.agency || 'N/A'}</TableCell>
-                                            <TableCell>{p.sanctionDate ? format(parseISO(p.sanctionDate), 'PPP') : 'N/A'}</TableCell>
-                                            <TableCell>{p.durationAmount || 'N/A'}</TableCell>
-                                            <TableCell className="flex items-center gap-2">
-                                                {canEditCoPis && p.isBulkUploaded && (
-                                                    <Button variant="outline" size="sm" onClick={() => setProjectToEdit(p)}>
-                                                        <Edit className="h-4 w-4 mr-2" /> Edit
-                                                    </Button>
-                                                )}
-                                            </TableCell>
-                                        </TableRow>
-                                    )})}</TableBody>
-                                </Table>
-                            </CardContent>
-                         </Card>
+                         <>
+                            <Card>
+                                <CardContent className="pt-6">
+                                    <Table>
+                                        <TableHeader><TableRow><TableHead>Project Title</TableHead><TableHead>PI</TableHead><TableHead>Co-PIs</TableHead><TableHead>Agency</TableHead><TableHead>Sanction Date</TableHead><TableHead>Amount</TableHead><TableHead>Actions</TableHead></TableRow></TableHeader>
+                                        <TableBody>{paginatedEmrProjects.map(p => {
+                                            const pi = users.find(u => u.uid === p.userId);
+                                            const proofLink = p.finalProofUrl || p.proofUrl;
+                                            return (
+                                            <TableRow key={p.id}>
+                                                <TableCell className="font-medium">
+                                                    {proofLink ? (
+                                                        <a href={proofLink} target="_blank" rel="noopener noreferrer" className="hover:underline text-primary">
+                                                            {p.callTitle || 'N/A'}
+                                                        </a>
+                                                    ) : (
+                                                        p.callTitle || 'N/A'
+                                                    )}
+                                                </TableCell>
+                                                <TableCell>
+                                                    {pi?.misId ? (
+                                                        <Link href={`/profile/${pi.misId}`} className="hover:underline text-primary" target="_blank" rel="noopener noreferrer">
+                                                            {p.userName}
+                                                        </Link>
+                                                    ) : p.userName}
+                                                </TableCell>
+                                                <TableCell>
+                                                    <div className="flex flex-col text-xs">
+                                                        {(p.coPiDetails || []).map(copi => {
+                                                            const coPiUser = users.find(u => u.uid === copi.uid);
+                                                            return (
+                                                                <div key={copi.email}>
+                                                                    {coPiUser?.misId ? (
+                                                                        <Link href={`/profile/${coPiUser.misId}`} className="hover:underline text-primary" target="_blank" rel="noopener noreferrer">
+                                                                            {copi.name}
+                                                                        </Link>
+                                                                    ) : copi.name}
+                                                                </div>
+                                                            )
+                                                        })}
+                                                    </div>
+                                                </TableCell>
+                                                <TableCell>{p.agency || 'N/A'}</TableCell>
+                                                <TableCell>{p.sanctionDate ? format(parseISO(p.sanctionDate), 'PPP') : 'N/A'}</TableCell>
+                                                <TableCell>{p.durationAmount || 'N/A'}</TableCell>
+                                                <TableCell className="flex items-center gap-2">
+                                                    {isSuperAdmin && p.isBulkUploaded && (
+                                                        <Button variant="outline" size="sm" onClick={() => setProjectToEdit(p)}>
+                                                            <Edit className="h-4 w-4 mr-2" /> Edit
+                                                        </Button>
+                                                    )}
+                                                </TableCell>
+                                            </TableRow>
+                                        )})}</TableBody>
+                                    </Table>
+                                </CardContent>
+                            </Card>
+                            {filteredEmrProjects.length > itemsPerPage && (
+                                <div className="flex items-center justify-between pt-6">
+                                    <div className="text-sm text-muted-foreground">
+                                        Showing {((currentPageEmr - 1) * itemsPerPage) + 1} to {Math.min(currentPageEmr * itemsPerPage, filteredEmrProjects.length)} of {filteredEmrProjects.length}
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            onClick={() => setCurrentPageEmr(prev => Math.max(prev - 1, 1))}
+                                            disabled={currentPageEmr === 1}
+                                        >
+                                            Previous
+                                        </Button>
+                                        <div className="text-sm">
+                                            Page {currentPageEmr} of {totalPagesEmr}
+                                        </div>
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            onClick={() => setCurrentPageEmr(prev => Math.min(prev + 1, totalPagesEmr))}
+                                            disabled={currentPageEmr === totalPagesEmr}
+                                        >
+                                            Next
+                                        </Button>
+                                    </div>
+                                </div>
+                            )}
+                         </>
                      )}
                 </TabsContent>
             </Tabs>
         ) : (
             <div className="mt-4">
-                {loading ? <Skeleton className="h-64 w-full" /> : <ProjectList projects={filteredImrProjects} currentUser={user!} allUsers={users} />}
+                {loading ? <Skeleton className="h-64 w-full" /> : (
+                    <>
+                        <ProjectList projects={paginatedImrProjects} currentUser={user!} allUsers={users} />
+                        {filteredImrProjects.length > itemsPerPage && (
+                            <div className="flex items-center justify-between pt-6">
+                                <div className="text-sm text-muted-foreground">
+                                    Showing {((currentPageImr - 1) * itemsPerPage) + 1} to {Math.min(currentPageImr * itemsPerPage, filteredImrProjects.length)} of {filteredImrProjects.length}
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <Button
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={() => setCurrentPageImr(prev => Math.max(prev - 1, 1))}
+                                        disabled={currentPageImr === 1}
+                                    >
+                                        Previous
+                                    </Button>
+                                    <div className="text-sm">
+                                        Page {currentPageImr} of {totalPagesImr}
+                                    </div>
+                                    <Button
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={() => setCurrentPageImr(prev => Math.min(prev + 1, totalPagesImr))}
+                                        disabled={currentPageImr === totalPagesImr}
+                                    >
+                                        Next
+                                    </Button>
+                                </div>
+                            </div>
+                        )}
+                    </>
+                )}
             </div>
         )}
     </div>
@@ -675,6 +981,11 @@ export default function AllProjectsPage() {
             onActionComplete={fetchAllData}
         />
     )}
+    <AddSanctionedEmrDialog 
+        isOpen={isAddEmrDialogOpen}
+        onOpenChange={setIsAddEmrDialogOpen}
+        onActionComplete={fetchAllData}
+    />
     </>
   );
 }

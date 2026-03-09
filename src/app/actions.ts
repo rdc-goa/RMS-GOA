@@ -467,11 +467,11 @@ export async function getAllUsers(): Promise<User[]> {
 const EMAIL_STYLES = {
   background:
     'style="background: linear-gradient(135deg, #0f2027, #203a43, #2c5364); color:#ffffff; font-family:Arial, sans-serif; padding:20px; border-radius:8px;"',
-  logo: '<div style="text-align:center; margin-bottom:20px;"><img src="https://pinxoxpbufq92wb4.public.blob.vercel-storage.com/RDC-PU-LOGO-WHITE.png" alt="RDC Logo" style="max-width:300px; height:auto;" /></div>',
+  logo: '<div style="text-align:center; margin-bottom:20px;"><img src="https://lhdlkrfbkon55i6u.public.blob.vercel-storage.com/Pu%20Goa%20White.png" alt="RDC Logo" style="max-width:300px; height:auto;" /></div>',
   footer: ` 
     <p style="color:#b0bec5; margin-top: 30px;">Best Regards,</p>
     <p style="color:#b0bec5;">Research & Development Cell Team,</p>
-    <p style="color:#b0bec5;">Parul University</p>
+    <p style="color:#b0bec5;">Parul University Goa</p>
     <hr style="border-top: 1px solid #4f5b62; margin-top: 20px;">
     <p style="font-size:10px; color:#999999; text-align:center; margin-top:10px;">
         This is a system generated automatic email. If you feel this is an error, please report at the earliest.
@@ -513,7 +513,7 @@ export async function updateSystemSettings(settings: SystemSettings): Promise<{ 
 }
 
 export async function uploadApproverSignature(
-  stage: 2 | 3 | 4,
+  stage: 2 | 3 | 4 | 5,
   signatureDataUrl: string
 ): Promise<{ success: boolean; url?: string; error?: string }> {
   try {
@@ -749,7 +749,7 @@ export async function updateProjectStatus(projectId: string, newStatus: Project[
     `
 
     if (comments) {
-      const reasonTitle = newStatus === 'Revision Needed' ? "Evaluator's Comments for Revision:" : "Reason for Decision:";
+      const reasonTitle = newStatus === 'Revision Needed' ? "Comments for Revision:" : "Reason for Decision:";
       emailHtml += `
           <div style="margin-top:20px; padding:15px; border:1px solid #4f5b62; border-radius:6px; background-color:#2c3e50;">
             <h4 style="color:#ffffff; margin-top:0;">${reasonTitle}</h4>
@@ -774,6 +774,7 @@ export async function updateProjectStatus(projectId: string, newStatus: Project[
     if (project.pi_email) {
       await sendEmailUtility({
         to: project.pi_email,
+        bcc: "vishal.sandhwar8850@paruluniversity.ac.in",
         subject: `Project Status Update: ${project.title}`,
         html: emailHtml,
         from: "default",
@@ -899,6 +900,8 @@ export async function scheduleMeeting(
       rescheduleMap.set(projectData.id, isReschedule);
 
       const updateData: any = { meetingDetails: newMeetingDetails };
+      // If we are scheduling or rescheduling a meeting, clear any previous absence flag
+      updateData.wasAbsent = false;
       if (isMidTermReview) {
         updateData.hasHadMidTermReview = true;
       } else {
@@ -1014,7 +1017,7 @@ export async function scheduleMeeting(
                 'METHOD:REQUEST', 'BEGIN:VEVENT', `UID:${project.id}@paruluniversity.ac.in`, `DTSTAMP:${dtstamp}`,
                 `DTSTART:${startTimeUTC}`, `DTEND:${endTimeUTC}`, `SUMMARY:${subject}`,
                 `DESCRIPTION:A meeting for the IMR project '${project.title}' has been scheduled.`,
-                `LOCATION:${meetingDetails.venue}`, `ORGANIZER;CN=RDC Parul University:mailto:${process.env.GMAIL_USER || 'helpdesk.rdc@paruluniversity.ac.in'}`,
+                `LOCATION:${meetingDetails.venue}`, `ORGANIZER;CN=RDC Parul University Goa :mailto:${process.env.GMAIL_USER || 'rdc@goa.paruluniversity.ac.in'}`,
                 `ATTENDEE;CN=${user.name};RSVP=TRUE:mailto:${user.email}`, 'END:VEVENT', 'END:VCALENDAR'
             ].join('\r\n');
 

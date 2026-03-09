@@ -1,4 +1,3 @@
-
 import { Logo } from '@/components/logo';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
@@ -23,7 +22,7 @@ export default function TermsOfUsePage() {
                 <p>You have the right to utilise this platform in any manner permissible by the site administrators, and University officials, you may not transfer to another individual any rights or access granted to you upon your registration.</p>
 
                 <h2>External Information</h2>
-                <p>The website may contain other information relating to non-Parul University entities or any other companies, please note that for any such information, Parul University Goa does not endorse any such companies or recommend such entities for any purpose to our users accessing such sites shall strictly be at the user’s discretion.</p>
+                <p>The website may contain other information relating to non-Parul University entities or any other companies, please note that for any such information, Parul University does not endorse any such companies or recommend such entities for any purpose to our users accessing such sites shall strictly be at the user’s discretion.</p>
 
                 <h2>Regarding Press Releases and external Publications</h2>
                 <p>The website may contain press releases and publications about the University or related to the University from other sources, it shall be noted that upon placing reliance on such information it was believed to be accurate at the time and we disclaim any liability or obligation which may arise out of the untimeliness or any such discrepancies such publications.</p>

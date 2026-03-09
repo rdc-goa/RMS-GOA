@@ -10,10 +10,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'Email is required' }, { status: 400 });
     }
 
-    // Read staffdata.xlsx from the project root
-    const filePath = path.resolve(process.cwd(), 'staffdata.xlsx');
+    const filePath = path.resolve(process.cwd(), 'goastaffdata.xlsx');
     if (!fs.existsSync(filePath)) {
-      return NextResponse.json({ success: false, error: 'staffdata.xlsx not found' }, { status: 500 });
+      return NextResponse.json({ success: false, error: 'goastaffdata.xlsx not found' }, { status: 500 });
     }
 
     const workbook = XLSX.readFile(filePath);

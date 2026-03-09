@@ -26,6 +26,7 @@ import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
 import Link from 'next/link';
 import { Tooltip, TooltipProvider, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
+import { isEligibleForFinancialDisbursement } from '@/lib/incentive-eligibility';
 
 interface ApprovalDialogProps {
   claim: IncentiveClaim;
@@ -88,7 +89,7 @@ const allPossibleResearchPaperFields: { id: keyof IncentiveClaim | 'name' | 'des
     { id: 'totalPuAuthors', label: 'No. of Authors from PU' },
     { id: 'printIssn', label: 'ISSN' }, // Simplified for display
     { id: 'publicationProofUrls', label: 'PROOF OF PUBLICATION ATTACHED' },
-    { id: 'isPuNameInPublication', label: 'Whether “PU Goa” name exists' },
+    { id: 'isPuNameInPublication', label: 'Whether “PU” name exists' },
     { id: 'publicationMonth', label: 'Published Month & Year' }, // Simplified for display
 ];
 
@@ -168,6 +169,95 @@ function ResearchPaperClaimDetails({
         );
     };
 
+    // Calculate incentive breakdown
+    const calculateIncentiveBreakdown = () => {
+        try {
+            const { journalClassification, publicationType, wasApcPaidByUniversity, isPuNameInPublication, authors = [] } = claim;
+            const internalAuthors = authors.filter(a => !a.isExternal);
+            const mainAuthors = internalAuthors.filter(a => ['First Author', 'Corresponding Author', 'First & Corresponding Author'].includes(a.role));
+            const coAuthors = internalAuthors.filter(a => a.role === 'Co-Author');
+
+            // Base incentive
+            let baseAmount = 0;
+            switch (journalClassification) {
+                case 'Nature/Science/Lancet': baseAmount = 50000; break;
+                case 'Top 1% Journals': baseAmount = 25000; break;
+                case 'Q1': baseAmount = 15000; break;
+                case 'Q2': baseAmount = 10000; break;
+                case 'Q3': baseAmount = 6000; break;
+                case 'Q4': baseAmount = 4000; break;
+            }
+
+            // Apply publication type adjustment
+            let adjustedAmount = baseAmount;
+            if (publicationType === 'Case Reports/Short Surveys') {
+                adjustedAmount = baseAmount * 0.9;
+            } else if (publicationType === 'Review Articles' && ['Q3', 'Q4'].includes(journalClassification || '')) {
+                adjustedAmount = baseAmount * 0.8;
+            } else if (publicationType === 'Letter to the Editor/Editorial') {
+                adjustedAmount = 2500;
+            }
+
+            // Apply university-level deductions
+            let deductedAmount = adjustedAmount;
+            const deductions = [];
+            
+            if (wasApcPaidByUniversity) {
+                deductedAmount /= 2;
+                deductions.push('APC Paid by University (÷2)');
+            }
+            if (isPuNameInPublication === false) {
+                deductedAmount /= 2;
+                deductions.push('PU Name Not in Publication (÷2)');
+            }
+
+            // Calculate share based on author composition
+            let finalAmount = 0;
+            let authorShare = 'N/A';
+
+            if (internalAuthors.length === 0) {
+                finalAmount = 0;
+                authorShare = 'No internal authors';
+            } else if (internalAuthors.length === 1) {
+                if (mainAuthors.length === 1) {
+                    finalAmount = deductedAmount;
+                    authorShare = 'Sole main author (100%)';
+                } else if (coAuthors.length === 1) {
+                    finalAmount = deductedAmount * 0.8;
+                    authorShare = 'Sole co-author (80%)';
+                }
+            } else if (mainAuthors.length > 0 && coAuthors.length > 0) {
+                const mainShare = (deductedAmount * 0.7) / mainAuthors.length;
+                const coShare = (deductedAmount * 0.3) / coAuthors.length;
+                finalAmount = mainAuthors.length > 0 ? mainShare : coShare;
+                authorShare = `Mixed: Main (70% ÷ ${mainAuthors.length}), Co-Author (30% ÷ ${coAuthors.length})`;
+            } else if (mainAuthors.length === 0 && coAuthors.length > 1) {
+                finalAmount = (deductedAmount * 0.8) / coAuthors.length;
+                authorShare = `Multiple co-authors (80% ÷ ${coAuthors.length})`;
+            } else if (mainAuthors.length > 0) {
+                finalAmount = deductedAmount / mainAuthors.length;
+                authorShare = `Multiple main authors (÷ ${mainAuthors.length})`;
+            }
+
+            return {
+                baseAmount,
+                publicationTypeAdjustment: publicationType === 'Case Reports/Short Surveys' ? '0.9×' : publicationType === 'Review Articles' && ['Q3', 'Q4'].includes(journalClassification || '') ? '0.8×' : '1.0×',
+                adjustedAmount: Math.round(adjustedAmount),
+                deductions,
+                deductedAmount: Math.round(deductedAmount),
+                internalAuthorsCount: internalAuthors.length,
+                mainAuthorsCount: mainAuthors.length,
+                coAuthorsCount: coAuthors.length,
+                authorShare,
+                finalAmount: Math.round(finalAmount),
+            };
+        } catch (error) {
+            return null;
+        }
+    };
+
+    const breakdown = calculateIncentiveBreakdown();
+
     return (
         <div className="space-y-4 rounded-lg border bg-muted/50 p-4">
             <div className="flex items-center justify-between">
@@ -194,6 +284,56 @@ function ResearchPaperClaimDetails({
                 {renderDetail('isPuNameInPublication', 'Whether “PU” name exists', claim.isPuNameInPublication)}
                 {renderDetail('publicationMonth', 'Published Month & Year', `${claim.publicationMonth}, ${claim.publicationYear}`)}
             </div>
+            {breakdown && !isChecklistEnabled && (
+                <>
+                    <Separator />
+                    <div className="space-y-2 bg-blue-50 dark:bg-blue-950 rounded-lg p-3 border border-blue-200 dark:border-blue-800">
+                        <h5 className="text-sm font-semibold text-blue-900 dark:text-blue-100">Incentive Calculation Breakdown</h5>
+                        <div className="space-y-1.5 text-xs">
+                            <div className="grid grid-cols-2 gap-2">
+                                <span className="text-blue-700 dark:text-blue-300">1. Base Amount (Q-Rating):</span>
+                                <span className="font-medium text-right">₹{breakdown.baseAmount.toLocaleString('en-IN')}</span>
+                            </div>
+                            <div className="grid grid-cols-2 gap-2">
+                                <span className="text-blue-700 dark:text-blue-300">2. Publication Type Adjustment:</span>
+                                <span className="font-medium text-right">×{breakdown.publicationTypeAdjustment}</span>
+                            </div>
+                            <div className="grid grid-cols-2 gap-2">
+                                <span className="text-blue-700 dark:text-blue-300">3. After Adjustment:</span>
+                                <span className="font-medium text-right">₹{breakdown.adjustedAmount.toLocaleString('en-IN')}</span>
+                            </div>
+                            {breakdown.deductions.length > 0 && (
+                                <>
+                                    <div className="border-t border-blue-200 dark:border-blue-800 pt-1.5 mt-1.5">
+                                        <p className="text-blue-700 dark:text-blue-300 font-medium mb-1">University-level Deductions:</p>
+                                        {breakdown.deductions.map((deduction, i) => (
+                                            <div key={i} className="grid grid-cols-2 gap-2 ml-2">
+                                                <span className="text-blue-600 dark:text-blue-400">• {deduction}</span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-2 font-semibold border-t border-blue-200 dark:border-blue-800 pt-1.5 mt-1.5">
+                                        <span className="text-blue-900 dark:text-blue-100">After All Deductions:</span>
+                                        <span className="text-right text-blue-900 dark:text-blue-100">₹{breakdown.deductedAmount.toLocaleString('en-IN')}</span>
+                                    </div>
+                                </>
+                            )}
+                            <div className="border-t border-blue-200 dark:border-blue-800 pt-1.5 mt-1.5">
+                                <p className="text-blue-700 dark:text-blue-300 font-medium mb-1">Author Distribution:</p>
+                                <div className="ml-2 space-y-0.5">
+                                    <div className="text-blue-600 dark:text-blue-400">Internal Authors: {breakdown.internalAuthorsCount}</div>
+                                    <div className="text-blue-600 dark:text-blue-400">Main Authors: {breakdown.mainAuthorsCount}, Co-Authors: {breakdown.coAuthorsCount}</div>
+                                    <div className="text-blue-600 dark:text-blue-400 text-xs italic">{breakdown.authorShare}</div>
+                                </div>
+                            </div>
+                            <div className="grid grid-cols-2 gap-2 font-bold border-t border-blue-200 dark:border-blue-800 pt-1.5 mt-1.5 bg-blue-100 dark:bg-blue-900 p-2 rounded">
+                                <span className="text-blue-900 dark:text-blue-50">Final Incentive per Author:</span>
+                                <span className="text-right text-green-700 dark:text-green-400">₹{breakdown.finalAmount.toLocaleString('en-IN')}</span>
+                            </div>
+                        </div>
+                    </div>
+                </>
+            )}
             {isChecklistEnabled && <FormMessage>{form.formState.errors.verifiedFields?.message}</FormMessage>}
         </div>
     );
@@ -225,6 +365,31 @@ function MembershipClaimDetails({ claim, claimant }: { claim: IncentiveClaim, cl
         </div>
     </div>
   );
+}
+
+function getCalculationLogic(claim: IncentiveClaim): string {
+  if (claim.claimType === 'Research Papers') {
+    const baseAmount = claim.calculatedIncentive || 0;
+    let logic = `Base Amount: ₹${baseAmount.toLocaleString('en-IN')}`;
+    
+    if (claim.isPuNameInPublication === false) {
+      logic += '\n• PU name not in publication: -50%';
+    }
+    if (claim.wasApcPaidByUniversity === true) {
+      logic += '\n• APC paid by University: -50%';
+    }
+    if (!isEligibleForFinancialDisbursement(claim)) {
+      logic += '\n• Co-Author beyond 5th position: ₹0 (ARPS only)';
+    }
+    
+    return logic;
+  }
+  
+  if (claim.claimType === 'Membership of Professional Bodies') {
+    return `Amount Paid: ₹${claim.membershipAmountPaid?.toLocaleString('en-IN') || 0}\n(50% reimbursement by university)`;
+  }
+  
+  return `Base Calculated Amount: ₹${claim.calculatedIncentive?.toLocaleString('en-IN') || 0}`;
 }
 
 export function ApprovalDialog({ claim, approver, claimant, stageIndex, isOpen, onOpenChange, onActionComplete }: ApprovalDialogProps) {
@@ -304,6 +469,7 @@ export function ApprovalDialog({ claim, approver, claimant, stageIndex, isOpen, 
 
 
     const action = form.watch('action');
+    const approvedAmount = form.watch('amount');
 
     const handleSubmit = async (values: ApprovalFormData) => {
         setIsSubmitting(true);
@@ -428,6 +594,14 @@ export function ApprovalDialog({ claim, approver, claimant, stageIndex, isOpen, 
                                                 {isAutoCalculated && <span className="text-xs text-muted-foreground">(Tentative)</span>}
                                             </div>
                                             <FormControl><Input type="number" {...field} /></FormControl>
+                                            {isAutoCalculated && approvedAmount === defaultAmount && (
+                                                <div className="mt-3 p-3 bg-slate-50 dark:bg-slate-900/50 rounded border border-slate-200 dark:border-slate-800">
+                                                    <p className="text-xs font-semibold text-slate-700 dark:text-slate-300 mb-2">Calculation Logic:</p>
+                                                    <p className="text-xs text-slate-600 dark:text-slate-400 whitespace-pre-line">
+                                                        {getCalculationLogic(claim)}
+                                                    </p>
+                                                </div>
+                                            )}
                                             <FormMessage />
                                         </FormItem>
                                     )}

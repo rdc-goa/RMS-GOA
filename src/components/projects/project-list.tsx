@@ -99,7 +99,7 @@ export function ProjectList({ projects, currentUser, allUsers = [] }: ProjectLis
     if (totalGrantAmount === 0) return null;
 
     const totalUtilized = project.grant.phases.reduce((acc, phase) => {
-      const phaseTotal = phase.transactions?.reduce((tAcc, t) => tAcc + t.amount, 0) || 0;
+      const phaseTotal = phase.transactions?.reduce((tAcc, t) => tAcc + Number(t.amount || 0), 0) || 0;
       return acc + phaseTotal;
     }, 0);
 

@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useToast } from '@/hooks/use-toast';
 import { EmrInterest, User } from '@/types';
-import { updateEmrInterestDetails } from '@/app/server-actions';
+import { updateEmrInterestDetails } from '@/app/emr-actions';
 
 interface HistoricalBulkUploadsProps {
   interests: EmrInterest[];

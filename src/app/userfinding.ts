@@ -60,7 +60,7 @@ export async function findUserByMisId(
             name: userData.name,
             email: userData.email,
             misId: userData.misId!,
-            campus: userData.campus || 'Vadodara',
+            campus: userData.campus || 'Goa',
         };
         if(userResult.email) {
             allFound.set(userResult.email.toLowerCase(), userResult);
@@ -74,7 +74,7 @@ export async function findUserByMisId(
             name: userData.name,
             email: userData.email,
             misId: userData.misId!,
-            campus: userData.campus || 'Vadodara',
+            campus: userData.campus || 'Goa',
         };
         if(userResult.email && !allFound.has(userResult.email.toLowerCase())) {
             allFound.set(userResult.email.toLowerCase(), userResult);

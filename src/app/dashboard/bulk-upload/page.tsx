@@ -11,7 +11,6 @@ import { useToast } from '@/hooks/use-toast';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { FileWarning, Upload, Loader2, Trash2, Download, XCircle, CheckCircle } from 'lucide-react';
-import { bulkUploadProjects, deleteBulkProject } from '@/app/server-actions';
 import { collection, query, where, getDocs, orderBy } from 'firebase/firestore';
 import { db } from '@/lib/config';
 import type { Project } from '@/types';
@@ -26,7 +25,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Skeleton } from '@/components/ui/skeleton';
-
+import { bulkUploadProjects, deleteImrProject } from '@/app/actions';
 
 type ProjectData = {
   pi_email: string;
@@ -166,7 +165,7 @@ export default function BulkUploadPage() {
 
   const handleDelete = async () => {
     if (!projectToDelete) return;
-    const result = await deleteBulkProject(projectToDelete.id);
+    const result = await deleteImrProject(projectToDelete.id, "Bulk uploaded project deleted by admin.", "Admin");
     if (result.success) {
         toast({ title: 'Project Deleted', description: `"${projectToDelete.title}" has been removed.`});
         fetchHistory(); // Refresh list

@@ -40,7 +40,7 @@ import { Badge } from '@/components/ui/badge';
 import { Calendar as CalendarIcon, Edit, Plus, Users, ChevronLeft, ChevronRight, Link as LinkIcon, Loader2, Upload, NotebookText, Send, Trash2, Download } from 'lucide-react';
 import type { FundingCall, User, EmrInterest, EmrEvaluation } from '@/types';
 import { format, differenceInDays, differenceInHours, differenceInMinutes, parseISO, startOfMonth, endOfMonth, eachDayOfInterval, getDay, addMonths, subMonths, isAfter, setHours, setMinutes, setSeconds, isBefore } from 'date-fns';
-import { uploadFileToServer } from '@/app/server-actions';
+import { uploadFileToServer } from '@/app/actions';
 import { createFundingCall, announceEmrCall } from '@/app/emr-actions';
 import Link from 'next/link';
 import { cn } from '@/lib/utils';

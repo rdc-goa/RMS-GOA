@@ -169,7 +169,7 @@ export function ScheduleMeetingDialog({ call, interests, allUsers, currentUser, 
         }
     };
     
-    const usersWithInterest = interests.filter(i => i.callId === call.id && !i.meetingSlot);
+    const usersWithInterest = interests.filter(i => i.callId === call.id && !i.meetingSlot && !i.wasAbsent);
     const availableEvaluators = allUsers.filter(u => {
         const isAdminRole = ['Super-admin', 'admin', 'CRO'].includes(u.role);
         const isNotAnApplicant = !usersWithInterest.some(interest => interest.userId === u.uid);
@@ -197,7 +197,7 @@ export function ScheduleMeetingDialog({ call, interests, allUsers, currentUser, 
                                 name="applicantUids"
                                 render={() => (
                                     <FormItem>
-                                        <div className="flex items-center space-x-2 p-2 border-b">
+                                        <div className="flex items-center space-x-3 p-3 border-b">
                                             <Checkbox
                                                 id="select-all-applicants"
                                                 checked={applicantsForm.watch('applicantUids')?.length === usersWithInterest.length && usersWithInterest.length > 0}
@@ -205,13 +205,15 @@ export function ScheduleMeetingDialog({ call, interests, allUsers, currentUser, 
                                             />
                                             <FormLabel htmlFor="select-all-applicants" className="font-medium">Select All</FormLabel>
                                         </div>
-                                        {usersWithInterest.map(interest => (
+                                        {usersWithInterest.map(interest => {
+                                            const interestedUser = allUsers.find(u => u.uid === interest.userId);
+                                            return (
                                             <FormField
                                                 key={interest.id}
                                                 control={applicantsForm.control}
                                                 name="applicantUids"
                                                 render={({ field }) => (
-                                                    <FormItem className="flex items-center space-x-2 p-2 border-b">
+                                                    <FormItem className="flex items-center space-x-3 p-3 border-b">
                                                         <FormControl>
                                                             <Checkbox
                                                                 checked={field.value?.includes(interest.userId)}
@@ -222,11 +224,18 @@ export function ScheduleMeetingDialog({ call, interests, allUsers, currentUser, 
                                                                 }}
                                                             />
                                                         </FormControl>
-                                                        <FormLabel className="font-normal w-full">{interest.userName}</FormLabel>
+                                                        <FormLabel className="font-normal w-full space-y-1">
+                                                            <div>{interest.userName}</div>
+                                                            {interestedUser && (
+                                                                <div className="text-xs text-muted-foreground">
+                                                                    {interestedUser.institute}
+                                                                </div>
+                                                            )}
+                                                        </FormLabel>
                                                     </FormItem>
                                                 )}
                                             />
-                                        ))}
+                                        )})}
                                         <FormMessage />
                                     </FormItem>
                                 )}

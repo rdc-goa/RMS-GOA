@@ -1,17 +1,18 @@
 
+
 'use client';
 
 import { useState, useEffect } from 'react';
 import type { User, Project, EmrInterest, FundingCall, ResearchPaper, Author, CoPiDetails, IncentiveClaim } from '@/types';
-import { uploadFileToServer, updateEmrInterestDetails } from '@/app/server-actions';
-import { getResearchDomainSuggestion as getResearchDomain } from '@/ai/flows/research-domain-suggestion';
+import { uploadFileToServer } from '@/app/actions';
+import { updateEmrInterestDetails } from '@/app/emr-actions';
 import { findUserByMisId } from '@/app/userfinding';
 import { addResearchPaper, checkUserOrStaff, updateResearchPaper, deleteResearchPaper, manageCoAuthorRequest } from '@/app/bulkpapers';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Bot, Loader2, Mail, Briefcase, Building2, BookCopy, Phone, Plus, UserPlus, X, Edit, Trash2, Search, Upload, CalendarDays, FileText, Check, UserCheck, UserX, Award, Download } from 'lucide-react';
+import { Bot, Loader2, Mail, Briefcase, Building2, BookCopy, Phone, Plus, UserPlus, X, Edit, Trash2, Search, Upload, CalendarDays, FileText, Check, UserCheck, UserX, Award } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
@@ -28,7 +29,6 @@ import { cn } from '@/lib/utils';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../ui/table';
 import Link from 'next/link';
 import { RadioGroup, RadioGroupItem } from '../ui/radio-group';
-import { fetchAndSaveScholarPublications } from '@/app/scholar-actions';
 
 
 function ProfileDetail({ label, value, icon: Icon }: { label: string; value?: string; icon: React.ElementType }) {
@@ -474,7 +474,6 @@ function EditBulkEmrDialog({ interest, isOpen, onOpenChange, onUpdate }: { inter
 export function ProfileClient({ user, projects, emrInterests: initialEmrInterests, fundingCalls, claims }: { user: User; projects: Project[], emrInterests: EmrInterest[], fundingCalls: FundingCall[], claims: IncentiveClaim[] }) {
     const [domain, setDomain] = useState<string | null>(user.researchDomain || null);
     const [loadingDomain, setLoadingDomain] = useState(false);
-    const [isFetchingScholar, setIsFetchingScholar] = useState(false);
     const [researchPapers, setResearchPapers] = useState<ResearchPaper[]>([]);
     const [emrInterests, setEmrInterests] = useState(initialEmrInterests);
     const [isAddEditDialogOpen, setIsAddEditDialogOpen] = useState(false);
@@ -502,43 +501,6 @@ export function ProfileClient({ user, projects, emrInterests: initialEmrInterest
         if (storedUser) { setSessionUser(JSON.parse(storedUser)); }
         fetchPapers();
     }, [user.uid]);
-
-    const handleScholarFetch = async () => {
-        setIsFetchingScholar(true);
-        toast({ title: 'Fetching Publications...', description: 'This may take a moment. Please wait.' });
-        try {
-            const result = await fetchAndSaveScholarPublications(user);
-            if (result.success) {
-                toast({ title: 'Success!', description: `${result.newPapersCount} new publications were imported.` });
-                fetchPapers(); // Re-fetch papers to show the new ones
-            } else {
-                toast({ title: 'Error', description: result.error || 'Failed to fetch publications.', variant: 'destructive' });
-            }
-        } catch (error: any) {
-            toast({ title: 'Error', description: error.message || 'An unexpected error occurred.', variant: 'destructive' });
-        } finally {
-            setIsFetchingScholar(false);
-        }
-    };
-
-    useEffect(() => {
-        const fetchDomain = async () => {
-            const imrTitles = projects.map(p => p.title);
-            const emrTitles = emrInterests.map(i => i.callTitle || fundingCalls.find(c => c.id === i.callId)?.title).filter(Boolean) as string[];
-            const paperTitles = researchPapers.map(p => p.title);
-            const allTitles = [...new Set([...imrTitles, ...emrTitles, ...paperTitles])];
-
-            if (allTitles.length > 0 && !user.researchDomain) {
-                setLoadingDomain(true);
-                try {
-                    const result = await getResearchDomain({ paperTitles: allTitles });
-                    if (result) { setDomain(result.domain); }
-                } catch (error) { console.error("Error fetching research domain:", error); } 
-                finally { setLoadingDomain(false); }
-            }
-        };
-        fetchDomain();
-    }, [projects, emrInterests, researchPapers, user.researchDomain, fundingCalls]);
     
     const handlePaperSuccess = (paper: ResearchPaper, isNew: boolean) => {
         if (isNew) { setResearchPapers(prev => [paper, ...prev]); } 
@@ -590,7 +552,6 @@ export function ProfileClient({ user, projects, emrInterests: initialEmrInterest
     };
     
     const isOwner = sessionUser?.uid === user.uid;
-    const isSuperAdmin = sessionUser?.role === 'Super-admin';
     const profileLink = user.campus === 'Goa' ? `/goa/${user.misId}` : `/profile/${user.misId}`;
 
     const StatItem = ({ value, label }: { value: number | string; label: string }) => (
@@ -604,8 +565,39 @@ export function ProfileClient({ user, projects, emrInterests: initialEmrInterest
         return claim.paperTitle || claim.patentTitle || claim.conferencePaperTitle || claim.publicationTitle || claim.professionalBodyName || claim.apcPaperTitle || 'N/A';
     };
 
-    const paperClaims = claims.filter(c => c.claimType === 'Research Papers');
+    const getResearchPaperProofUrl = (claim: IncentiveClaim) => {
+        return claim.publicationProofUrls?.[0] || claim.relevantLink || undefined;
+    };
+
+    const normalizePublicationValue = (value?: string) => (value || '').trim().toLowerCase();
+
+    const researchPaperIdSet = new Set(researchPapers.map((paper) => paper.id));
+    const researchPaperTitleSet = new Set(researchPapers.map((paper) => normalizePublicationValue(paper.title)));
+    const researchPaperUrlSet = new Set(researchPapers.map((paper) => normalizePublicationValue(paper.url)));
+
+    const paperClaims = claims.filter(c => c.claimType === 'Research Papers').filter((claim) => {
+        // Do not list the same publication twice when a claim is already linked to
+        // a research paper entry for this profile.
+        if (claim.paperId && researchPaperIdSet.has(claim.paperId)) {
+            return false;
+        }
+
+        const normalizedTitle = normalizePublicationValue(claim.paperTitle);
+        if (normalizedTitle && researchPaperTitleSet.has(normalizedTitle)) {
+            return false;
+        }
+
+        const normalizedUrl = normalizePublicationValue(claim.relevantLink);
+        if (normalizedUrl && researchPaperUrlSet.has(normalizedUrl)) {
+            return false;
+        }
+
+        return true;
+    });
+
     const otherClaims = claims.filter(c => c.claimType !== 'Research Papers');
+    const totalPublicationAndClaimCount = researchPapers.length + paperClaims.length + otherClaims.length;
+    const totalApprovedAmount = claims.reduce((sum, claim) => sum + (claim.finalApprovedAmount || 0), 0);
 
     return (
         <div className="flex flex-col items-center">
@@ -632,7 +624,8 @@ export function ProfileClient({ user, projects, emrInterests: initialEmrInterest
                             <div className="flex justify-center md:justify-start gap-8 my-4">
                                 <StatItem value={projects.length} label="IMR Projects" />
                                 <StatItem value={emrInterests.length} label="EMR Interests" />
-                                <StatItem value={researchPapers.length + claims.length} label="Publications & Claims" />
+                                <StatItem value={totalPublicationAndClaimCount} label="Publications & Claims" />
+                                <StatItem value={`₹${totalApprovedAmount.toLocaleString('en-IN')}`} label="Total Approved" />
                             </div>
                         </div>
                     </div>
@@ -656,35 +649,8 @@ export function ProfileClient({ user, projects, emrInterests: initialEmrInterest
                                 <ProfileDetail label="ORCID iD" value={user.orcidId} icon={BookCopy} />
                                 <ProfileDetail label="Scopus ID" value={user.scopusId} icon={BookCopy} />
                                 <ProfileDetail label="Vidwan ID" value={user.vidwanId} icon={BookCopy} />
-                                 <div className="flex items-center gap-3">
-                                    <div className="flex-shrink-0"><BookCopy className="h-5 w-5 text-muted-foreground" /></div>
-                                    <div>
-                                        <p className="text-sm font-medium">Google Scholar ID</p>
-                                        <div className="flex items-center gap-2">
-                                            <p className="text-sm text-muted-foreground">{user.googleScholarId || 'Not Provided'}</p>
-                                            {isSuperAdmin && user.googleScholarId && (
-                                                <Button size="sm" variant="outline" onClick={handleScholarFetch} disabled={isFetchingScholar}>
-                                                    {isFetchingScholar ? <Loader2 className="h-4 w-4 animate-spin"/> : <Download className="h-4 w-4"/>}
-                                                    <span className="ml-2">Fetch Papers</span>
-                                                </Button>
-                                            )}
-                                        </div>
-                                    </div>
-                                </div>
+                                <ProfileDetail label="Google Scholar ID" value={user.googleScholarId} icon={BookCopy} />
                             </div>
-                        </div>
-                        <div className="space-y-4 md:col-span-2">
-                            <h3 className="font-semibold text-lg flex items-center gap-2"><Bot className="h-5 w-5" /> AI-Suggested Research Domain</h3>
-                            {loadingDomain ? (
-                                <div className="flex items-center gap-2 text-muted-foreground">
-                                    <Loader2 className="h-4 w-4 animate-spin" />
-                                    <span>Analyzing publications...</span>
-                                </div>
-                            ) : domain ? (
-                                <Badge variant="secondary" className="text-base">{domain}</Badge>
-                            ) : (
-                                <p className="text-sm text-muted-foreground">Not enough data to determine a domain.</p>
-                            )}
                         </div>
                     </div>
                 </CardContent>
@@ -695,7 +661,7 @@ export function ProfileClient({ user, projects, emrInterests: initialEmrInterest
                     <TabsList className="grid w-full grid-cols-3">
                         <TabsTrigger value="projects">IMR Projects ({projects.length})</TabsTrigger>
                         <TabsTrigger value="emr">EMR Interests ({emrInterests.length})</TabsTrigger>
-                        <TabsTrigger value="publications">Publications & Incentives ({researchPapers.length + claims.length})</TabsTrigger>
+                        <TabsTrigger value="publications">Publications & Incentives ({totalPublicationAndClaimCount})</TabsTrigger>
                     </TabsList>
                     <TabsContent value="projects">
                         <div className="space-y-4 mt-4">
@@ -847,10 +813,24 @@ export function ProfileClient({ user, projects, emrInterests: initialEmrInterest
                                             <Card key={claim.id}>
                                                 <CardContent className="p-4 space-y-2">
                                                     <div className="flex justify-between items-start">
-                                                        <p className="font-semibold flex-1">{getClaimTitle(claim)}</p>
+                                                        <div className="font-semibold flex-1">
+                                                            {getResearchPaperProofUrl(claim) ? (
+                                                                <a
+                                                                    href={getResearchPaperProofUrl(claim)}
+                                                                    target="_blank"
+                                                                    rel="noopener noreferrer"
+                                                                    className="hover:underline text-primary"
+                                                                >
+                                                                    {getClaimTitle(claim)}
+                                                                </a>
+                                                            ) : (
+                                                                <span>{getClaimTitle(claim)}</span>
+                                                            )}
+                                                        </div>
                                                         <Badge variant={claim.status === 'Payment Completed' ? 'default' : claim.status === 'Rejected' ? 'destructive' : 'secondary'}>{claim.status}</Badge>
                                                     </div>
                                                     <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm pt-2 border-t">
+                                                        <span><strong className="text-muted-foreground">Claim ID:</strong> {claim.claimId || 'N/A'}</span>
                                                         <span><strong className="text-muted-foreground">Index:</strong> {claim.indexType?.toUpperCase() || 'N/A'}</span>
                                                         {claim.finalApprovedAmount && <span><strong className="text-muted-foreground">Approved Amount:</strong> ₹{claim.finalApprovedAmount.toLocaleString('en-IN')}</span>}
                                                         <span><strong className="text-muted-foreground">Submitted:</strong> {format(parseISO(claim.submissionDate), 'PPP')}</span>
@@ -875,6 +855,7 @@ export function ProfileClient({ user, projects, emrInterests: initialEmrInterest
                                                         <Badge variant={claim.status === 'Payment Completed' ? 'default' : claim.status === 'Rejected' ? 'destructive' : 'secondary'}>{claim.status}</Badge>
                                                     </div>
                                                     <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm pt-2 border-t">
+                                                        <span><strong className="text-muted-foreground">Claim ID:</strong> {claim.claimId || 'N/A'}</span>
                                                         <span><strong className="text-muted-foreground">Claim Type:</strong> {claim.claimType}</span>
                                                         {claim.finalApprovedAmount && <span><strong className="text-muted-foreground">Approved Amount:</strong> ₹{claim.finalApprovedAmount.toLocaleString('en-IN')}</span>}
                                                         <span><strong className="text-muted-foreground">Submitted:</strong> {format(parseISO(claim.submissionDate), 'PPP')}</span>

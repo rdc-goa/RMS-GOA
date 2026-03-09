@@ -38,11 +38,11 @@ import { RichTextEditor } from '@/components/ui/rich-text-editor';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Badge } from '@/components/ui/badge';
-import { Calendar as CalendarIcon, Edit, Plus, Users, ChevronLeft, ChevronRight, Link as LinkIcon, Loader2, Upload, NotebookText, Send, Trash2, Download } from 'lucide-react';
+import { Calendar as CalendarIcon, Edit, Plus, Users, ChevronLeft, ChevronRight, Link as LinkIcon, Loader2, Upload, NotebookText, Send, Trash2, Download, UserPlus, Search } from 'lucide-react';
 import type { FundingCall, User, EmrInterest, EmrEvaluation } from '@/types';
 import { format, differenceInDays, differenceInHours, differenceInMinutes, parseISO, startOfMonth, endOfMonth, eachDayOfInterval, getDay, addMonths, subMonths, isAfter, setHours, setMinutes, setSeconds, isBefore } from 'date-fns';
-import { uploadFileToServer } from '@/app/server-actions';
-import { createFundingCall, announceEmrCall } from '@/app/emr-actions';
+import { uploadFileToServer } from '@/app/actions';
+import { createFundingCall, announceEmrCall, registerEmrInterest } from '@/app/emr-actions';
 import Link from 'next/link';
 import { cn } from '@/lib/utils';
 import { Checkbox } from '../ui/checkbox';
@@ -50,6 +50,8 @@ import { EmrActions } from './emr-actions';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
 import { useIsMobile } from '@/hooks/use-mobile';
+import { findUserByMisId } from '@/app/userfinding';
+import { RadioGroup, RadioGroupItem } from '../ui/radio-group';
 
 
 interface EmrCalendarProps {
@@ -84,6 +86,73 @@ const fileToDataUrl = (file: File): Promise<string> => {
         reader.readAsDataURL(file);
     });
 };
+
+function RegisterUserDialog({ call, adminUser, isOpen, onOpenChange, onRegisterSuccess }: { call: FundingCall, adminUser: User, isOpen: boolean, onOpenChange: (open: boolean) => void, onRegisterSuccess: () => void }) {
+    const { toast } = useToast();
+    const [isSubmitting, setIsSubmitting] = useState(false);
+    const [searchTerm, setSearchTerm] = useState('');
+    const [foundUsers, setFoundUsers] = useState<any[]>([]);
+    const [isSearching, setIsSearching] = useState(false);
+
+    const handleSearch = async () => {
+        if (!searchTerm.trim()) return;
+        setIsSearching(true);
+        const result = await findUserByMisId(searchTerm);
+        if (result.success && result.users) {
+            setFoundUsers(result.users);
+        } else {
+            toast({ variant: 'destructive', title: 'Not Found', description: result.error });
+            setFoundUsers([]);
+        }
+        setIsSearching(false);
+    };
+
+    const handleRegister = async (userToRegister: User) => {
+        setIsSubmitting(true);
+        try {
+            const result = await registerEmrInterest(call.id, userToRegister, [], { adminUid: adminUser.uid, adminName: adminUser.name });
+            if (result.success) {
+                toast({ title: 'Success', description: `${userToRegister.name} has been registered for the call.` });
+                onRegisterSuccess();
+                onOpenChange(false);
+            } else {
+                toast({ variant: 'destructive', title: 'Registration Failed', description: result.error });
+            }
+        } finally {
+            setIsSubmitting(false);
+        }
+    };
+
+    return (
+        <Dialog open={isOpen} onOpenChange={onOpenChange}>
+            <DialogContent>
+                <DialogHeader>
+                    <DialogTitle>Register a User for: {call.title}</DialogTitle>
+                    <DialogDescription>Search for a user by their MIS ID to register them for this funding call.</DialogDescription>
+                </DialogHeader>
+                <div className="py-4 space-y-4">
+                    <div className="flex items-center gap-2">
+                        <Input placeholder="Enter user's MIS ID" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
+                        <Button onClick={handleSearch} disabled={isSearching}>{isSearching ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Search'}</Button>
+                    </div>
+                    {foundUsers.length > 0 && (
+                        <div className="space-y-2 max-h-60 overflow-y-auto">
+                            {foundUsers.map(user => (
+                                <div key={user.uid || user.email} className="flex justify-between items-center p-2 border rounded-md">
+                                    <div>
+                                        <p className="font-semibold">{user.name}</p>
+                                        <p className="text-xs text-muted-foreground">{user.email}</p>
+                                    </div>
+                                    <Button size="sm" onClick={() => handleRegister(user)} disabled={isSubmitting}>Register</Button>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </div>
+            </DialogContent>
+        </Dialog>
+    );
+}
 
 export function AddEditCallDialog({
   isOpen,
@@ -306,6 +375,7 @@ export function EmrCalendar({ user }: EmrCalendarProps) {
     const [userInterests, setUserInterests] = useState<EmrInterest[]>([]);
     const [loading, setLoading] = useState(true);
     const [isAddEditDialogOpen, setIsAddEditDialogOpen] = useState(false);
+    const [isRegisterUserDialogOpen, setIsRegisterUserDialogOpen] = useState(false);
     const [selectedCall, setSelectedCall] = useState<FundingCall | null>(null);
     const [currentMonth, setCurrentMonth] = useState(new Date());
     const [isAnnounceDialogOpen, setIsAnnounceDialogOpen] = useState(false);
@@ -462,7 +532,8 @@ export function EmrCalendar({ user }: EmrCalendarProps) {
                     </div>
                     {isSuperAdmin && (
                         <div className="flex items-center gap-2">
-                             <Button onClick={() => { setSelectedCall(null); setIsAddEditDialogOpen(true); }}><Plus className="mr-2 h-4 w-4" /> Add New Call</Button>
+                            <Button variant="secondary" onClick={() => setIsRegisterUserDialogOpen(true)}><UserPlus className="mr-2 h-4 w-4" /> Register User</Button>
+                            <Button onClick={() => { setSelectedCall(null); setIsAddEditDialogOpen(true); }}><Plus className="mr-2 h-4 w-4" /> Add New Call</Button>
                         </div>
                     )}
                 </CardHeader>
@@ -590,6 +661,7 @@ export function EmrCalendar({ user }: EmrCalendarProps) {
                                </AlertDialogContent>
                              </AlertDialog>
                          )}
+                         <RegisterUserDialog call={upcomingCalls[0]} adminUser={user} isOpen={isRegisterUserDialogOpen} onOpenChange={setIsRegisterUserDialogOpen} onRegisterSuccess={fetchData}/>
                     </>
                 )}
             </Card>

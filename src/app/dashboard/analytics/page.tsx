@@ -7,17 +7,20 @@ import { PageHeader } from '@/components/page-header';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Bar, BarChart, CartesianGrid, XAxis, Line, LineChart, ResponsiveContainer, YAxis, Tooltip, Pie, PieChart, Cell, Legend, LabelList } from 'recharts';
 import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from '@/components/ui/chart';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Badge } from '@/components/ui/badge';
 import type { Project, User, EmrInterest, IncentiveClaim } from '@/types';
 import { db } from '@/lib/config';
 import { collection, query, where, getDocs, onSnapshot, or, orderBy, Timestamp } from 'firebase/firestore';
 import { format, subMonths, startOfMonth, endOfMonth, parseISO, getYear, subDays, startOfDay } from 'date-fns';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Award, Download, Users, Loader2 } from 'lucide-react';
+import { Award, Download, Users, Loader2, FileArchive } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
 import { toPng } from 'html-to-image';
 import { useRouter } from 'next/navigation';
+import { getStorageUsage } from '@/app/actions';
 
 
 const COLORS = ["#64B5F6", "#81C784", "#FFB74D", "#E57373", "#BA68C8", "#7986CB", "#4DD0E1", "#FFF176", "#FF8A65", "#A1887F", "#90A4AE"];
@@ -51,6 +54,7 @@ export default function AnalyticsPage() {
   const [emrProjects, setEmrProjects] = useState<EmrInterest[]>([]);
   const [incentiveClaims, setIncentiveClaims] = useState<IncentiveClaim[]>([]);
   const [loginLogs, setLoginLogs] = useState<any[]>([]);
+  const [storageUsage, setStorageUsage] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [user, setUser] = useState<User | null>(null);
   const [facultyFilter, setFacultyFilter] = useState('all');
@@ -67,6 +71,9 @@ export default function AnalyticsPage() {
   const projectsByGroupChartRef = useRef<HTMLDivElement>(null);
   const incentiveAmountChartRef = useRef<HTMLDivElement>(null);
   const activeUsersChartRef = useRef<HTMLDivElement>(null);
+  const fundingByAgencyChartRef = useRef<HTMLDivElement>(null);
+  const fieldOfStudyChartRef = useRef<HTMLDivElement>(null);
+  const fieldOfStudySubdomainChartRef = useRef<HTMLDivElement>(null);
 
   const handleExport = useCallback(async (ref: React.RefObject<HTMLDivElement>, fileName: string) => {
     if (!ref.current) {
@@ -130,12 +137,17 @@ export default function AnalyticsPage() {
     const isCro = user.role === 'CRO';
     const isHod = user.designation === 'HOD';
     const isSpecialPitUser = user.email === 'pit@paruluniversity.ac.in';
+    const isGoaHead = user.designation === 'Head of Goa Campus';
 
 
     if (isCro && user.faculties && user.faculties.length > 0) {
         projectsQuery = query(projectsCollection, where('faculty', 'in', user.faculties));
         emrQuery = query(emrCollection, where('faculty', 'in', user.faculties), where('status', 'in', ['Sanctioned', 'Process Complete']));
         claimsQuery = query(claimsCollection, where('faculty', 'in', user.faculties));
+    } else if (isGoaHead) {
+        projectsQuery = query(projectsCollection, where('campus', '==', 'Goa'));
+        emrQuery = query(emrCollection, where('campus', '==', 'Goa'), where('status', 'in', ['Sanctioned', 'Process Complete']));
+        claimsQuery = query(claimsCollection, where('campus', '==', 'Goa'));
     } else if (isHod && user.department && user.institute) {
         projectsQuery = query(projectsCollection, where('departmentName', '==', user.department), where('institute', '==', user.institute));
         emrQuery = query(emrCollection, where('department', '==', user.department), where('status', 'in', ['Sanctioned', 'Process Complete']));
@@ -152,6 +164,15 @@ export default function AnalyticsPage() {
         projectsQuery = query(projectsCollection);
         emrQuery = query(emrCollection, where('status', 'in', ['Sanctioned', 'Process Complete']));
         claimsQuery = query(claimsCollection);
+        
+        // Fetch storage usage only for super admins
+        if (user.role === 'Super-admin') {
+            getStorageUsage().then(result => {
+                if (result.success) {
+                    setStorageUsage(result.totalSizeMB || 0);
+                }
+            });
+        }
     }
     
     const unsubscribeProjects = onSnapshot(projectsQuery, (snapshot) => {
@@ -299,7 +320,7 @@ export default function AnalyticsPage() {
     if (user?.role === 'CRO') {
         return { aggregationKey: 'institute', aggregationLabel: 'Institute' };
     }
-    if (user?.designation === 'Principal' || user?.designation === 'HOD' || user?.email === 'pit@paruluniversity.ac.in') {
+    if (user?.designation === 'Principal' || user?.designation === 'HOD' || user?.email === 'pit@paruluniversity.ac.in' || user?.designation === 'Head of Goa Campus') {
         return { aggregationKey: 'departmentName', aggregationLabel: 'Department' };
     }
     return { aggregationKey: 'faculty', aggregationLabel: 'Faculty' };
@@ -329,6 +350,31 @@ export default function AnalyticsPage() {
     projects: { label: 'Projects', color: 'hsl(var(--accent))' },
   } satisfies ChartConfig;
 
+  const fundingByAgencyData = useMemo(() => {
+    const agencyFunding = filteredEmrProjects
+        .filter(p => p.status === 'Sanctioned' && p.durationAmount && p.agency)
+        .reduce((acc, project) => {
+            const amountMatch = project.durationAmount?.match(/Amount:\s*([\d,]+)/);
+            if (amountMatch) {
+                const amount = parseInt(amountMatch[1].replace(/,/g, ''), 10);
+                if (project.agency) {
+                    acc[project.agency] = (acc[project.agency] || 0) + amount;
+                }
+            }
+            return acc;
+        }, {} as Record<string, number>);
+
+    return Object.entries(agencyFunding)
+        .map(([agency, amount]) => ({ agency, amount }))
+        .sort((a, b) => b.amount - a.amount)
+        .slice(0, 5);
+  }, [filteredEmrProjects]);
+
+  const fundingByAgencyConfig = {
+    amount: { label: 'Amount (₹)', color: 'hsl(var(--primary))' },
+  } satisfies ChartConfig;
+
+
   const statusDistributionData = useMemo(() => {
     const statusCounts = filteredProjects.reduce((acc, project) => {
         const status = project.status || 'Unknown';
@@ -356,6 +402,7 @@ export default function AnalyticsPage() {
       .filter(claim => (claim.finalApprovedAmount || 0) > 0)
       .reduce((acc, claim) => {
         const type = claim.claimType;
+        const amount = claim.finalApprovedAmount || 0;
         acc[type] = (acc[type] || 0) + amount;
         return acc;
       }, {} as Record<string, number>);
@@ -380,14 +427,358 @@ export default function AnalyticsPage() {
     return config;
   }, [incentiveAmountData]);
 
+  // --- Publication Analytics by Quartile & Monthly Distribution ---
+  const { quarterlyDistributionData, monthlyDistributionData, quartileSummary } = useMemo(() => {
+    // Filter research paper claims with publication data
+    const researchPaperClaims = incentiveClaims.filter(
+      claim => claim.claimType === 'Research Papers' && 
+               claim.journalClassification && 
+               claim.publicationMonth && 
+               claim.publicationYear
+    );
+
+    // Calculate Q1-Q4 distribution
+    const quartileCount: Record<string, number> = {
+      'Q1': 0,
+      'Q2': 0,
+      'Q3': 0,
+      'Q4': 0,
+    };
+
+    researchPaperClaims.forEach(claim => {
+      if (claim.journalClassification && quartileCount.hasOwnProperty(claim.journalClassification)) {
+        quartileCount[claim.journalClassification]++;
+      }
+    });
+
+    // Create quartile data in proper Q1, Q2, Q3, Q4 order
+    const quartileData = ['Q1', 'Q2', 'Q3', 'Q4']
+      .map(q => ({ quartile: q, count: quartileCount[q] }));
+
+    const totalArticles = researchPaperClaims.length;
+
+    // Calculate monthly distribution
+    const monthlyCount: Record<string, number> = {};
+    
+    researchPaperClaims.forEach(claim => {
+      if (claim.publicationMonth && claim.publicationYear) {
+        // Parse month and year
+        const monthStr = claim.publicationMonth.toLowerCase();
+        const yearStr = claim.publicationYear;
+        
+        // Try to parse the month string (could be "January", "Jan", "1", etc.)
+        const monthMap: Record<string, number> = {
+          'january': 1, 'jan': 1, 'february': 2, 'feb': 2, 'march': 3, 'mar': 3,
+          'april': 4, 'apr': 4, 'may': 5, 'june': 6, 'jun': 6, 'july': 7, 'jul': 7,
+          'august': 8, 'aug': 8, 'september': 9, 'sep': 9, 'october': 10, 'oct': 10,
+          'november': 11, 'nov': 11, 'december': 12, 'dec': 12
+        };
+
+        let monthNum = monthMap[monthStr] || parseInt(monthStr);
+        if (monthNum < 1 || monthNum > 12) monthNum = 1;
+
+        const monthName = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][monthNum - 1];
+        const key = `${monthName} ${yearStr}`;
+        
+        monthlyCount[key] = (monthlyCount[key] || 0) + 1;
+      }
+    });
+
+    // Sort monthly data chronologically
+    const monthlyData = Object.entries(monthlyCount)
+      .map(([month, count]) => ({ month, count }))
+      .sort((a, b) => {
+        const dateA = new Date(`${a.month.split(' ')[0]} 1, ${a.month.split(' ')[1]}`);
+        const dateB = new Date(`${b.month.split(' ')[0]} 1, ${b.month.split(' ')[1]}`);
+        return dateA.getTime() - dateB.getTime();
+      });
+
+    return {
+      quarterlyDistributionData: quartileData,
+      monthlyDistributionData: monthlyData,
+      quartileSummary: {
+        totalArticles,
+        q1Count: quartileCount['Q1'],
+        q2Count: quartileCount['Q2'],
+        q3Count: quartileCount['Q3'],
+        q4Count: quartileCount['Q4'],
+      },
+    };
+  }, [incentiveClaims]);
+
+  const quartileChartConfig = useMemo(() => {
+    const config: ChartConfig = {};
+    ['Q1', 'Q2', 'Q3', 'Q4'].forEach((quartile, index) => {
+      config[quartile] = {
+        label: quartile,
+        color: COLORS[index % COLORS.length],
+      };
+    });
+    return config;
+  }, []);
+
+  const monthlyChartConfig = useMemo(() => {
+    const config: ChartConfig = {
+      count: {
+        label: 'Publications',
+        color: 'hsl(var(--primary))',
+      },
+    };
+    return config;
+  }, []);
+
+  const publicationChartRef = useRef<HTMLDivElement>(null);
+  const monthlyPublicationChartRef = useRef<HTMLDivElement>(null);
+
+  const {
+    fieldOfStudyData,
+    fieldOfStudyConfig,
+    fieldOfStudySubdomainData,
+    fieldOfStudySubdomainConfig,
+    fieldOfStudyDrilldown,
+    fieldOfStudySummary,
+  } = useMemo(() => {
+    const getClaimTitle = (claim: IncentiveClaim): string => {
+      return (
+        claim.paperTitle ||
+        claim.patentTitle ||
+        claim.conferencePaperTitle ||
+        claim.publicationTitle ||
+        claim.professionalBodyName ||
+        claim.apcPaperTitle ||
+        claim.awardTitle ||
+        ''
+      );
+    };
+
+    const normalize = (text: string) => text.toLowerCase().replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
+
+    const taxonomy: Array<{
+      domain: string;
+      subdomains: Array<{ name: string; keywords: string[]; weight: number }>;
+    }> = [
+      {
+        domain: 'Computer Science & AI',
+        subdomains: [
+          { name: 'Artificial Intelligence', keywords: ['artificial intelligence', 'machine learning', 'deep learning', 'neural network', 'llm', 'gen ai', 'nlp', 'computer vision'], weight: 5 },
+          { name: 'Data Science & Analytics', keywords: ['data mining', 'predictive model', 'data analytics', 'big data', 'classification', 'regression'], weight: 4 },
+          { name: 'Software & Systems', keywords: ['software', 'algorithm', 'distributed system', 'cloud', 'microservice', 'devops', 'compiler'], weight: 3 },
+          { name: 'Cybersecurity & Blockchain', keywords: ['cybersecurity', 'network security', 'cryptography', 'intrusion', 'blockchain', 'smart contract'], weight: 4 },
+        ],
+      },
+      {
+        domain: 'Engineering & Technology',
+        subdomains: [
+          { name: 'Electrical & Electronics', keywords: ['electrical', 'power system', 'power electronics', 'vlsi', 'embedded', 'sensor', 'signal processing'], weight: 4 },
+          { name: 'Mechanical & Manufacturing', keywords: ['mechanical', 'manufacturing', 'thermal', 'fluid', 'cad', 'cam', 'tribology'], weight: 4 },
+          { name: 'Civil & Infrastructure', keywords: ['civil', 'concrete', 'structural', 'transportation', 'geotechnical', 'construction'], weight: 4 },
+          { name: 'Robotics & Automation', keywords: ['robotics', 'automation', 'control system', 'mechatronics', 'autonomous'], weight: 5 },
+        ],
+      },
+      {
+        domain: 'Health & Life Sciences',
+        subdomains: [
+          { name: 'Clinical & Medical', keywords: ['clinical', 'medical', 'disease', 'patient', 'diagnosis', 'therapy', 'hospital'], weight: 5 },
+          { name: 'Pharmacy & Drug Discovery', keywords: ['pharmacy', 'drug', 'formulation', 'pharmacology', 'toxicology', 'medicinal chemistry'], weight: 5 },
+          { name: 'Nursing & Allied Health', keywords: ['nursing', 'physiotherapy', 'rehabilitation', 'public health', 'healthcare'], weight: 4 },
+          { name: 'Biology & Biotechnology', keywords: ['biology', 'biotechnology', 'microbiology', 'genome', 'protein', 'cell', 'biomarker'], weight: 4 },
+        ],
+      },
+      {
+        domain: 'Management, Commerce & Economics',
+        subdomains: [
+          { name: 'Finance & Accounting', keywords: ['finance', 'accounting', 'fintech', 'investment', 'portfolio', 'banking'], weight: 4 },
+          { name: 'Marketing & Consumer Behavior', keywords: ['marketing', 'consumer', 'branding', 'digital marketing', 'retail', 'customer'], weight: 4 },
+          { name: 'Operations & Supply Chain', keywords: ['supply chain', 'operations', 'logistics', 'inventory', 'quality management'], weight: 4 },
+          { name: 'HR & Organization Studies', keywords: ['human resource', 'hrm', 'organizational', 'leadership', 'workforce'], weight: 3 },
+        ],
+      },
+      {
+        domain: 'Social Sciences & Humanities',
+        subdomains: [
+          { name: 'Education & Pedagogy', keywords: ['education', 'pedagogy', 'curriculum', 'learning outcomes', 'assessment'], weight: 4 },
+          { name: 'Psychology & Sociology', keywords: ['psychology', 'sociology', 'behavior', 'social', 'mental health'], weight: 4 },
+          { name: 'Law, Policy & Governance', keywords: ['law', 'policy', 'governance', 'public administration', 'constitutional'], weight: 4 },
+          { name: 'Language, Media & Culture', keywords: ['language', 'literature', 'media', 'communication', 'cultural'], weight: 3 },
+        ],
+      },
+      {
+        domain: 'Environmental & Sustainability',
+        subdomains: [
+          { name: 'Climate & Renewable Energy', keywords: ['climate', 'renewable', 'solar', 'wind', 'decarbonization', 'net zero'], weight: 5 },
+          { name: 'Water, Waste & Pollution', keywords: ['water treatment', 'waste', 'pollution', 'effluent', 'air quality', 'solid waste'], weight: 4 },
+          { name: 'Sustainable Development', keywords: ['sustainability', 'sdg', 'green', 'circular economy', 'eco friendly'], weight: 4 },
+        ],
+      },
+      {
+        domain: 'Basic Sciences',
+        subdomains: [
+          { name: 'Physics', keywords: ['physics', 'quantum', 'optics', 'photonics', 'nanophysics'], weight: 5 },
+          { name: 'Chemistry', keywords: ['chemistry', 'organic synthesis', 'catalysis', 'polymer', 'electrochemistry'], weight: 5 },
+          { name: 'Mathematics & Statistics', keywords: ['mathematics', 'statistics', 'probability', 'stochastic', 'optimization'], weight: 4 },
+          { name: 'Biological Sciences', keywords: ['botany', 'zoology', 'ecology', 'genetics', 'microbiology'], weight: 4 },
+        ],
+      },
+    ];
+
+    const scoreKeyword = (text: string, keyword: string) => {
+      if (keyword.includes(' ')) {
+        return text.includes(keyword) ? 1 : 0;
+      }
+      const regex = new RegExp(`\\b${keyword.replace(/[.*+?^${}()|[\\]\\]/g, '\\$&')}\\b`, 'i');
+      return regex.test(text) ? 1 : 0;
+    };
+
+    const analyzeTitle = (title: string) => {
+      const normalized = normalize(title);
+      const scored: Array<{
+        domain: string;
+        subdomain: string;
+        score: number;
+        matchedKeywords: string[];
+      }> = [];
+
+      for (const domain of taxonomy) {
+        for (const sub of domain.subdomains) {
+          const matchedKeywords = sub.keywords.filter((kw) => scoreKeyword(normalized, kw) > 0);
+          const score = matchedKeywords.length * sub.weight;
+          scored.push({
+            domain: domain.domain,
+            subdomain: sub.name,
+            score,
+            matchedKeywords,
+          });
+        }
+      }
+
+      scored.sort((a, b) => b.score - a.score);
+      const top = scored[0];
+      const second = scored[1];
+
+      if (!top || top.score === 0) {
+        return {
+          domain: 'Interdisciplinary / Other',
+          subdomain: 'Unclassified',
+          confidence: 35,
+          matchedKeywords: [] as string[],
+        };
+      }
+
+      const confidence = Math.max(
+        40,
+        Math.min(
+          97,
+          55 + top.score * 3 + (second?.score ? Math.max(0, 15 - second.score * 2) : 18)
+        )
+      );
+
+      return {
+        domain: top.domain,
+        subdomain: top.subdomain,
+        confidence,
+        matchedKeywords: top.matchedKeywords.slice(0, 4),
+      };
+    };
+
+    const analyzed = incentiveClaims
+      .map((claim) => {
+        const title = getClaimTitle(claim);
+        if (!title) return null;
+        const analysis = analyzeTitle(title);
+        return {
+          id: claim.id,
+          claimId: claim.claimId || 'N/A',
+          claimType: claim.claimType,
+          title,
+          submissionDate: claim.submissionDate,
+          ...analysis,
+        };
+      })
+      .filter(Boolean) as Array<{
+        id: string;
+        claimId: string;
+        claimType: string;
+        title: string;
+        submissionDate: string;
+        domain: string;
+        subdomain: string;
+        confidence: number;
+        matchedKeywords: string[];
+      }>;
+
+    const byDomain = analyzed.reduce((acc, item) => {
+      acc[item.domain] = (acc[item.domain] || 0) + 1;
+      return acc;
+    }, {} as Record<string, number>);
+
+    const bySubdomain = analyzed.reduce((acc, item) => {
+      const key = `${item.domain} • ${item.subdomain}`;
+      acc[key] = (acc[key] || 0) + 1;
+      return acc;
+    }, {} as Record<string, number>);
+
+    const domainData = Object.entries(byDomain)
+      .map(([field, count]) => ({ field, count }))
+      .sort((a, b) => b.count - a.count);
+
+    const subdomainData = Object.entries(bySubdomain)
+      .map(([subdomain, count]) => ({ subdomain, count }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 12);
+
+    const domainConfig: ChartConfig = {};
+    domainData.forEach((item, index) => {
+      domainConfig[item.field] = {
+        label: item.field,
+        color: COLORS[index % COLORS.length],
+      };
+    });
+
+    const subdomainConfig: ChartConfig = {};
+    subdomainData.forEach((item, index) => {
+      subdomainConfig[item.subdomain] = {
+        label: item.subdomain,
+        color: COLORS[index % COLORS.length],
+      };
+    });
+
+    const sortedDrilldown = analyzed
+      .sort((a, b) => {
+        const byDate = new Date(b.submissionDate).getTime() - new Date(a.submissionDate).getTime();
+        if (byDate !== 0) return byDate;
+        return b.confidence - a.confidence;
+      })
+      .slice(0, 40);
+
+    const avgConfidence = analyzed.length > 0
+      ? Math.round(analyzed.reduce((sum, row) => sum + row.confidence, 0) / analyzed.length)
+      : 0;
+
+    return {
+      fieldOfStudyData: domainData,
+      fieldOfStudyConfig: domainConfig,
+      fieldOfStudySubdomainData: subdomainData,
+      fieldOfStudySubdomainConfig: subdomainConfig,
+      fieldOfStudyDrilldown: sortedDrilldown,
+      fieldOfStudySummary: {
+        classifiedClaims: analyzed.length,
+        uniqueDomains: domainData.length,
+        uniqueSubdomains: Object.keys(bySubdomain).length,
+        avgConfidence,
+      },
+    };
+  }, [incentiveClaims]);
+
 
   const isCro = user?.role === 'CRO';
+  const isGoaHead = user?.designation === 'Head of Goa Campus';
 
   const getPageTitle = () => {
       if (isCro) {
           if (facultyFilter === 'all') return `Analytics for All Your Faculties`;
           return `Analytics for ${facultyFilter}`;
       }
+      if (isGoaHead) return 'Analytics for Goa Campus';
       if (user?.designation === 'Principal' && user.institute) return `Analytics for ${user.institute}`;
       if (user?.designation === 'Principal' && !user.institute) return 'Analytics (Principal - No Institute Set)';
       if (user?.designation === 'HOD' && user.department && user.institute) return `Analytics for ${user.department}, ${user.institute}`;
@@ -396,7 +787,7 @@ export default function AnalyticsPage() {
 
   const getPageDescription = () => {
     if (user?.designation === 'Principal' && !user.institute) return 'Your institute information is not configured. Please update your profile to see institute-specific analytics.';
-    if (user?.role === 'CRO' || user?.designation === 'Principal' || user?.designation === 'HOD') return 'Visualize project data and submission trends for your scope.';
+    if (user?.role === 'CRO' || user?.designation === 'Principal' || user?.designation === 'HOD' || isGoaHead) return 'Visualize project data and submission trends for your scope.';
     return 'Visualize project data and submission trends across the university.';
   }
 
@@ -433,26 +824,7 @@ export default function AnalyticsPage() {
             </Select>
         )}
       </PageHeader>
-      <div className="mt-8 grid gap-6 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
-        <Card>
-            <CardHeader>
-                <CardTitle>Daily Active Users</CardTitle>
-                <CardDescription>Unique user logins over the last 7 days.</CardDescription>
-            </CardHeader>
-            <CardContent>
-                <ChartContainer config={dailyActiveUsersConfig} className="h-[250px] w-full">
-                    <BarChart data={dailyActiveUsersData} margin={{ top: 20 }}>
-                        <CartesianGrid vertical={false} />
-                        <XAxis dataKey="date" tickLine={false} axisLine={false} tickMargin={8} />
-                        <YAxis allowDecimals={false} />
-                        <Tooltip content={<ChartTooltipContent />} />
-                        <Bar dataKey="users" fill="var(--color-users)" radius={4}>
-                            <LabelList position="top" offset={5} className="fill-foreground" fontSize={12} />
-                        </Bar>
-                    </BarChart>
-                </ChartContainer>
-            </CardContent>
-        </Card>
+      <div className="mt-8 grid gap-6 md:grid-cols-2 lg:grid-cols-4">
         <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                 <CardTitle className="text-sm font-medium">Total Sanctioned Incentives</CardTitle>
@@ -463,7 +835,25 @@ export default function AnalyticsPage() {
                 <p className="text-xs text-muted-foreground">Across {incentiveClaims.filter(c => c.finalApprovedAmount).length} claims</p>
             </CardContent>
         </Card>
-        <Card className="sm:col-span-2">
+        {user.role === 'Super-admin' && (
+            <Card>
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                    <CardTitle className="text-sm font-medium">Total Storage Used</CardTitle>
+                    <FileArchive className="h-4 w-4 text-muted-foreground" />
+                </CardHeader>
+                <CardContent>
+                    {storageUsage !== null ? (
+                        <>
+                            <div className="text-2xl font-bold">{storageUsage} MB</div>
+                            <p className="text-xs text-muted-foreground">Used by all uploaded files.</p>
+                        </>
+                    ) : (
+                        <Skeleton className="h-8 w-24" />
+                    )}
+                </CardContent>
+            </Card>
+        )}
+        <Card className="lg:col-span-2">
           <CardHeader className="flex flex-row items-center justify-between">
             <div>
               <CardTitle>Project Status Distribution</CardTitle>
@@ -491,7 +881,7 @@ export default function AnalyticsPage() {
           </CardContent>
         </Card>
       </div>
-       <div className="mt-8 grid gap-6 grid-cols-1 lg:grid-cols-3">
+       <div className="mt-8 grid gap-6 md:grid-cols-1 lg:grid-cols-3">
         <Card className="lg:col-span-2">
           <CardHeader>
             <div className="flex flex-col sm:flex-row justify-between items-start gap-2">
@@ -581,7 +971,119 @@ export default function AnalyticsPage() {
           </CardContent>
         </Card>
       </div>
-       <div className="mt-8 grid gap-6 grid-cols-1 lg:grid-cols-2">
+
+      {/* Publication Analytics Section */}
+      <div className="mt-8 grid gap-6 md:grid-cols-4">
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium">Total Publications</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{quartileSummary.totalArticles}</div>
+            <p className="text-xs text-muted-foreground">Indexed journal articles</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium">Q1 Journals</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{quartileSummary.q1Count}</div>
+            <p className="text-xs text-muted-foreground">{quartileSummary.totalArticles > 0 ? `${((quartileSummary.q1Count / quartileSummary.totalArticles) * 100).toFixed(1)}%` : '0%'} of total</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium">Q2 Journals</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{quartileSummary.q2Count}</div>
+            <p className="text-xs text-muted-foreground">{quartileSummary.totalArticles > 0 ? `${((quartileSummary.q2Count / quartileSummary.totalArticles) * 100).toFixed(1)}%` : '0%'} of total</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium">Q3 & Q4 Journals</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{quartileSummary.q3Count + quartileSummary.q4Count}</div>
+            <p className="text-xs text-muted-foreground">{quartileSummary.totalArticles > 0 ? `${(((quartileSummary.q3Count + quartileSummary.q4Count) / quartileSummary.totalArticles) * 100).toFixed(1)}%` : '0%'} of total</p>
+          </CardContent>
+        </Card>
+      </div>
+
+      <div className="mt-8 grid gap-6 md:grid-cols-1 lg:grid-cols-2">
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between">
+            <div>
+              <CardTitle>Publications by Journal Quartile</CardTitle>
+              <CardDescription>Distribution of articles across Q1, Q2, Q3, Q4 journals.</CardDescription>
+            </div>
+            <Button variant="outline" size="icon" onClick={() => handleExport(publicationChartRef, 'publication_quartile_distribution')}>
+              <Download className="h-4 w-4" />
+            </Button>
+          </CardHeader>
+          <CardContent>
+            <div ref={publicationChartRef} className="p-4 bg-card">
+              <ChartContainer config={quartileChartConfig} className="h-[300px] w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={quarterlyDistributionData}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="quartile" />
+                    <YAxis allowDecimals={false} />
+                    <ChartTooltip content={<ChartTooltipContent />} />
+                    <Bar dataKey="count" fill="hsl(var(--primary))" radius={4}>
+                      <LabelList dataKey="count" position="top" offset={8} className="fill-foreground" fontSize={12} />
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              </ChartContainer>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between">
+            <div>
+              <CardTitle>Monthly Publication Distribution</CardTitle>
+              <CardDescription>Number of articles published by month and year.</CardDescription>
+            </div>
+            <Button variant="outline" size="icon" onClick={() => handleExport(monthlyPublicationChartRef, 'publication_monthly_distribution')}>
+              <Download className="h-4 w-4" />
+            </Button>
+          </CardHeader>
+          <CardContent>
+            <div ref={monthlyPublicationChartRef} className="p-4 bg-card">
+              <ChartContainer config={monthlyChartConfig} className="h-[300px] w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={monthlyDistributionData} margin={{ bottom: 20 }}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis 
+                      dataKey="month" 
+                      angle={-45}
+                      textAnchor="end"
+                      height={80}
+                      tick={{ fontSize: 12 }}
+                    />
+                    <YAxis allowDecimals={false} />
+                    <ChartTooltip content={<ChartTooltipContent />} />
+                    <Line 
+                      type="monotone" 
+                      dataKey="count" 
+                      stroke="hsl(var(--primary))" 
+                      strokeWidth={2} 
+                      dot={{ fill: 'hsl(var(--primary))', r: 4 }}
+                      isAnimationActive={false}
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
+              </ChartContainer>
+            </div>
+          </CardContent>
+        </Card>
+
+      </div>
+       <div className="mt-8 grid gap-6 md:grid-cols-1 lg:grid-cols-2">
         <Card>
           <CardHeader>
             <div className="flex flex-col sm:flex-row justify-between items-start gap-2">
@@ -664,6 +1166,220 @@ export default function AnalyticsPage() {
           </CardContent>
         </Card>
       </div>
+      <div className="mt-8">
+        <Card>
+            <CardHeader>
+                <div className="flex items-center justify-between">
+                    <CardTitle>Top 5 EMR Funding Agencies</CardTitle>
+                    <Button variant="outline" size="icon" onClick={() => handleExport(fundingByAgencyChartRef, 'top_funding_agencies')}>
+                        <Download className="h-4 w-4" />
+                    </Button>
+                </div>
+                <CardDescription>Total sanctioned amount from the top 5 external funding agencies.</CardDescription>
+            </CardHeader>
+            <CardContent>
+                <div ref={fundingByAgencyChartRef} className="p-4 bg-card">
+                    <ChartContainer config={fundingByAgencyConfig} className="h-[400px] w-full">
+                        <BarChart
+                            data={fundingByAgencyData}
+                            layout="vertical"
+                            margin={{ left: 100 }}
+                        >
+                            <CartesianGrid horizontal={false} />
+                            <YAxis
+                                dataKey="agency"
+                                type="category"
+                                tickLine={false}
+                                tickMargin={10}
+                                axisLine={false}
+                                tick={{ fontSize: 12, fill: 'hsl(var(--muted-foreground))' }}
+                            />
+                            <XAxis dataKey="amount" type="number" hide />
+                            <ChartTooltip
+                                cursor={{ fill: 'hsl(var(--muted))' }}
+                                content={<ChartTooltipContent formatter={(value) => `₹${Number(value).toLocaleString('en-IN')}`} />}
+                            />
+                            <Bar dataKey="amount" layout="vertical" fill="var(--color-amount)" radius={4}>
+                                <LabelList
+                                    dataKey="amount"
+                                    position="right"
+                                    offset={8}
+                                    className="fill-foreground"
+                                    fontSize={12}
+                                    formatter={(value: number) => `₹${value.toLocaleString('en-IN')}`}
+                                />
+                            </Bar>
+                        </BarChart>
+                    </ChartContainer>
+                </div>
+            </CardContent>
+        </Card>
+      </div>
+      {user.role === 'Super-admin' && (
+        <div className="mt-8">
+          <div className="grid gap-6 lg:grid-cols-4">
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-medium">Classified Claims</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">{fieldOfStudySummary.classifiedClaims}</div>
+                <p className="text-xs text-muted-foreground">Claims with identifiable title text</p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-medium">Unique Domains</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">{fieldOfStudySummary.uniqueDomains}</div>
+                <p className="text-xs text-muted-foreground">Primary field clusters</p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-medium">Unique Subdomains</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">{fieldOfStudySummary.uniqueSubdomains}</div>
+                <p className="text-xs text-muted-foreground">Granular research segments</p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-medium">Avg Confidence</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">{fieldOfStudySummary.avgConfidence}%</div>
+                <p className="text-xs text-muted-foreground">Title-based classification score</p>
+              </CardContent>
+            </Card>
+          </div>
+
+          <div className="mt-6 grid gap-6 lg:grid-cols-2">
+            <Card>
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <CardTitle>Field of Studies by Domain</CardTitle>
+                    <CardDescription>Primary domain distribution inferred from claim titles.</CardDescription>
+                  </div>
+                  <Button variant="outline" size="icon" onClick={() => handleExport(fieldOfStudyChartRef, 'field_of_studies_domain_distribution')}>
+                    <Download className="h-4 w-4" />
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <div ref={fieldOfStudyChartRef} className="p-4 bg-card">
+                  <ChartContainer config={fieldOfStudyConfig} className="h-[420px] w-full">
+                    <BarChart data={fieldOfStudyData} layout="vertical" margin={{ left: 140 }}>
+                      <CartesianGrid horizontal={false} />
+                      <YAxis
+                        dataKey="field"
+                        type="category"
+                        tickLine={false}
+                        tickMargin={10}
+                        axisLine={false}
+                        width={240}
+                        tick={{ fontSize: 12, whiteSpace: 'normal', textAnchor: 'end' }}
+                        interval={0}
+                      />
+                      <XAxis dataKey="count" type="number" allowDecimals={false} />
+                      <ChartTooltip cursor={{ fill: 'hsl(var(--muted))' }} content={<ChartTooltipContent />} />
+                      <Bar dataKey="count" fill="hsl(var(--primary))" radius={4}>
+                        <LabelList dataKey="count" position="right" offset={8} className="fill-foreground" fontSize={12} />
+                      </Bar>
+                    </BarChart>
+                  </ChartContainer>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <CardTitle>Top Subdomains</CardTitle>
+                    <CardDescription>Most frequent granular research areas (top 12).</CardDescription>
+                  </div>
+                  <Button variant="outline" size="icon" onClick={() => handleExport(fieldOfStudySubdomainChartRef, 'field_of_studies_subdomain_distribution')}>
+                    <Download className="h-4 w-4" />
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <div ref={fieldOfStudySubdomainChartRef} className="p-4 bg-card">
+                  <ChartContainer config={fieldOfStudySubdomainConfig} className="h-[420px] w-full">
+                    <BarChart data={fieldOfStudySubdomainData} layout="vertical" margin={{ left: 160 }}>
+                      <CartesianGrid horizontal={false} />
+                      <YAxis
+                        dataKey="subdomain"
+                        type="category"
+                        tickLine={false}
+                        tickMargin={10}
+                        axisLine={false}
+                        width={280}
+                        tick={{ fontSize: 12, whiteSpace: 'normal', textAnchor: 'end' }}
+                        interval={0}
+                      />
+                      <XAxis dataKey="count" type="number" allowDecimals={false} />
+                      <ChartTooltip cursor={{ fill: 'hsl(var(--muted))' }} content={<ChartTooltipContent />} />
+                      <Bar dataKey="count" fill="hsl(var(--accent))" radius={4}>
+                        <LabelList dataKey="count" position="right" offset={8} className="fill-foreground" fontSize={12} />
+                      </Bar>
+                    </BarChart>
+                  </ChartContainer>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+
+          <Card className="mt-6">
+            <CardHeader>
+              <CardTitle>Claim-Level Domain Drilldown</CardTitle>
+              <CardDescription>
+                Recent claims with inferred domain, subdomain, confidence, and matched title signals.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Claim ID</TableHead>
+                      <TableHead>Claim Type</TableHead>
+                      <TableHead>Title</TableHead>
+                      <TableHead>Domain</TableHead>
+                      <TableHead>Subdomain</TableHead>
+                      <TableHead>Confidence</TableHead>
+                      <TableHead>Matched Signals</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {fieldOfStudyDrilldown.map((row) => (
+                      <TableRow key={row.id}>
+                        <TableCell className="font-medium">{row.claimId}</TableCell>
+                        <TableCell>{row.claimType}</TableCell>
+                        <TableCell className="max-w-[320px] truncate" title={row.title}>{row.title}</TableCell>
+                        <TableCell>{row.domain}</TableCell>
+                        <TableCell>{row.subdomain}</TableCell>
+                        <TableCell>
+                          <Badge variant={row.confidence >= 75 ? 'default' : row.confidence >= 55 ? 'secondary' : 'outline'}>
+                            {row.confidence}%
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="max-w-[240px] truncate" title={row.matchedKeywords.join(', ')}>
+                          {row.matchedKeywords.length > 0 ? row.matchedKeywords.join(', ') : 'No explicit signal'}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
     </div>
   );
 }

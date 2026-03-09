@@ -3,7 +3,7 @@
 // src/components/emr/emr-management-client.tsx
 'use client';
 
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import type { FundingCall, User, EmrInterest } from '@/types';
 import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
@@ -11,15 +11,14 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import Link from 'next/link';
-import { Download, Trash2, CalendarClock, Eye, MoreHorizontal, MessageSquare, Loader2, FileUp, FileText as ViewIcon, Edit, Upload, UserCheck, PlusCircle } from 'lucide-react';
+import { Download, Trash2, CalendarClock, Eye, MoreHorizontal, MessageSquare, Loader2, FileUp, FileText as ViewIcon, Edit, Upload, UserCheck, UserPlus, Search, Send, CalendarDays } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { Textarea } from '../ui/textarea';
 import { Form, FormControl, FormField, FormItem, FormMessage } from '../ui/form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { useForm } from 'react-hook-form';
-import { deleteEmrInterest, updateEmrStatus, signAndUploadEndorsement, markEmrAttendance, registerEmrInterestByAdmin } from '@/app/emr-actions';
-import { updateEmrInterestDetails } from '@/app/server-actions';
+import { deleteEmrInterest, updateEmrInterestDetails, updateEmrStatus, signAndUploadEndorsement, markEmrAttendance, registerEmrInterest, sendPptReminderEmails } from '@/app/emr-actions';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -58,6 +57,10 @@ import { UploadPptDialog } from './upload-ppt-dialog';
 import { Checkbox } from '../ui/checkbox';
 import { findUserByMisId } from '@/app/userfinding';
 import { RadioGroup, RadioGroupItem } from '../ui/radio-group';
+import { format, parseISO } from 'date-fns';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Calendar } from '@/components/ui/calendar';
+import { cn } from '@/lib/utils';
 
 
 interface EmrManagementClientProps {
@@ -95,58 +98,39 @@ const attendanceSchema = z.object({
   absentEvaluatorUids: z.array(z.string()),
 });
 
-function ManualRegistrationDialog({ call, isOpen, onOpenChange, onActionComplete, currentUser, allUsers }: { call: FundingCall; isOpen: boolean; onOpenChange: (open: boolean) => void; onActionComplete: () => void; currentUser: User; allUsers: User[] }) {
+function RegisterUserDialog({ call, adminUser, isOpen, onOpenChange, onRegisterSuccess }: { call: FundingCall, adminUser: User, isOpen: boolean, onOpenChange: (open: boolean) => void, onRegisterSuccess: () => void }) {
     const { toast } = useToast();
+    const [isSubmitting, setIsSubmitting] = useState(false);
     const [searchTerm, setSearchTerm] = useState('');
+    const [foundUsers, setFoundUsers] = useState<any[]>([]);
     const [isSearching, setIsSearching] = useState(false);
-    const [isRegistering, setIsRegistering] = useState(false);
-    const [foundUser, setFoundUser] = useState<User | null>(null);
 
     const handleSearch = async () => {
-        if (!searchTerm) return;
+        if (!searchTerm.trim()) return;
         setIsSearching(true);
-        setFoundUser(null);
-        try {
-            const result = await findUserByMisId(searchTerm);
-            if (result.success && result.users && result.users.length > 0) {
-                const foundPerson = result.users[0];
-                if (foundPerson.uid) { // Check if the user is registered (has a UID)
-                    const userToRegister = allUsers.find(u => u.uid === foundPerson.uid);
-                    if (userToRegister) {
-                        setFoundUser(userToRegister);
-                    } else {
-                        // This case is unlikely if findUserByMisId is working correctly, but good to handle
-                        toast({ variant: 'destructive', title: 'User Data Mismatch', description: "Found a registered user but could not load their full profile." });
-                    }
-                } else {
-                    toast({ variant: 'destructive', title: 'User Not Registered', description: `${foundPerson.name} has not signed up on the portal yet and cannot be added.` });
-                }
-            } else {
-                toast({ variant: 'destructive', title: 'User Not Found', description: result.error || "No user found with this MIS ID." });
-            }
-        } catch (error: any) {
-            toast({ variant: 'destructive', title: 'Search Failed', description: error.message });
-        } finally {
-            setIsSearching(false);
+        const result = await findUserByMisId(searchTerm);
+        if (result.success && result.users) {
+            setFoundUsers(result.users);
+        } else {
+            toast({ variant: 'destructive', title: 'Not Found', description: result.error });
+            setFoundUsers([]);
         }
+        setIsSearching(false);
     };
-    
-    const handleRegister = async () => {
-        if (!foundUser) return;
-        setIsRegistering(true);
+
+    const handleRegister = async (userToRegister: User) => {
+        setIsSubmitting(true);
         try {
-            const result = await registerEmrInterestByAdmin(call.id, foundUser, currentUser);
-            if(result.success) {
-                toast({title: 'Success', description: `${foundUser.name} has been registered.`});
-                onActionComplete();
+            const result = await registerEmrInterest(call.id, userToRegister, [], { adminUid: adminUser.uid, adminName: adminUser.name });
+            if (result.success) {
+                toast({ title: 'Success', description: `${userToRegister.name} has been registered for the call.` });
+                onRegisterSuccess();
                 onOpenChange(false);
             } else {
-                throw new Error(result.error);
+                toast({ variant: 'destructive', title: 'Registration Failed', description: result.error });
             }
-        } catch (error: any) {
-            toast({ variant: 'destructive', title: 'Registration Failed', description: error.message });
         } finally {
-            setIsRegistering(false);
+            setIsSubmitting(false);
         }
     };
 
@@ -154,30 +138,28 @@ function ManualRegistrationDialog({ call, isOpen, onOpenChange, onActionComplete
         <Dialog open={isOpen} onOpenChange={onOpenChange}>
             <DialogContent>
                 <DialogHeader>
-                    <DialogTitle>Add Applicant Manually</DialogTitle>
-                    <DialogDescription>Register a faculty member for this call by entering their MIS ID.</DialogDescription>
+                    <DialogTitle>Register a User for: {call.title}</DialogTitle>
+                    <DialogDescription>Search for a user by their MIS ID to register them for this funding call.</DialogDescription>
                 </DialogHeader>
                 <div className="py-4 space-y-4">
                     <div className="flex items-center gap-2">
-                        <Input placeholder="Enter MIS ID..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
-                        <Button onClick={handleSearch} disabled={isSearching || !searchTerm}>
-                            {isSearching ? <Loader2 className="h-4 w-4 animate-spin"/> : "Search"}
-                        </Button>
+                        <Input placeholder="Enter user's MIS ID" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
+                        <Button onClick={handleSearch} disabled={isSearching}>{isSearching ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Search'}</Button>
                     </div>
-                    {foundUser && (
-                        <div className="p-4 border rounded-md bg-muted/50">
-                            <p><strong>Name:</strong> {foundUser.name}</p>
-                            <p><strong>Email:</strong> {foundUser.email}</p>
-                            <p><strong>Institute:</strong> {foundUser.institute}</p>
+                    {foundUsers.length > 0 && (
+                        <div className="space-y-2 max-h-60 overflow-y-auto">
+                            {foundUsers.map(user => (
+                                <div key={user.uid || user.email} className="flex justify-between items-center p-2 border rounded-md">
+                                    <div>
+                                        <p className="font-semibold">{user.name}</p>
+                                        <p className="text-xs text-muted-foreground">{user.email}</p>
+                                    </div>
+                                    <Button size="sm" onClick={() => handleRegister(user)} disabled={isSubmitting}>Register</Button>
+                                </div>
+                            ))}
                         </div>
                     )}
                 </div>
-                <DialogFooter>
-                    <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
-                    <Button onClick={handleRegister} disabled={!foundUser || isRegistering}>
-                         {isRegistering ? 'Registering...' : 'Confirm Registration'}
-                    </Button>
-                </DialogFooter>
             </DialogContent>
         </Dialog>
     );
@@ -190,7 +172,7 @@ function AttendanceDialog({ call, interests, allUsers, isOpen, onOpenChange, onU
         resolver: zodResolver(attendanceSchema),
         defaultValues: {
             absentApplicantIds: [],
-            absentEvaluatorUids: [],
+            absentEvaluatorUids: call.meetingDetails?.absentEvaluators || [],
         },
     });
 
@@ -200,7 +182,11 @@ function AttendanceDialog({ call, interests, allUsers, isOpen, onOpenChange, onU
     const handleSubmit = async (values: z.infer<typeof attendanceSchema>) => {
         setIsSubmitting(true);
         try {
-            const result = await markEmrAttendance(call.id, values.absentApplicantIds, values.absentEvaluatorUids);
+            const result = await markEmrAttendance(
+                call.id,
+                values.absentApplicantIds,
+                values.absentEvaluatorUids
+            );
             if (result.success) {
                 toast({ title: 'Success', description: 'Attendance has been marked.' });
                 onUpdate();
@@ -217,7 +203,7 @@ function AttendanceDialog({ call, interests, allUsers, isOpen, onOpenChange, onU
 
     return (
         <Dialog open={isOpen} onOpenChange={onOpenChange}>
-            <DialogContent className="sm:max-w-2xl">
+            <DialogContent className="sm:max-w-md">
                 <DialogHeader>
                     <DialogTitle>Mark Meeting Attendance</DialogTitle>
                     <DialogDescription>Select any applicants or evaluators who were absent from the meeting.</DialogDescription>
@@ -363,30 +349,86 @@ function SignEndorsementDialog({ interest, isOpen, onOpenChange, onUpdate }: { i
     );
 }
 
-function BulkEditDialog({ interest, isOpen, onOpenChange, onUpdate }: { interest: EmrInterest; isOpen: boolean; onOpenChange: (open: boolean) => void; onUpdate: () => void; }) {
+function EditBulkEmrDialog({ interest, isOpen, onOpenChange, onUpdate }: { interest: EmrInterest; isOpen: boolean; onOpenChange: (open: boolean) => void; onUpdate: (updatedInterest: EmrInterest) => void; }) {
     const { toast } = useToast();
     const [isSubmitting, setIsSubmitting] = useState(false);
-    const form = useForm<z.infer<typeof bulkEditSchema>>({
-        resolver: zodResolver(bulkEditSchema),
-        defaultValues: {
-            durationAmount: interest.durationAmount || '',
-            isOpenToPi: interest.isOpenToPi || false,
-        },
-    });
+    const [title, setTitle] = useState(interest.callTitle || '');
+    const [agency, setAgency] = useState(interest.agency || '');
+    const [durationAmount, setDurationAmount] = useState(interest.durationAmount || '');
+    const [sanctionDate, setSanctionDate] = useState<Date | undefined>(interest.sanctionDate ? parseISO(interest.sanctionDate) : undefined);
+    const [proofFile, setProofFile] = useState<File | null>(null);
+    const [coPis, setCoPis] = useState<any[]>(interest.coPiDetails || []);
+    const [coPiSearchTerm, setCoPiSearchTerm] = useState('');
+    const [foundCoPis, setFoundCoPis] = useState<any[]>([]);
+    const [isSearching, setIsSearching] = useState(false);
+    const [isSelectionOpen, setIsSelectionOpen] = useState(false);
 
-    const handleSubmit = async (values: z.infer<typeof bulkEditSchema>) => {
+    const handleSearchCoPi = async () => {
+        if (!coPiSearchTerm) return;
+        setIsSearching(true);
+        try {
+            const result = await findUserByMisId(coPiSearchTerm);
+            if (result.success && result.users && result.users.length > 0) {
+                if (result.users.length === 1) {
+                    handleAddCoPi(result.users[0]);
+                } else {
+                    setFoundCoPis(result.users);
+                    setIsSelectionOpen(true);
+                }
+            } else {
+                toast({ variant: 'destructive', title: 'User Not Found', description: result.error });
+            }
+        } finally { setIsSearching(false); }
+    };
+
+    const handleAddCoPi = (selectedUser: any) => {
+        if (selectedUser && !coPis.some(c => c.email === selectedUser.email)) {
+            setCoPis([...coPis, selectedUser]);
+        }
+        setCoPiSearchTerm('');
+        setFoundCoPis([]);
+        setIsSelectionOpen(false);
+    };
+
+    const handleRemoveCoPi = (email: string) => {
+        setCoPis(coPis.filter(c => c.email !== email));
+    };
+
+    const handleSave = async () => {
         setIsSubmitting(true);
         try {
-            const result = await updateEmrInterestDetails(interest.id, values);
+            let proofUrl = interest.proofUrl;
+            if (proofFile) {
+                const dataUrl = await fileToDataUrl(proofFile);
+                const path = `emr-proofs/${interest.id}/${proofFile.name}`;
+                const uploadResult = await uploadFileToServer(dataUrl, path);
+                if (uploadResult.success && uploadResult.url) {
+                    proofUrl = uploadResult.url;
+                } else {
+                    throw new Error(uploadResult.error || "Failed to upload proof.");
+                }
+            }
+
+            const updates: Partial<EmrInterest> = {
+                callTitle: title,
+                agency: agency,
+                durationAmount: durationAmount,
+                sanctionDate: sanctionDate ? sanctionDate.toISOString() : undefined,
+                coPiDetails: coPis,
+                coPiUids: coPis.map(c => c.uid).filter(Boolean) as string[],
+                coPiNames: coPis.map(c => c.name),
+                proofUrl,
+            };
+            const result = await updateEmrInterestDetails(interest.id, updates);
             if (result.success) {
                 toast({ title: 'Success', description: 'Project details updated.' });
-                onUpdate();
+                onUpdate({ ...interest, ...updates });
                 onOpenChange(false);
             } else {
                 throw new Error(result.error);
             }
         } catch (error: any) {
-            toast({ variant: 'destructive', title: 'Update Failed', description: error.message || 'An unexpected error occurred.' });
+            toast({ variant: 'destructive', title: 'Error', description: error.message || 'Failed to save changes.' });
         } finally {
             setIsSubmitting(false);
         }
@@ -394,36 +436,78 @@ function BulkEditDialog({ interest, isOpen, onOpenChange, onUpdate }: { interest
 
     return (
         <Dialog open={isOpen} onOpenChange={onOpenChange}>
-            <DialogContent>
-                <DialogHeader>
-                    <DialogTitle>Edit Bulk Uploaded Project</DialogTitle>
-                    <DialogDescription>{interest.callTitle}</DialogDescription>
-                </DialogHeader>
-                <Form {...form}>
-                    <form id="bulk-edit-form" onSubmit={form.handleSubmit(handleSubmit)} className="space-y-4 py-4">
-                        <FormField control={form.control} name="durationAmount" render={({ field }) => (
-                            <FormItem>
-                                <Label>Duration & Amount</Label>
-                                <Input {...field} placeholder="e.g., Amount: 50,00,000 | Duration: 3 Years" />
-                            </FormItem>
-                        )} />
-                        <FormField control={form.control} name="isOpenToPi" render={({ field }) => (
-                            <FormItem className="flex flex-row items-center justify-between rounded-lg border p-3 shadow-sm">
-                                <div className="space-y-0.5">
-                                    <FormLabel>Open for PI to Edit</FormLabel>
-                                    <p className="text-[0.8rem] text-muted-foreground">Allows the PI to edit title, co-pis and upload proof.</p>
-                                </div>
-                                <FormControl><Switch checked={field.value} onCheckedChange={field.onChange} /></FormControl>
-                            </FormItem>
-                        )} />
-                    </form>
-                </Form>
+            <DialogContent className="sm:max-w-xl">
+                <DialogHeader><DialogTitle>Edit EMR Project Details</DialogTitle></DialogHeader>
+                <div className="space-y-4 py-4 max-h-[60vh] overflow-y-auto pr-4">
+                    <div><Label>Project Title</Label><Input value={title} onChange={e => setTitle(e.target.value)} /></div>
+                    <div><Label>Funding Agency</Label><Input value={agency} onChange={e => setAgency(e.target.value)} /></div>
+                    <div><Label>Amount & Duration</Label><Input value={durationAmount} onChange={e => setDurationAmount(e.target.value)} placeholder="e.g., Amount: 50,00,000 | Duration: 3 Years"/></div>
+                    <div>
+                        <Label>Date of Sanction</Label>
+                        <Popover>
+                            <PopoverTrigger asChild>
+                                <Button
+                                    variant={"outline"}
+                                    className={cn("w-full justify-start text-left font-normal", !sanctionDate && "text-muted-foreground")}
+                                >
+                                    <CalendarDays className="mr-2 h-4 w-4" />
+                                    {sanctionDate ? format(sanctionDate, "PPP") : <span>Pick a date</span>}
+                                </Button>
+                            </PopoverTrigger>
+                            <PopoverContent className="w-auto p-0">
+                                <Calendar 
+                                    mode="single" 
+                                    captionLayout="dropdown-buttons"
+                                    fromYear={2010}
+                                    toYear={new Date().getFullYear()}
+                                    selected={sanctionDate} 
+                                    onSelect={setSanctionDate} 
+                                    initialFocus 
+                                />
+                            </PopoverContent>
+                        </Popover>
+                    </div>
+                     <div>
+                        <Label>Proof of Sanction (Below 5 MB)</Label>
+                        {interest.proofUrl && <a href={interest.proofUrl} target="_blank" rel="noopener noreferrer" className="text-sm text-primary hover:underline block mb-2">View current proof</a>}
+                        <Input type="file" accept=".pdf" onChange={(e) => setProofFile(e.target.files?.[0] || null)} />
+                    </div>
+
+                    <div>
+                        <Label>Co-PIs</Label>
+                        <div className="flex gap-2 mt-1">
+                            <Input placeholder="Search Co-PI by MIS ID" value={coPiSearchTerm} onChange={e => setCoPiSearchTerm(e.target.value)} />
+                            <Button onClick={handleSearchCoPi} disabled={isSearching}>{isSearching ? <Loader2 className="h-4 w-4 animate-spin"/> : "Search"}</Button>
+                        </div>
+                        <div className="space-y-2 mt-2">
+                            {coPis.map(c => <div key={c.email} className="flex justify-between items-center p-2 bg-muted rounded-md text-sm"><span>{c.name}</span><Button variant="ghost" size="sm" onClick={() => handleRemoveCoPi(c.email)}>Remove</Button></div>)}
+                        </div>
+                    </div>
+                </div>
                 <DialogFooter>
                     <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
-                    <Button type="submit" form="bulk-edit-form" disabled={isSubmitting}>
-                        {isSubmitting ? <><Loader2 className="mr-2 h-4 w-4 animate-spin"/> Saving...</> : 'Save Changes'}
-                    </Button>
+                    <Button onClick={handleSave} disabled={isSubmitting}>{isSubmitting ? 'Saving...' : 'Save'}</Button>
                 </DialogFooter>
+                 <Dialog open={isSelectionOpen} onOpenChange={setIsSelectionOpen}>
+                    <DialogContent>
+                        <DialogHeader>
+                            <DialogTitle>Multiple Users Found</DialogTitle>
+                            <DialogDescription>Please select the correct user to add as a Co-PI.</DialogDescription>
+                        </DialogHeader>
+                        <RadioGroup onValueChange={(value) => handleAddCoPi(JSON.parse(value))} className="py-4 space-y-2">
+                            {foundCoPis.map((user, i) => (
+                                <div key={i} className="flex items-center space-x-2 border rounded-md p-3">
+                                    <RadioGroupItem value={JSON.stringify(user)} id={`user-${i}`} />
+                                    <Label htmlFor={`user-${i}`} className="flex flex-col">
+                                        <span className="font-semibold">{user.name}</span>
+                                        <span className="text-muted-foreground text-xs">{user.email}</span>
+                                        <span className="text-muted-foreground text-xs">{user.campus}</span>
+                                    </Label>
+                                </div>
+                            ))}
+                        </RadioGroup>
+                    </DialogContent>
+                </Dialog>
             </DialogContent>
         </Dialog>
     );
@@ -432,19 +516,20 @@ function BulkEditDialog({ interest, isOpen, onOpenChange, onUpdate }: { interest
 
 export function EmrManagementClient({ call, interests, allUsers, currentUser, onActionComplete }: EmrManagementClientProps) {
     const { toast } = useToast();
-    const userMap = new Map(allUsers.map(u => [u.uid, u]));
+    const userMap = useMemo(() => new Map(allUsers.map(u => [u.uid, u])), [allUsers]);
     const [isDeleting, setIsDeleting] = useState(false);
     const [interestToUpdate, setInterestToUpdate] = useState<EmrInterest | null>(null);
     const [statusToUpdate, setStatusToUpdate] = useState<EmrInterest['status'] | null>(null);
     const [isScheduleDialogOpen, setIsScheduleDialogOpen] = useState(false);
+    const [isRegisterUserDialogOpen, setIsRegisterUserDialogOpen] = useState(false);
     const [isRemarksDialogOpen, setIsRemarksDialogOpen] = useState(false);
     const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
     const [isBulkEditDialogOpen, setIsBulkEditDialogOpen] = useState(false);
     const [isSignEndorsementDialogOpen, setIsSignEndorsementDialogOpen] = useState(false);
-    const [isRevisionUploadOpen, setIsRevisionUploadOpen] = useState(false);
-    const [isAttendanceDialogOpen, setIsAttendanceDialogOpen] = useState(false);
-    const [isManualRegisterOpen, setIsManualRegisterOpen] = useState(false);
     const [interestForPptUpload, setInterestForPptUpload] = useState<EmrInterest | null>(null);
+    const [isAttendanceDialogOpen, setIsAttendanceDialogOpen] = useState(false);
+    const [searchTerm, setSearchTerm] = useState('');
+    const [isSendingReminders, setIsSendingReminders] = useState(false);
 
 
     const deleteForm = useForm<z.infer<typeof deleteRegistrationSchema>>({
@@ -514,9 +599,19 @@ export function EmrManagementClient({ call, interests, allUsers, currentUser, on
         setIsSignEndorsementDialogOpen(true);
     };
 
-    const handleOpenRevisionUpload = (interest: EmrInterest) => {
-        setInterestToUpdate(interest);
-        setIsRevisionUploadOpen(true);
+    const handleOpenPptUpload = (interest: EmrInterest) => {
+        setInterestForPptUpload(interest);
+    };
+
+    const handleSendPptReminders = async () => {
+        setIsSendingReminders(true);
+        const result = await sendPptReminderEmails(call.id);
+        if (result.success) {
+            toast({ title: "Reminders Sent", description: `Emails have been sent to ${result.sentCount} applicants.` });
+        } else {
+            toast({ variant: "destructive", title: "Error", description: result.error });
+        }
+        setIsSendingReminders(false);
     };
 
 
@@ -540,38 +635,85 @@ export function EmrManagementClient({ call, interests, allUsers, currentUser, on
         XLSX.writeFile(workbook, `registrations_${call.title.replace(/\s+/g, '_')}.xlsx`);
     };
     
+    const filteredInterests = useMemo(() => {
+        if (!searchTerm) return interests;
+        const lowerCaseSearch = searchTerm.toLowerCase();
+        return interests.filter(interest => {
+            const user = userMap.get(interest.userId);
+            return interest.userName.toLowerCase().includes(lowerCaseSearch) ||
+                   interest.userEmail.toLowerCase().includes(lowerCaseSearch) ||
+                   (user?.misId && user.misId.toLowerCase().includes(lowerCaseSearch));
+        });
+    }, [interests, searchTerm, userMap]);
     
     const unscheduledApplicantsExist = interests.some(i => !i.meetingSlot && !i.wasAbsent);
     const meetingIsScheduled = !!call.meetingDetails?.date;
+    
+    const pendingPptUploads = useMemo(() => {
+        return interests.filter(i => !i.pptUrl).length;
+    }, [interests]);
 
 
     return (
+        <>
+        {meetingIsScheduled && (
+            <Card className="mb-8 bg-primary/10 border-primary/20">
+                <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                        <CalendarClock className="h-5 w-5" />
+                        Meeting Scheduled
+                    </CardTitle>
+                </CardHeader>
+                <CardContent>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+                        <p><strong>Date:</strong> {format(parseISO(call.meetingDetails!.date), 'PPP')}</p>
+                        <p><strong>Time:</strong> {call.meetingDetails!.time}</p>
+                        <p><strong>Venue:</strong> {call.meetingDetails!.venue}</p>
+                    </div>
+                </CardContent>
+            </Card>
+        )}
         <Card>
             <CardHeader>
                 <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-                    <CardTitle>Applicant Registrations ({interests.length})</CardTitle>
-                    <div className="flex items-center gap-2">
+                    <div>
+                        <CardTitle>Applicant Registrations ({interests.length})</CardTitle>
+                        <CardDescription>Review and manage all applicants for this call.</CardDescription>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
                          {unscheduledApplicantsExist && currentUser.designation !== 'Head of Goa Campus' && (
                             <Button onClick={() => setIsScheduleDialogOpen(true)}>
                                 <CalendarClock className="mr-2 h-4 w-4" /> Schedule Meeting
                             </Button>
                          )}
+                         <Button variant="secondary" onClick={() => setIsRegisterUserDialogOpen(true)}>
+                            <UserPlus className="mr-2 h-4 w-4" /> Register User
+                         </Button>
+                        <Button variant="outline" onClick={handleSendPptReminders} disabled={isSendingReminders}>
+                            {isSendingReminders ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Send className="mr-2 h-4 w-4" />}
+                            Remind ({pendingPptUploads})
+                        </Button>
                          {meetingIsScheduled && (
                             <Button variant="outline" onClick={() => setIsAttendanceDialogOpen(true)}>
                                 <UserCheck className="mr-2 h-4 w-4" /> Attendance
                             </Button>
                          )}
-                        <Button variant="secondary" onClick={() => setIsManualRegisterOpen(true)}>
-                            <PlusCircle className="mr-2 h-4 w-4" /> Add Applicant Manually
-                        </Button>
                         <Button variant="outline" onClick={handleExport} disabled={interests.length === 0}>
                             <Download className="mr-2 h-4 w-4" /> Export XLSX
                         </Button>
                     </div>
                 </div>
+                 <div className="mt-4">
+                    <Input
+                        placeholder="Search by PI Name, Email, or MIS ID..."
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                        className="max-w-md"
+                    />
+                </div>
             </CardHeader>
             <CardContent className="overflow-x-auto">
-                 {interests.length > 0 ? (
+                 {filteredInterests.length > 0 ? (
                     <Table>
                         <TableHeader>
                             <TableRow>
@@ -583,7 +725,7 @@ export function EmrManagementClient({ call, interests, allUsers, currentUser, on
                             </TableRow>
                         </TableHeader>
                         <TableBody>
-                            {interests.map(interest => {
+                            {filteredInterests.map(interest => {
                                 const interestedUser = userMap.get(interest.userId);
                                 const isMeetingScheduled = !!interest.meetingSlot;
                                 const isPostDecision = ['Recommended', 'Not Recommended', 'Revision Needed', 'Endorsement Submitted', 'Endorsement Signed', 'Submitted to Agency'].includes(interest.status);
@@ -604,7 +746,7 @@ export function EmrManagementClient({ call, interests, allUsers, currentUser, on
                                         <TableCell>
                                             <div className="flex flex-col text-xs text-muted-foreground">
                                                 {(interest.coPiDetails || []).map(coPi => {
-                                                    const coPiUser = userMap.get(coPi.uid!);
+                                                    const coPiUser = allUsers.find(u => u.uid === coPi.uid);
                                                     return (
                                                         <div key={coPi.email} className="mb-1">
                                                             {coPiUser?.misId ? (
@@ -639,17 +781,15 @@ export function EmrManagementClient({ call, interests, allUsers, currentUser, on
                                                 <DropdownMenuContent align="end">
                                                     <DropdownMenuLabel>Actions</DropdownMenuLabel>
                                                     <DropdownMenuSeparator />
+                                                    <DropdownMenuItem onSelect={() => handleOpenPptUpload(interest)}>
+                                                        <Upload className="mr-2 h-4 w-4" /> 
+                                                        {interest.pptUrl ? 'Upload Revised PPT' : 'Upload PPT'}
+                                                    </DropdownMenuItem>
                                                     {interest.isBulkUploaded && (
                                                         <DropdownMenuItem onSelect={() => handleOpenBulkEditDialog(interest)}>
                                                             <Edit className="mr-2 h-4 w-4" /> Edit Bulk Data
                                                         </DropdownMenuItem>
                                                     )}
-                                                     <DropdownMenuItem onSelect={() => setInterestForPptUpload(interest)}>
-                                                        <Upload className="mr-2 h-4 w-4" /> Upload PPT
-                                                    </DropdownMenuItem>
-                                                    <DropdownMenuItem onSelect={() => handleOpenRevisionUpload(interest)}>
-                                                        <Upload className="mr-2 h-4 w-4" /> Upload Revised PPT
-                                                    </DropdownMenuItem>
                                                     {isMeetingScheduled && (
                                                         <>
                                                             {interest.status === 'Endorsement Submitted' && (
@@ -660,8 +800,8 @@ export function EmrManagementClient({ call, interests, allUsers, currentUser, on
                                                                 <>
                                                                     <DropdownMenuSeparator />
                                                                     <DropdownMenuItem onClick={() => handleStatusUpdate(interest.id, 'Recommended')}>Recommended</DropdownMenuItem>
-                                                                    <DropdownMenuItem onClick={() => handleStatusUpdate(interest.id, 'Not Recommended')}>Not Recommended</DropdownMenuItem>
                                                                     <DropdownMenuItem onClick={() => handleOpenRemarksDialog(interest, 'Revision Needed')}>Revision is Needed</DropdownMenuItem>
+                                                                    <DropdownMenuItem onClick={() => handleStatusUpdate(interest.id, 'Not Recommended')}>Not Recommended</DropdownMenuItem>
                                                                 </>
                                                             )}
                                                             <DropdownMenuSeparator />
@@ -680,7 +820,7 @@ export function EmrManagementClient({ call, interests, allUsers, currentUser, on
                     </Table>
                 ) : (
                     <div className="text-center p-8 text-muted-foreground">
-                        No users have registered for this call yet.
+                        <p>No registered applicants match your search criteria.</p>
                     </div>
                 )}
             </CardContent>
@@ -758,7 +898,7 @@ export function EmrManagementClient({ call, interests, allUsers, currentUser, on
              />
              {interestToUpdate && (
                  <>
-                    <BulkEditDialog 
+                    <EditBulkEmrDialog 
                         interest={interestToUpdate} 
                         isOpen={isBulkEditDialogOpen} 
                         onOpenChange={setIsBulkEditDialogOpen}
@@ -778,19 +918,20 @@ export function EmrManagementClient({ call, interests, allUsers, currentUser, on
                     onOpenChange={() => setInterestForPptUpload(null)}
                     interest={interestForPptUpload}
                     call={call}
-                    user={currentUser}
+                    user={userMap.get(interestForPptUpload.userId)!}
+                    adminUser={currentUser}
                     onUploadSuccess={onActionComplete}
-                    isAdminUpload={true}
+                    isRevision={!!interestForPptUpload.revisedPptUrl}
                 />
-             )}
-             <ManualRegistrationDialog 
-                call={call}
-                isOpen={isManualRegisterOpen}
-                onOpenChange={setIsManualRegisterOpen}
-                onActionComplete={onActionComplete}
-                currentUser={currentUser}
-                allUsers={allUsers}
-             />
+            )}
         </Card>
+        <RegisterUserDialog 
+            call={call} 
+            adminUser={currentUser} 
+            isOpen={isRegisterUserDialogOpen} 
+            onOpenChange={setIsRegisterUserDialogOpen} 
+            onRegisterSuccess={onActionComplete} 
+        />
+        </>
     );
 }

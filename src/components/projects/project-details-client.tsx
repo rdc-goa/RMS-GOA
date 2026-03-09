@@ -22,13 +22,14 @@ import {
   notifyAdminsOnCompletionRequest,
   updateCoInvestigators,
   sendEmail,
+  generateOfficeNotingForm,
   deleteImrProject,
   markImrAttendance,
   getSystemSettings,
   generateSanctionOrder,
-  uploadFileToServer as uploadFile, // Renamed to avoid conflicts
-} from "@/app/server-actions"
-import { generateRecommendationForm, generateOfficeNotingForm } from "@/app/document-actions"
+  adminUploadProposal,
+} from "@/app/actions"
+import { generateRecommendationForm } from "@/app/document-actions"
 import { findUserByMisId } from '@/app/userfinding';
 import { useToast } from "@/hooks/use-toast"
 import { cn } from "@/lib/utils"
@@ -81,12 +82,14 @@ import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover
 import { Calendar } from "@/components/ui/calendar"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { Checkbox } from "../ui/checkbox"
+import { uploadFileToServer } from '@/app/actions';
 
 interface ProjectDetailsClientProps {
   project: Project
   allUsers: User[]
   piUser: User | null
   onProjectUpdate: (project: Project) => void;
+  isEvaluationPeriodActive: boolean;
 }
 
 const statusVariant: { [key: string]: "default" | "secondary" | "destructive" | "outline" } = {
@@ -281,7 +284,7 @@ function AttendanceDialog({ isOpen, onOpenChange, project, allUsers, onUpdate }:
     );
 }
 
-export function ProjectDetailsClient({ project: initialProject, allUsers, piUser, onProjectUpdate }: ProjectDetailsClientProps) {
+export function ProjectDetailsClient({ project: initialProject, allUsers, piUser, onProjectUpdate, isEvaluationPeriodActive }: ProjectDetailsClientProps) {
   const [project, setProject] = useState(initialProject)
   const [evaluations, setEvaluations] = useState<Evaluation[]>([])
   const [user, setUser] = useState<User | null>(null)
@@ -294,7 +297,6 @@ export function ProjectDetailsClient({ project: initialProject, allUsers, piUser
   const [completionReportFile, setCompletionReportFile] = useState<File | null>(null)
   const [utilizationCertificateFile, setUtilizationCertificateFile] = useState<File | null>(null)
   const [isSubmittingCompletion, setIsSubmittingCompletion] = useState(false)
-  const [showApprovalAlert, setShowApprovalAlert] = useState(false)
   const [isRevisionDialogOpen, setIsRevisionDialogOpen] = useState(false)
   const [revisedProposalFile, setRevisedProposalFile] = useState<File | null>(null)
   const [isSubmittingRevision, setIsSubmittingRevision] = useState(false)
@@ -309,6 +311,9 @@ export function ProjectDetailsClient({ project: initialProject, allUsers, piUser
   const [isDownloadingSanctionOrder, setIsDownloadingSanctionOrder] = useState(false);
   const [systemSettings, setSystemSettings] = useState<SystemSettings | null>(null);
   const [isProposalUploadOpen, setIsProposalUploadOpen] = useState(false);
+  const [proposalFile, setProposalFile] = useState<File | null>(null);
+
+  const isMobile = useIsMobile();
 
   // Co-PI management state
   const [coPiSearchTerm, setCoPiSearchTerm] = useState("")
@@ -444,17 +449,7 @@ export function ProjectDetailsClient({ project: initialProject, allUsers, piUser
     return false
   }, [user, isSuperAdmin, isAssignedEvaluator, project.meetingDetails, systemSettings])
   
-  const isEvaluationPeriodActive = useMemo(() => {
-    if (!project.meetingDetails?.date) return false;
-    const meetingDate = parseISO(project.meetingDetails.date);
-    const today = startOfToday();
-    const evaluationDays = systemSettings?.imrEvaluationDays ?? 0;
-    const deadline = addDays(meetingDate, evaluationDays);
-
-    return !isBefore(today, meetingDate) && !isAfter(today, deadline);
-  }, [project.meetingDetails?.date, systemSettings]);
-  
-  const showEvaluationForm = user && isAssignedEvaluator && isEvaluationPeriodActive;
+  const showEvaluationForm = user && isAssignedEvaluator && project.status === 'Under Review';
 
   const assignedEvaluatorsCount = project.meetingDetails?.assignedEvaluators?.length ?? 0;
   const absentEvaluatorsCount = project.meetingDetails?.absentEvaluators?.length ?? 0;
@@ -667,7 +662,7 @@ export function ProjectDetailsClient({ project: initialProject, allUsers, piUser
           }
 
           const path = `reports/${project.id}/${folder}/${Date.now()}-${file.name}`
-          const result = await uploadFile(dataUrl, path)
+          const result = await uploadFileToServer(dataUrl, path)
 
           if (!result.success || !result.url) {
             throw new Error(result.error || `Failed to upload ${file.name}`)
@@ -718,9 +713,9 @@ export function ProjectDetailsClient({ project: initialProject, allUsers, piUser
     }
     setIsSubmittingRevision(true)
     try {
-      const dataUrl = await fileToDataUrl(revisedProposalFile)
-      const path = `revisions/${project.id}/${revisedProposalFile.name}`
-      const uploadResult = await uploadFile(dataUrl, path)
+      const dataUrl = await fileToDataUrl(revisedProposalFile);
+      const path = `revisions/${project.id}/${revisedProposalFile.name}`;
+      const uploadResult = await uploadFileToServer(dataUrl, path);
 
       if (!uploadResult.success || !uploadResult.url) {
         throw new Error(uploadResult.error || "Revision upload failed")
@@ -749,37 +744,6 @@ export function ProjectDetailsClient({ project: initialProject, allUsers, piUser
       setIsSubmittingRevision(false)
     }
   }
-  
-  const handleProposalUploadSubmit = async () => {
-    if (!revisedProposalFile) {
-      toast({ variant: "destructive", title: "File Missing", description: "Please upload a proposal file." });
-      return;
-    }
-    setIsSubmittingRevision(true);
-    try {
-      const dataUrl = await fileToDataUrl(revisedProposalFile);
-      const path = `projects/${project.id}/proposal/${revisedProposalFile.name}`;
-      const uploadResult = await uploadFile(dataUrl, path);
-
-      if (!uploadResult.success || !uploadResult.url) {
-        throw new Error(uploadResult.error || "Proposal upload failed");
-      }
-
-      await updateDoc(doc(db, 'projects', project.id), { proposalUrl: uploadResult.url });
-
-      toast({ title: "Proposal Uploaded", description: "The project proposal has been successfully uploaded." });
-      setIsProposalUploadOpen(false);
-      setRevisedProposalFile(null);
-      refetchProject();
-
-    } catch (error: any) {
-      console.error("Error uploading proposal:", error);
-      toast({ variant: "destructive", title: "Upload Failed", description: error.message });
-    } finally {
-      setIsSubmittingRevision(false);
-    }
-  };
-
 
   const handleDurationSubmit = async (data: DurationFormData) => {
     setIsUpdating(true)
@@ -838,11 +802,6 @@ export function ProjectDetailsClient({ project: initialProject, allUsers, piUser
   }
 
   const handleApprovalClick = (status: "Recommended" | "Not Recommended" | "Revision Needed") => {
-    if (!allEvaluationsIn) {
-      setShowApprovalAlert(true);
-      return;
-    }
-    
     if (status === "Revision Needed" || status === "Not Recommended") {
         revisionCommentForm.setValue("statusToSet", status);
         setIsRevisionCommentDialogOpen(true);
@@ -927,8 +886,31 @@ export function ProjectDetailsClient({ project: initialProject, allUsers, piUser
         setIsUpdating(false);
     }
   };
+  
+  const handleProposalUpload = async () => {
+    if (!proposalFile) {
+        toast({ variant: 'destructive', title: 'File Missing', description: 'Please select a proposal file to upload.' });
+        return;
+    }
+    setIsUpdating(true);
+    try {
+        const dataUrl = await fileToDataUrl(proposalFile);
+        const result = await adminUploadProposal(project.id, dataUrl, proposalFile.name);
+        if (result.success) {
+            toast({ title: 'Success', description: 'Proposal has been uploaded to the draft.' });
+            refetchProject();
+            setIsProposalUploadOpen(false);
+        } else {
+            throw new Error(result.error);
+        }
+    } catch (error: any) {
+        toast({ variant: 'destructive', title: 'Upload Failed', description: error.message });
+    } finally {
+        setIsUpdating(false);
+    }
+  };
 
-  const canViewEvaluations = (isAdmin || (isAssignedEvaluator && isEvaluationPeriodActive)) && !isHeadOfGoaCampus;
+  const canViewEvaluations = (isAdmin || isAssignedEvaluator) && !isHeadOfGoaCampus;
   const showAdminActions = (user?.role === "Super-admin" || user?.role === "admin") && project.status !== 'Draft';
   const canManageCoPi = (isPI || isAdmin) && project.status !== 'Not Recommended';
 
@@ -943,31 +925,34 @@ export function ProjectDetailsClient({ project: initialProject, allUsers, piUser
   return (
     <React.Fragment>
       <div className="flex items-center justify-between mb-4">
-        <div>{/* Spacer */}</div>
-        <div className="flex items-center gap-2">
-            {isUserAdmin && project.status === 'Draft' && (
-                <Dialog open={isProposalUploadOpen} onOpenChange={setIsProposalUploadOpen}>
-                    <DialogTrigger asChild>
-                        <Button variant="outline"><Upload className="mr-2 h-4 w-4" /> Upload Proposal</Button>
-                    </DialogTrigger>
-                    <DialogContent>
-                        <DialogHeader>
-                            <DialogTitle>Upload Proposal for PI</DialogTitle>
-                            <DialogDescription>As an admin, you can upload or replace the proposal PDF for this draft project.</DialogDescription>
-                        </DialogHeader>
-                        <div className="py-4">
+        <div>
+          {isAdmin && project.status === 'Draft' && (
+              <Dialog open={isProposalUploadOpen} onOpenChange={setIsProposalUploadOpen}>
+                  <DialogTrigger asChild>
+                      <Button variant="outline">
+                          <Upload className="mr-2 h-4 w-4"/> Upload Proposal PDF
+                      </Button>
+                  </DialogTrigger>
+                   <DialogContent>
+                      <DialogHeader>
+                          <DialogTitle>Upload Proposal for Draft</DialogTitle>
+                          <DialogDescription>As an admin, you can upload a proposal file to this draft project on behalf of the PI.</DialogDescription>
+                      </DialogHeader>
+                      <div className="py-4 space-y-2">
                           <Label htmlFor="admin-proposal-upload">Proposal PDF</Label>
-                          <Input id="admin-proposal-upload" type="file" accept=".pdf" onChange={(e) => setRevisedProposalFile(e.target.files ? e.target.files[0] : null)} />
-                        </div>
-                        <DialogFooter>
-                            <DialogClose asChild><Button variant="ghost">Cancel</Button></DialogClose>
-                            <Button onClick={handleProposalUploadSubmit} disabled={isSubmittingRevision || !revisedProposalFile}>
-                                {isSubmittingRevision ? 'Uploading...' : 'Upload'}
-                            </Button>
-                        </DialogFooter>
-                    </DialogContent>
-                </Dialog>
-            )}
+                          <Input id="admin-proposal-upload" type="file" accept=".pdf" onChange={(e) => setProposalFile(e.target.files?.[0] || null)} />
+                      </div>
+                      <DialogFooter>
+                           <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
+                           <Button onClick={handleProposalUpload} disabled={isUpdating || !proposalFile}>
+                              {isUpdating ? <Loader2 className="h-4 w-4 animate-spin"/> : null} Upload
+                           </Button>
+                      </DialogFooter>
+                  </DialogContent>
+              </Dialog>
+          )}
+        </div>
+        <div className="flex items-center gap-2">
             {showDownloadButton && (
                 <TooltipProvider>
                     <Tooltip>
@@ -1091,14 +1076,11 @@ export function ProjectDetailsClient({ project: initialProject, allUsers, piUser
                     <Tooltip>
                       <TooltipTrigger asChild>
                         <DropdownMenuTrigger asChild>
-                          <Button variant="outline" disabled={isUpdating || !allEvaluationsIn}>
+                          <Button variant="outline" disabled={isUpdating}>
                             Update Status <ChevronDown className="ml-2 h-4 w-4" />
                           </Button>
                         </DropdownMenuTrigger>
                       </TooltipTrigger>
-                       {!allEvaluationsIn ? (
-                            <TooltipContent><p>All evaluations must be submitted first.</p></TooltipContent>
-                       ) : null}
                     </Tooltip>
                     <DropdownMenuContent align="end">
                        <DropdownMenuItem 
@@ -1118,7 +1100,7 @@ export function ProjectDetailsClient({ project: initialProject, allUsers, piUser
                   </DropdownMenu>
                 </TooltipProvider>
               )}
-              {isPI && project.status === "Revision Needed" && (
+              {(isPI || isSuperAdmin) && project.status === "Revision Needed" && (
                 <Dialog open={isRevisionDialogOpen} onOpenChange={setIsRevisionDialogOpen}>
                   <DialogTrigger asChild>
                     <Button variant="outline">
@@ -1129,7 +1111,9 @@ export function ProjectDetailsClient({ project: initialProject, allUsers, piUser
                     <DialogHeader>
                       <DialogTitle>Submit Revised Proposal</DialogTitle>
                       <DialogDescription>
-                        Upload your revised proposal based on the feedback from the IMR evaluation meeting.
+                        {isSuperAdmin && !isPI
+                            ? "As an admin, you are uploading a revised proposal on behalf of the PI."
+                            : "Upload your revised proposal based on the feedback from the IMR evaluation meeting."}
                       </DialogDescription>
                     </DialogHeader>
                     <div className="grid gap-4 py-4">
@@ -1232,7 +1216,7 @@ export function ProjectDetailsClient({ project: initialProject, allUsers, piUser
           </div>
         </CardHeader>
         <CardContent className="space-y-6">
-          {project.wasAbsent && (
+          {project.wasAbsent && !project.meetingDetails && (
               <Alert variant="destructive">
                   <AlertCircle className="h-4 w-4" />
                   <AlertTitle>PI Was Absent</AlertTitle>
@@ -1333,7 +1317,7 @@ export function ProjectDetailsClient({ project: initialProject, allUsers, piUser
                 <dt className="font-medium text-muted-foreground">Principal Investigator</dt>
                 <dd>
                     {piUser?.misId ? (
-                        <Link href={piUser.campus === 'Goa' ? `/goa/${piUser.misId}` : `/profile/${piUser.misId}`} className="text-primary hover:underline" target="_blank">
+                        <Link href={`/profile/${piUser.misId}`} className="text-primary hover:underline" target="_blank">
                             {project.pi}
                         </Link>
                     ) : (
@@ -1561,28 +1545,18 @@ export function ProjectDetailsClient({ project: initialProject, allUsers, piUser
       )}
       
       {showEvaluationForm && user && (
-        <EvaluationForm project={project} user={user} onEvaluationSubmitted={refetchEvaluations} />
+        <EvaluationForm 
+          project={project} 
+          user={user} 
+          onEvaluationSubmitted={refetchEvaluations} 
+          isEvaluationPeriodActive={isEvaluationPeriodActive}
+        />
       )}
 
       {project.grant && user && canManageGrants && (
         <GrantManagement project={project} user={user} onUpdate={handleProjectUpdate} />
       )}
 
-      <AlertDialog open={showApprovalAlert} onOpenChange={setShowApprovalAlert}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Evaluation Incomplete</AlertDialogTitle>
-            <AlertDialogDescription>
-              This project cannot be Recommended or Not Recommended until all assigned evaluations have been submitted.
-              There are currently {evaluations.length || 0} of {presentEvaluatorsCount || 0}{" "}
-              required evaluations complete.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>OK</AlertDialogCancel>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
 
       <Dialog open={isRevisionCommentDialogOpen} onOpenChange={setIsRevisionCommentDialogOpen}>
         <DialogContent>
@@ -1765,5 +1739,3 @@ function OfficeNotingDialog({ isOpen, onOpenChange, onSubmit, isPrinting, form }
         </Dialog>
     );
 }
-
-    

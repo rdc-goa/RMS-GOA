@@ -1,4 +1,3 @@
-
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
@@ -10,6 +9,8 @@ import { useToast } from '@/hooks/use-toast';
 import { PageHeader } from '@/components/page-header';
 import { Skeleton } from '@/components/ui/skeleton';
 import { EmrManagementClient } from '@/components/emr/emr-management-client';
+import { format, parseISO } from 'date-fns';
+import { Popover } from '@/components/ui/popover'; // Fix: Added Popover import
 
 export default function EmrManagementPage() {
     const params = useParams();
@@ -95,11 +96,13 @@ export default function EmrManagementPage() {
         );
     }
 
+    const formattedDeadline = call.applyDeadline ? format(parseISO(call.applyDeadline), 'PPP') : 'N/A';
+
     return (
         <div className="container mx-auto py-10">
             <PageHeader
                 title={`Manage: ${call.title}`}
-                description={`Agency: ${call.agency}`}
+                description={`Agency: ${call.agency} | Agency Deadline: ${formattedDeadline}`}
                 backButtonHref="/dashboard/emr-management"
                 backButtonText="Back to All Calls"
             />
@@ -115,5 +118,3 @@ export default function EmrManagementPage() {
         </div>
     );
 }
-
-    

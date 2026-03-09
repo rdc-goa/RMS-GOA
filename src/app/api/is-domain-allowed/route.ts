@@ -1,6 +1,6 @@
 
 import { NextRequest, NextResponse } from 'next/server';
-import { isEmailDomainAllowed } from '@/app/server-actions';
+import { isEmailDomainAllowed } from '@/app/actions';
 
 export async function POST(request: NextRequest) {
   try {

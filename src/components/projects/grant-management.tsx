@@ -1,5 +1,5 @@
 
-"use client"
+'use client';
 
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
@@ -10,10 +10,9 @@ import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, For
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { useToast } from "@/hooks/use-toast"
-import { addGrantPhase, addTransaction, updatePhaseStatus, deleteTransaction, updateTransaction } from "@/app/grant-actions"
+import { addGrantPhase, addTransaction, updatePhaseStatus, deleteTransaction, updateTransaction } from "@/app/actions"
 import { generateInstallmentOfficeNoting } from "@/app/document-actions"
-import React, { useState, useEffect } from "react"
-import { useAuth } from "@/components/providers/FirebaseProvider"
+import React, { useState } from "react"
 import {
   DollarSign,
   Banknote,
@@ -57,7 +56,9 @@ import { Alert, AlertDescription, AlertTitle } from "../ui/alert"
 import Link from "next/link"
 import { Badge } from "../ui/badge"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "../ui/dropdown-menu"
-import { format, parseISO } from "date-fns"
+import { format, parseISO, isValid } from "date-fns"
+import { Separator } from "../ui/separator"
+import { uploadFileToApi, validateFile } from "@/lib/upload-client"
 
 
 interface GrantManagementProps {
@@ -66,44 +67,25 @@ interface GrantManagementProps {
   onUpdate: (updatedProject: Project) => void
 }
 
-const uploadFileToApi = async (file: File, authToken: string): Promise<string> => {
-    const formData = new FormData();
-    formData.append("file", file);
-
-    const response = await fetch("/api/upload", {
-        method: "POST",
-        headers: {
-            "Authorization": `Bearer ${authToken}`,
-        },
-        body: formData,
-    });
-
-    if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || "Failed to upload file");
-    }
-
-    const result = await response.json();
-    return result.file.uploadedUrl;
-};
+// File is now uploaded directly via API, no need for DataUrl conversion
 
 export function GrantManagement({ project, user, onUpdate }: GrantManagementProps) {
   const { toast } = useToast()
-  const auth = useAuth()
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isAddPhaseOpen, setIsAddPhaseOpen] = useState(false)
   const [isTransactionOpen, setIsTransactionOpen] = useState(false)
   const [currentPhaseId, setCurrentPhaseId] = useState<string | null>(null)
-  const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null)
   const [isDownloading, setIsDownloading] = useState(false);
   const [phaseForNoting, setPhaseForNoting] = useState<GrantPhase | null>(null);
+  const [transactionToEdit, setTransactionToEdit] = useState<{phaseId: string, transaction: Transaction} | null>(null);
   const [transactionToDelete, setTransactionToDelete] = useState<{phaseId: string, transaction: Transaction} | null>(null);
 
   const grant = project.grant
-  if (!grant) return null
+  
+  const canAddPhase = (user.role === "admin" || user.role === "Super-admin") && (project.isBulkUploaded || (grant && grant.totalAmount > 0));
 
-  const totalDisbursed = grant.phases?.reduce((acc, phase) => acc + phase.amount, 0) || 0;
-  const remainingAmount = grant.totalAmount - totalDisbursed;
+  const totalDisbursed = grant?.phases?.reduce((acc, phase) => acc + phase.amount, 0) || 0;
+  const remainingAmount = (grant?.totalAmount || 0) - totalDisbursed;
 
   const addPhaseSchema = z.object({
     installmentRefNumber: z.string().min(3, "Installment Ref. No. is required."),
@@ -125,16 +107,7 @@ export function GrantManagement({ project, user, onUpdate }: GrantManagementProp
       isGstRegistered: z.boolean().default(false),
       gstNumber: z.string().optional(),
       description: z.string().min(10, "Description is required."),
-      invoice: z.any()
-        .optional()
-        .refine(
-            (files) => !editingTransaction || (files && files.length > 0) ? files?.[0]?.size <= MAX_FILE_SIZE : true,
-            `File size must be less than 5MB.`
-        )
-        .refine(
-            (files) => !editingTransaction || (files && files.length > 0) ? ACCEPTED_FILE_TYPES.includes(files?.[0]?.type) : true,
-            "Only .pdf files are accepted."
-        ),
+      invoice: z.any().optional(),
     })
     .refine(
       (data) => {
@@ -150,11 +123,10 @@ export function GrantManagement({ project, user, onUpdate }: GrantManagementProp
     )
   
 
-  const canAddPhase = user.role === "admin" || user.role === "Super-admin"
   const canChangeStatus = user.role === "admin" || user.role === "Super-admin"
   const isPI = user.uid === project.pi_uid || user.email === project.pi_email
   const isCoPi = project.coPiUids?.includes(user.uid) || false;
-  const isAdmin = user.role === 'admin' || user.role === 'Super-admin';
+  const isSuperAdmin = user.role === 'Super-admin';
 
   const phaseForm = useForm<z.infer<typeof addPhaseSchema>>({
     resolver: zodResolver(addPhaseSchema),
@@ -168,31 +140,34 @@ export function GrantManagement({ project, user, onUpdate }: GrantManagementProp
 
   const transactionForm = useForm<z.infer<typeof transactionSchema>>({
     resolver: zodResolver(transactionSchema),
-    defaultValues: {
-      dateOfTransaction: "",
-      amount: 0,
-      vendorName: "",
-      isGstRegistered: false,
-      gstNumber: "",
-      description: "",
-    },
   })
 
-  useEffect(() => {
-    if (editingTransaction) {
-        transactionForm.reset({
-            dateOfTransaction: format(parseISO(editingTransaction.dateOfTransaction), 'yyyy-MM-dd'),
-            amount: editingTransaction.amount,
-            vendorName: editingTransaction.vendorName,
-            isGstRegistered: editingTransaction.isGstRegistered,
-            gstNumber: editingTransaction.gstNumber,
-            description: editingTransaction.description,
-            invoice: undefined,
-        });
+  // Pre-fill form when editing
+  React.useEffect(() => {
+    if (transactionToEdit) {
+      transactionForm.reset({
+        dateOfTransaction: format(parseISO(transactionToEdit.transaction.dateOfTransaction), 'yyyy-MM-dd'),
+        amount: transactionToEdit.transaction.amount,
+        vendorName: transactionToEdit.transaction.vendorName,
+        isGstRegistered: transactionToEdit.transaction.isGstRegistered,
+        gstNumber: transactionToEdit.transaction.gstNumber,
+        description: transactionToEdit.transaction.description,
+        invoice: undefined, // Clear file input
+      });
+      setCurrentPhaseId(transactionToEdit.phaseId);
+      setIsTransactionOpen(true);
     } else {
-        transactionForm.reset();
+      transactionForm.reset({
+        dateOfTransaction: "",
+        amount: 0,
+        vendorName: "",
+        isGstRegistered: false,
+        gstNumber: "",
+        description: "",
+        invoice: undefined,
+      });
     }
-}, [editingTransaction, transactionForm]);
+  }, [transactionToEdit, transactionForm]);
 
   const handleExportTransactions = (phase: GrantPhase) => {
     if (!phase.transactions || phase.transactions.length === 0) {
@@ -241,7 +216,7 @@ export function GrantManagement({ project, user, onUpdate }: GrantManagementProp
             const url = window.URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
-            a.download = `Office_Note_Installment_${project.pi.replace(/\s+/g, '_')}.docx`;
+            a.download = `Office_Note_Installment_${project.pi.replace(/\s/g, '_')}.docx`;
             document.body.appendChild(a);
             a.click();
             a.remove();
@@ -282,62 +257,92 @@ export function GrantManagement({ project, user, onUpdate }: GrantManagementProp
     }
   }
 
-  const handleTransactionSubmit = async (values: z.infer<typeof transactionSchema>) => {
+  const handleTransactionSubmit = async (values: Partial<z.infer<typeof transactionSchema>>, isDraft: boolean = false) => {
     if (!grant || !currentPhaseId) return;
-    setIsSubmitting(true);
-    
-    try {
-        let invoiceUrl: string | undefined = editingTransaction?.invoiceUrl;
-        let invoiceFileName: string | undefined = 'existing_invoice.pdf';
-        const invoiceFile = values.invoice?.[0];
 
+    // For final submission, validate all fields
+    if (!isDraft) {
+        const validationResult = transactionSchema.safeParse(values);
+        if (!validationResult.success) {
+            // @ts-ignore
+            Object.keys(validationResult.error.formErrors.fieldErrors).forEach((key: keyof z.infer<typeof transactionSchema>) => {
+                const message = validationResult.error.formErrors.fieldErrors[key]?.[0];
+                if (message) {
+                    transactionForm.setError(key, { type: 'manual', message });
+                }
+            });
+            return;
+        }
+    }
+
+    setIsSubmitting(true);
+    try {
+        const invoiceFile = (values.invoice as FileList)?.[0];
+        let invoiceUrl: string | undefined;
+        let invoiceFileName: string | undefined;
+        
+        // Upload file to new API endpoint if provided
         if (invoiceFile) {
-            // Get auth token and upload file using the API route
-            const token = await auth.currentUser?.getIdToken();
-            if (!token) {
-                throw new Error("User authentication failed. Please log in again.");
+            // Validate file before upload
+            const validation = validateFile(invoiceFile);
+            if (!validation.valid) {
+                throw new Error(validation.error || "File validation failed");
             }
-            
-            invoiceUrl = await uploadFileToApi(invoiceFile, token);
+
+            // Upload file to API
+            const uploadResult = await uploadFileToApi(invoiceFile);
+            if (!uploadResult.success) {
+                throw new Error(uploadResult.error || "Failed to upload invoice");
+            }
+            invoiceUrl = uploadResult.url;
             invoiceFileName = invoiceFile.name;
         }
-
-        if (!invoiceUrl) {
-            throw new Error("Invoice file is required.");
-        }
         
-        const transactionPayload = {
-            dateOfTransaction: values.dateOfTransaction,
-            amount: values.amount,
-            vendorName: values.vendorName,
-            isGstRegistered: values.isGstRegistered,
-            gstNumber: values.gstNumber,
-            description: values.description,
-            invoiceUrl,
-            invoiceFileName,
+        const finalValues = {
+            dateOfTransaction: values.dateOfTransaction || '',
+            amount: values.amount || 0,
+            vendorName: values.vendorName || '',
+            isGstRegistered: values.isGstRegistered || false,
+            gstNumber: values.gstNumber || '',
+            description: values.description || '',
         };
         
-        const result = editingTransaction
-            ? await updateTransaction(project.id, currentPhaseId, editingTransaction.id, transactionPayload)
-            : await addTransaction(project.id, currentPhaseId, transactionPayload);
-
+        let result;
+        if (transactionToEdit) {
+            // Update existing transaction
+            result = await updateTransaction(project.id, transactionToEdit.phaseId, transactionToEdit.transaction.id, {
+                ...finalValues,
+                isDraft,
+                invoiceUrl,
+                invoiceFileName,
+            });
+        } else {
+            // Add new transaction
+            result = await addTransaction(project.id, currentPhaseId, {
+                ...finalValues,
+                isDraft,
+                invoiceUrl,
+                invoiceFileName,
+            });
+        }
 
         if (result.success && result.updatedProject) {
             onUpdate(result.updatedProject);
-            toast({ title: "Success", description: `Transaction ${editingTransaction ? 'updated' : 'added'} successfully.` });
-            setIsTransactionOpen(false);
-            setCurrentPhaseId(null);
-            setEditingTransaction(null);
+            toast({ title: "Success", description: `Transaction ${transactionToEdit ? 'updated' : 'added'} successfully.` });
+            if (!isDraft) {
+                closeTransactionDialog();
+            }
         } else {
-            throw new Error(result.error || `Failed to ${editingTransaction ? 'update' : 'add'} transaction.`);
+            throw new Error(result.error || `Failed to ${transactionToEdit ? 'update' : 'add'} transaction.`);
         }
     } catch (error: any) {
-        console.error(`Error in handleTransactionSubmit:`, error);
-        toast({ variant: "destructive", title: "Error", description: error.message || `Failed to ${editingTransaction ? 'update' : 'add'} transaction.` });
+        console.error(`Client error in handleTransactionSubmit:`, error);
+        toast({ variant: "destructive", title: "Error", description: error.message || `Failed to ${transactionToEdit ? 'update' : 'add'} transaction.` });
     } finally {
         setIsSubmitting(false);
     }
   };
+
 
   const handleDeleteTransaction = async () => {
     if (!transactionToDelete) return;
@@ -377,6 +382,13 @@ export function GrantManagement({ project, user, onUpdate }: GrantManagementProp
       setIsSubmitting(false);
     }
   };
+
+  const closeTransactionDialog = () => {
+    setIsTransactionOpen(false);
+    setCurrentPhaseId(null);
+    setTransactionToEdit(null);
+    transactionForm.reset();
+  }
   
   const getPhaseBadgeVariant = (status: GrantPhase['status']) => {
     switch (status) {
@@ -390,6 +402,8 @@ export function GrantManagement({ project, user, onUpdate }: GrantManagementProp
     }
   };
 
+  if (!grant) return null
+
   return (
     <Card className="mt-8">
       <CardHeader>
@@ -398,7 +412,7 @@ export function GrantManagement({ project, user, onUpdate }: GrantManagementProp
             <DollarSign className="h-6 w-6" />
             <CardTitle>Grant Management</CardTitle>
           </div>
-          {canAddPhase && remainingAmount > 0 && (
+          {canAddPhase && (grant.phases?.length || 0) < 5 && remainingAmount > 0 && (
             <Dialog open={isAddPhaseOpen} onOpenChange={setIsAddPhaseOpen}>
               <DialogTrigger asChild>
                 <Button>
@@ -469,129 +483,129 @@ export function GrantManagement({ project, user, onUpdate }: GrantManagementProp
       </CardHeader>
       <CardContent className="space-y-6">
         {(grant.phases || []).map((phase, index) => {
-          const totalUtilized = phase.transactions?.reduce((acc, t) => acc + t.amount, 0) || 0
+          const totalUtilized = phase.transactions?.reduce((acc, t) => acc + Number(t?.amount || 0), 0) || 0;
           const utilizationPercentage = phase.amount > 0 ? (totalUtilized / phase.amount) * 100 : 0;
           const hasReachedThreshold = utilizationPercentage >= 80;
           const hasRemainingGrant = remainingAmount > 0 || (index < (grant.phases.length - 1));
           
           const canRequestNextPhase = isPI && phase.status === "Disbursed" && hasReachedThreshold && hasRemainingGrant;
-          const canAddExpense = (isPI || isCoPi || isAdmin) && phase.status === "Disbursed";
+          const canManageExpenses = (isPI || isCoPi || isSuperAdmin) && phase.status === 'Disbursed';
           
           const previousPhase = index > 0 ? grant.phases[index - 1] : null;
-          const showOfficeNoteButton = isAdmin && index > 0 && previousPhase && ['Utilization Submitted', 'Completed'].includes(previousPhase.status);
+          const showOfficeNoteButton = (user.role === "admin" || user.role === 'Super-admin') && index > 0 && previousPhase && ['Utilization Submitted', 'Completed'].includes(previousPhase.status);
 
           return (
-            <Card key={phase.id} className="bg-muted/30">
-              <CardHeader>
-                <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2">
-                  <div>
-                    <CardTitle className="text-lg">{phase.name}</CardTitle>
-                    <CardDescription className="mt-1">
-                      Amount:{" "}
-                      <span className="font-semibold text-foreground">₹{phase.amount.toLocaleString("en-IN")}</span>
-                       {phase.installmentRefNumber && ` | Ref: ${phase.installmentRefNumber}`}
-                    </CardDescription>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Badge variant={getPhaseBadgeVariant(phase.status)}>{phase.status}</Badge>
-                    {canChangeStatus && (
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="outline" size="sm" disabled={isSubmitting}>
-                            Change Status <ChevronDown className="ml-2 h-4 w-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent>
-                          <DropdownMenuItem
-                            onClick={() => handlePhaseStatusUpdate(phase.id, "Pending Disbursement")}
-                            disabled={phase.status === "Pending Disbursement"}
-                          >
-                            Pending Disbursement
-                          </DropdownMenuItem>
-                          <DropdownMenuItem
-                            onClick={() => handlePhaseStatusUpdate(phase.id, "Disbursed")}
-                            disabled={phase.status === "Disbursed"}
-                          >
-                            Disbursed
-                          </DropdownMenuItem>
-                          <DropdownMenuItem
-                            onClick={() => handlePhaseStatusUpdate(phase.id, "Completed")}
-                            disabled={phase.status === "Completed"}
-                          >
-                            Completed
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    )}
-                    {showOfficeNoteButton && (
+            <React.Fragment key={`${phase.id}-${index}`}>
+              <Card className="bg-muted/30">
+                <CardHeader>
+                  <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2">
+                    <div>
+                      <CardTitle className="text-lg">{phase.name}</CardTitle>
+                      <CardDescription className="mt-1">
+                        Amount:{" "}
+                        <span className="font-semibold text-foreground">₹{phase.amount.toLocaleString("en-IN")}</span>
+                        {phase.installmentRefNumber && ` | Ref: ${phase.installmentRefNumber}`}
+                      </CardDescription>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Badge variant={getPhaseBadgeVariant(phase.status)}>{phase.status}</Badge>
+                      {canChangeStatus && (
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="outline" size="sm" disabled={isSubmitting}>
+                              Change Status <ChevronDown className="ml-2 h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent>
+                            <DropdownMenuItem
+                              onClick={() => handlePhaseStatusUpdate(phase.id, "Pending Disbursement")}
+                              disabled={phase.status === "Pending Disbursement"}
+                            >
+                              Pending Disbursement
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={() => handlePhaseStatusUpdate(phase.id, "Disbursed")}
+                              disabled={phase.status === "Disbursed"}
+                            >
+                              Disbursed
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={() => handlePhaseStatusUpdate(phase.id, "Completed")}
+                              disabled={phase.status === "Completed"}
+                            >
+                              Completed
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      )}
+                      {showOfficeNoteButton && (
                         <Button variant="outline" size="sm" onClick={() => setPhaseForNoting(phase)}>
-                            <Download className="mr-2 h-4 w-4" /> Office Note
+                          <Download className="mr-2 h-4 w-4" /> Office Note
                         </Button>
-                    )}
-                  </div>
-                </div>
-                {phase.disbursementDate && (
-                  <p className="text-sm text-muted-foreground">
-                    Disbursed on: {format(parseISO(phase.disbursementDate), "dd/MM/yyyy")}
-                  </p>
-                )}
-              </CardHeader>
-              <CardContent>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-                  <div className="flex items-center gap-2">
-                    <Banknote className="h-4 w-4 text-green-600" />
-                    <div>
-                      <p className="text-sm text-muted-foreground">Allocated</p>
-                      <p className="font-semibold">₹{phase.amount.toLocaleString("en-IN")}</p>
+                      )}
                     </div>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <BadgeCent className="h-4 w-4 text-blue-600" />
-                    <div>
-                      <p className="text-sm text-muted-foreground">Utilized ({utilizationPercentage.toFixed(2)}%)</p>
-                      <p className="font-semibold">₹{totalUtilized.toLocaleString("en-IN")}</p>
+                  {phase.disbursementDate && (
+                    <p className="text-sm text-muted-foreground">
+                      Disbursed on: {format(parseISO(phase.disbursementDate), "dd/MM/yyyy")}
+                    </p>
+                  )}
+                </CardHeader>
+                <CardContent>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                    <div className="flex items-center gap-2">
+                      <Banknote className="h-4 w-4 text-green-600" />
+                      <div>
+                        <p className="text-sm text-muted-foreground">Allocated</p>
+                        <p className="font-semibold">₹{phase.amount.toLocaleString("en-IN")}</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <BadgeCent className="h-4 w-4 text-blue-600" />
+                      <div>
+                        <p className="text-sm text-muted-foreground">Utilized ({utilizationPercentage.toFixed(2)}%)</p>
+                        <p className="font-semibold">₹{totalUtilized.toLocaleString("en-IN")}</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <CheckCircle className="h-4 w-4 text-orange-600" />
+                      <div>
+                        <p className="text-sm text-muted-foreground">Remaining</p>
+                        <p className="font-semibold">₹{(phase.amount - totalUtilized).toLocaleString("en-IN")}</p>
+                      </div>
                     </div>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <CheckCircle className="h-4 w-4 text-orange-600" />
-                    <div>
-                      <p className="text-sm text-muted-foreground">Remaining</p>
-                      <p className="font-semibold">₹{(phase.amount - totalUtilized).toLocaleString("en-IN")}</p>
-                    </div>
-                  </div>
-                </div>
 
-                <div className="space-y-4">
+                  <div className="space-y-4">
                     <div className="flex items-center justify-between">
-                        <h4 className="font-semibold flex items-center gap-2">
+                      <h4 className="font-semibold flex items-center gap-2">
                         <FileText className="h-4 w-4" />
                         Transactions ({phase.transactions?.length || 0})
-                        </h4>
-                         <div className="flex items-center gap-2">
-                            {canAddExpense && (
-                              <Button
-                                size="sm"
-                                onClick={() => {
-                                  setCurrentPhaseId(phase.id)
-                                  setEditingTransaction(null);
-                                  setIsTransactionOpen(true)
-                                }}
-                              >
-                                <PlusCircle className="mr-2 h-4 w-4" />
-                                Add Expense
-                              </Button>
-                            )}
-                            {(phase.transactions?.length || 0) > 0 && (
-                                <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => handleExportTransactions(phase)}
-                                >
-                                <Download className="mr-2 h-4 w-4" />
-                                Export
-                                </Button>
-                            )}
-                        </div>
+                      </h4>
+                      <div className="flex items-center gap-2">
+                        {canManageExpenses && (
+                          <Button
+                            size="sm"
+                            onClick={() => {
+                              setCurrentPhaseId(phase.id)
+                              setIsTransactionOpen(true)
+                            }}
+                          >
+                            <PlusCircle className="mr-2 h-4 w-4" />
+                            Add Expense
+                          </Button>
+                        )}
+                        {(phase.transactions?.length || 0) > 0 && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleExportTransactions(phase)}
+                          >
+                            <Download className="mr-2 h-4 w-4" />
+                            Export
+                          </Button>
+                        )}
+                      </div>
                     </div>
                     
                     {(phase.transactions?.length || 0) > 0 ? (
@@ -605,52 +619,54 @@ export function GrantManagement({ project, user, onUpdate }: GrantManagementProp
                               <TableHead>GST</TableHead>
                               <TableHead>Description</TableHead>
                               <TableHead>Invoice</TableHead>
-                              {(isPI || isCoPi || isAdmin) && <TableHead className="text-right">Action</TableHead>}
+                              {(isPI || isCoPi || isSuperAdmin) && <TableHead className="text-right">Action</TableHead>}
                             </TableRow>
                           </TableHeader>
                           <TableBody>
                             {phase.transactions?.map((transaction) => {
-                                const canEditOrDelete = (isPI || isCoPi) && phase.status === 'Disbursed';
+                                const dateString = transaction.dateOfTransaction;
+                                const date = dateString ? parseISO(dateString) : null;
                                 return (
-                                  <TableRow key={transaction.id}>
-                                    <TableCell>{format(parseISO(transaction.dateOfTransaction), "dd/MM/yyyy")}</TableCell>
-                                    <TableCell>{transaction.vendorName}</TableCell>
-                                    <TableCell>₹{transaction.amount.toLocaleString("en-IN")}</TableCell>
-                                    <TableCell>
-                                      {transaction.isGstRegistered ? (
-                                        <span className="text-green-600">Yes ({transaction.gstNumber})</span>
-                                      ) : (
-                                        <span className="text-muted-foreground">No</span>
-                                      )}
-                                    </TableCell>
-                                    <TableCell className="whitespace-pre-wrap max-w-xs">{transaction.description}</TableCell>
-                                    <TableCell>
-                                      {transaction.invoiceUrl ? (
-                                        <Link
-                                          href={transaction.invoiceUrl}
-                                          target="_blank"
-                                          rel="noopener noreferrer"
-                                          className="text-blue-600 hover:underline"
-                                        >
-                                          View Invoice
-                                        </Link>
-                                      ) : (
-                                        <span className="text-muted-foreground">N/A</span>
-                                      )}
-                                    </TableCell>
-                                    {(isPI || isCoPi || isAdmin) && (
-                                        <TableCell className="text-right">
-                                            <div className="flex items-center justify-end gap-1">
-                                                {canEditOrDelete && (
-                                                    <Button variant="ghost" size="icon" onClick={() => { setCurrentPhaseId(phase.id); setEditingTransaction(transaction); setIsTransactionOpen(true); }}><Edit className="h-4 w-4" /></Button>
-                                                )}
-                                                <Button variant="ghost" size="icon" onClick={() => setTransactionToDelete({ phaseId: phase.id, transaction })} disabled={!canEditOrDelete}><Trash2 className="h-4 w-4 text-destructive" /></Button>
-                                            </div>
-                                        </TableCell>
+                                <TableRow key={transaction.id} className={transaction.isDraft ? 'bg-yellow-100 dark:bg-yellow-900/20' : ''}>
+                                  <TableCell>{date && isValid(date) ? format(date, "dd/MM/yyyy") : dateString}</TableCell>
+                                  <TableCell>{transaction.vendorName}</TableCell>
+                                  <TableCell>₹{transaction.amount.toLocaleString("en-IN")}</TableCell>
+                                  <TableCell>
+                                    {transaction.isGstRegistered ? (
+                                      <span className="text-green-600">Yes ({transaction.gstNumber})</span>
+                                    ) : (
+                                      <span className="text-muted-foreground">No</span>
                                     )}
-                                  </TableRow>
-                                )
-                            })}
+                                  </TableCell>
+                                  <TableCell className="whitespace-pre-wrap max-w-xs">{transaction.description}</TableCell>
+                                  <TableCell>
+                                    {transaction.invoiceUrl ? (
+                                      <Link
+                                        href={transaction.invoiceUrl}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="text-blue-600 hover:underline"
+                                      >
+                                        View Invoice
+                                      </Link>
+                                    ) : (
+                                      <span className="text-muted-foreground">N/A</span>
+                                    )}
+                                  </TableCell>
+                                  {canManageExpenses && (
+                                    <TableCell className="text-right">
+                                      <div className="flex justify-end gap-1">
+                                        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setTransactionToEdit({phaseId: phase.id, transaction})}>
+                                          <Edit className="h-4 w-4" />
+                                        </Button>
+                                        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setTransactionToDelete({phaseId: phase.id, transaction})}>
+                                          <Trash2 className="h-4 w-4 text-destructive" />
+                                        </Button>
+                                      </div>
+                                    </TableCell>
+                                  )}
+                                </TableRow>
+                            )})}
                           </TableBody>
                         </Table>
                       </div>
@@ -684,19 +700,20 @@ export function GrantManagement({ project, user, onUpdate }: GrantManagementProp
                 )}
               </CardContent>
             </Card>
+            {index < ((grant.phases || []).length - 1) && <Separator key={`${phase.id}-separator`} />}
+            </React.Fragment>
           );
         })}
 
-        <Dialog open={isTransactionOpen} onOpenChange={setIsTransactionOpen}>
+        <Dialog open={isTransactionOpen} onOpenChange={closeTransactionDialog}>
           <DialogContent className="max-w-2xl">
             <DialogHeader>
-              <DialogTitle>{editingTransaction ? 'Edit' : 'Add'} Transaction</DialogTitle>
+              <DialogTitle>{transactionToEdit ? 'Edit' : 'Add'} Transaction</DialogTitle>
               <DialogDescription>Record a new expense for this grant phase.</DialogDescription>
             </DialogHeader>
             <Form {...transactionForm}>
               <form
                 id="add-transaction-form"
-                onSubmit={transactionForm.handleSubmit(handleTransactionSubmit)}
                 className="space-y-4 py-4"
               >
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -786,6 +803,7 @@ export function GrantManagement({ project, user, onUpdate }: GrantManagementProp
                   render={({ field: { onChange, value, ...field } }) => (
                     <FormItem>
                       <FormLabel>Invoice (PDF)</FormLabel>
+                      {transactionToEdit?.transaction.invoiceUrl && <p className="text-xs text-muted-foreground">Current invoice: <a href={transactionToEdit.transaction.invoiceUrl} target="_blank" rel="noopener noreferrer" className="underline">View</a>. Uploading a new file will replace it.</p>}
                       <FormControl>
                         <Input
                           type="file"
@@ -794,7 +812,7 @@ export function GrantManagement({ project, user, onUpdate }: GrantManagementProp
                           {...field}
                         />
                       </FormControl>
-                      <FormDescription>Below 5 MB. {editingTransaction ? 'Uploading a new file will replace the old one.' : ''}</FormDescription>
+                      <FormDescription>Below 5 MB</FormDescription>
                       <FormMessage />
                     </FormItem>
                   )}
@@ -802,12 +820,15 @@ export function GrantManagement({ project, user, onUpdate }: GrantManagementProp
               </form>
             </Form>
             <DialogFooter>
-              <DialogClose asChild>
-                <Button variant="outline">Cancel</Button>
-              </DialogClose>
-              <Button type="submit" form="add-transaction-form" disabled={isSubmitting}>
-                {isSubmitting ? "Saving..." : (editingTransaction ? "Save Changes" : "Add Transaction")}
-              </Button>
+                <Button variant="outline" onClick={() => handleTransactionSubmit(transactionForm.getValues(), true)} disabled={isSubmitting}>
+                    {isSubmitting ? 'Saving...' : 'Save as Draft'}
+                </Button>
+                <div>
+                    <Button variant="ghost" onClick={closeTransactionDialog}>Cancel</Button>
+                    <Button onClick={() => handleTransactionSubmit(transactionForm.getValues())} disabled={isSubmitting}>
+                        {isSubmitting ? "Saving..." : (transactionToEdit ? 'Save Changes' : 'Add Transaction')}
+                    </Button>
+                </div>
             </DialogFooter>
           </DialogContent>
         </Dialog>

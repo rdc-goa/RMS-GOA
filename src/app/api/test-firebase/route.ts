@@ -12,10 +12,10 @@ export async function GET(request: NextRequest) {
 
     // Debug environment variables
     results.debug.environment = {
-      hasProjectId: !!process.env.FIREBASE_PROJECT_ID,
+      hasProjectId: !!process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
       hasClientEmail: !!process.env.FIREBASE_CLIENT_EMAIL,
       hasPrivateKey: !!process.env.FIREBASE_PRIVATE_KEY,
-      hasStorageBucket: !!process.env.FIREBASE_STORAGE_BUCKET,
+      hasStorageBucket: !!process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
     };
     
     // Test Service Account Variable
@@ -27,7 +27,7 @@ export async function GET(request: NextRequest) {
     } else {
          results.tests.serviceAccount = {
             status: "error",
-            message: "One or more required Firebase Admin environment variables (FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL, FIREBASE_PRIVATE_KEY) are missing.",
+            message: "One or more required Firebase Admin environment variables (NEXT_PUBLIC_FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL, FIREBASE_PRIVATE_KEY) are missing.",
         };
     }
     

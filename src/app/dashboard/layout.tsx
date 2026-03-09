@@ -1,5 +1,6 @@
 
-"use client"
+
+'use client'
 
 import type React from "react"
 
@@ -35,6 +36,8 @@ import {
   BookUp,
   MessageCircle,
   BookOpenCheck,
+  Building,
+  Calculator,
 } from "lucide-react"
 
 import {
@@ -52,16 +55,15 @@ import {
 import { UserNav } from "@/components/user-nav"
 import { ThemeToggle } from "@/components/theme-toggle"
 import { Logo } from "@/components/logo"
-import type { User, SystemSettings } from "@/types"
+import type { User, SystemSettings, Project, EmrInterest } from "@/types"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Button } from "@/components/ui/button"
 import { auth, db } from "@/lib/config"
 import { signOut, onAuthStateChanged, type User as FirebaseUser } from "firebase/auth"
 import { useToast } from "@/hooks/use-toast"
-import { collection, onSnapshot, query, where, doc, getDoc, setDoc } from "firebase/firestore"
+import { collection, onSnapshot, query, where, doc, getDoc } from "firebase/firestore"
 import { getDefaultModulesForRole } from "@/lib/modules"
-import { saveSidebarOrder, getSystemSettings, isEmailDomainAllowed, linkHistoricalData, linkPapersToNewUser, linkEmrInterestsToNewUser, linkEmrCoPiInterestsToNewUser } from "@/app/server-actions"
-import { TutorialDialog } from "@/components/tutorial-dialog"
+import { saveSidebarOrder, getSystemSettings } from "@/app/actions"
 import { HelpDialog } from "@/components/help-dialog"
 import {
   AlertDialog,
@@ -122,6 +124,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const [pendingMeetingsCount, setPendingMeetingsCount] = useState(0)
   const [pendingIncentiveApprovalsCount, setPendingIncentiveApprovalsCount] = useState(0)
   const [pendingBankClaimsCount, setPendingBankClaimsCount] = useState(0)
+  const [pendingEvaluationsCount, setPendingEvaluationsCount] = useState(0);
   const [menuItems, setMenuItems] = useState<NavItem[]>([])
   const [isDirty, setIsDirty] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
@@ -137,7 +140,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const allNavItems = useMemo(
     (): NavItem[] => [
       { id: "dashboard", href: "/dashboard", tooltip: "Dashboard", icon: Home, label: "Dashboard", condition: true },
-      { id: "ai-chat", href: "/dashboard/ai-chat", tooltip: "AI Chat", icon: MessageCircle, label: "AI Chat Agent" },
       {
         id: "new-submission",
         href: "/dashboard/new-submission",
@@ -161,6 +163,27 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         label: "Incentive Claims",
       },
       {
+        id: 'post-a-job',
+        href: '/dashboard/post-a-job',
+        tooltip: 'Post a Job',
+        icon: Building,
+        label: 'Post a Job',
+      },
+      {
+        id: 'recruitment-approvals',
+        href: '/dashboard/recruitment-approvals',
+        tooltip: 'Recruitment Approvals',
+        icon: ClipboardCheck,
+        label: 'Recruitment Approvals',
+      },
+      {
+        id: "arps-calculator",
+        href: "/dashboard/arps-calculator",
+        tooltip: "ARPS Calculator",
+        icon: Calculator,
+        label: "ARPS Calculator",
+      },
+      {
         id: "incentive-approvals",
         href: "/dashboard/incentive-approvals",
         tooltip: "Incentive Approvals",
@@ -174,6 +197,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         tooltip: "Evaluation Queue",
         icon: ClipboardCheck,
         label: "Evaluation Queue",
+        badge: pendingEvaluationsCount,
       },
       {
         id: "my-evaluations",
@@ -294,13 +318,14 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         condition: true,
       },
     ],
-    [unreadCount, pendingMeetingsCount, pendingIncentiveApprovalsCount, pendingBankClaimsCount],
+    [unreadCount, pendingMeetingsCount, pendingIncentiveApprovalsCount, pendingBankClaimsCount, pendingEvaluationsCount],
   )
 
   useEffect(() => {
     let unsubscribeProfile: (() => void) | undefined
-    
-    const fetchUserProfile = async (firebaseUser: FirebaseUser) => {
+    let retryTimeout: NodeJS.Timeout
+
+    const fetchUserProfile = async (firebaseUser: FirebaseUser, attempt = 1) => {
       const userDocRef = doc(db, "users", firebaseUser.uid)
       const userDocSnap = await getDoc(userDocRef)
 
@@ -318,11 +343,16 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
         const isPrincipal = appUser.designation === "Principal"
         const isHod = appUser.designation === "HOD"
+        const isCro = appUser.role === "CRO"
 
-        if (isPrincipal || isHod) {
+        if (isPrincipal || isHod || isCro) {
           if (!appUser.allowedModules.includes("all-projects")) {
             appUser.allowedModules.push("all-projects")
           }
+        }
+
+        if (isCro && !appUser.allowedModules.includes("analytics")) {
+          appUser.allowedModules.push("analytics")
         }
 
         const postSetupInfo = sessionStorage.getItem("postSetupInfo")
@@ -339,91 +369,20 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         localStorage.setItem("user", JSON.stringify(appUser))
         setLoading(false)
       } else {
-        // If user document does not exist after login, create it and redirect to profile setup.
-        try {
-            console.log("User document not found for authenticated user. Creating profile...");
-            const staffRes = await fetch(`/api/get-staff-data?email=${firebaseUser.email!}`);
-            const staffResult = await staffRes.json();
-
-            let userDataFromExcel: Partial<User> = {};
-            let role: User["role"] = "faculty";
-            let designation: User["designation"] = "faculty";
-            let profileComplete = false;
-
-            const domainCheck = await isEmailDomainAllowed(firebaseUser.email!);
-
-            if (staffResult.success && staffResult.data && staffResult.data.length > 0) {
-                userDataFromExcel = staffResult.data[0];
-                const userType = staffResult.data[0].type;
-
-                if (userType === "CRO") {
-                    role = "CRO";
-                    designation = "CRO";
-                    profileComplete = true;
-                } else if (userType === "Institutional") {
-                    role = "faculty";
-                    designation = "Principal";
-                    profileComplete = true;
-                }
-            } else if (domainCheck.isCro) {
-                role = "CRO";
-                designation = "CRO";
-                profileComplete = true;
-            }
-
-            const newUser: User = {
-                uid: firebaseUser.uid,
-                name: userDataFromExcel.name || firebaseUser.displayName || firebaseUser.email!.split("@")[0],
-                email: firebaseUser.email!,
-                role,
-                designation,
-                campus: 'Goa',
-                faculty: userDataFromExcel.faculty || domainCheck.croFaculty || '',
-                institute: userDataFromExcel.institute || '',
-                department: userDataFromExcel.department || '',
-                phoneNumber: userDataFromExcel.phoneNumber || '',
-                misId: userDataFromExcel.misId || '',
-                profileComplete,
-                allowedModules: getDefaultModulesForRole(role, designation),
-                hasCompletedTutorial: false,
-                photoURL: firebaseUser.photoURL || '',
-            };
-
-            await setDoc(userDocRef, newUser, { merge: true });
-
-            localStorage.setItem("user", JSON.stringify(newUser));
-            
-            // Link historical data
-            const { count: imrCount } = await linkHistoricalData(newUser);
-            const { count: emrCount } = await linkEmrInterestsToNewUser(newUser.uid, newUser.email);
-            await linkPapersToNewUser(newUser.uid, newUser.email);
-            await linkEmrCoPiInterestsToNewUser(newUser.uid, newUser.email);
-
-            if (imrCount > 0 || emrCount > 0) {
-                sessionStorage.setItem('postSetupInfo', JSON.stringify({ imr: imrCount, emr: emrCount }));
-            }
-            
-            toast({
-                title: "Welcome!",
-                description: "Your user profile has been created. Please complete your setup.",
-            });
-            router.replace("/profile-setup");
-
-        } catch (error: any) {
-            console.error("Failed to create user profile on-the-fly:", error);
-            toast({
-                variant: "destructive",
-                title: "Authentication Error",
-                description: "There was a problem setting up your user profile. Please try signing in again.",
-            });
-            signOut(auth);
-            setLoading(false);
+        if (attempt < 5) {
+          // Retry after a short delay
+          retryTimeout = setTimeout(() => fetchUserProfile(firebaseUser, attempt + 1), 500 * attempt)
+        } else {
+          toast({ variant: "destructive", title: "Authentication Error", description: "User profile not found after multiple attempts." })
+          signOut(auth)
+          setLoading(false)
         }
       }
     }
 
     const unsubscribeAuth = onAuthStateChanged(auth, (firebaseUser: FirebaseUser | null) => {
       if (unsubscribeProfile) unsubscribeProfile()
+      clearTimeout(retryTimeout)
 
       if (firebaseUser) {
         fetchUserProfile(firebaseUser)
@@ -445,6 +404,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     return () => {
       unsubscribeAuth()
       if (unsubscribeProfile) unsubscribeProfile()
+      clearTimeout(retryTimeout)
     }
   }, [router, toast])
 
@@ -455,11 +415,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       localStorage.setItem('lastActivity', Date.now().toString());
 
       const filtered = allNavItems.filter((item) => {
-        if (item.condition) return true;
+        if (item.condition) return true
         if (item.id === "incentive-approvals") {
-          return user.designation === 'Principal' || user.allowedModules?.some((m) => m.startsWith("incentive-approver-"));
+          return user.allowedModules?.some((m) => m.startsWith("incentive-approver-"))
         }
-        return user.allowedModules?.includes(item.id);
+        return user.allowedModules?.includes(item.id)
       })
       const sorted = user.sidebarOrder
         ? filtered.sort((a, b) => user.sidebarOrder!.indexOf(a.id) - user.sidebarOrder!.indexOf(b.id))
@@ -529,31 +489,17 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     }
 
     // Incentive Approvals listener
-    if (user.designation === 'Principal' && user.institute) {
-        const incentiveQuery = query(
-          collection(db, "incentiveClaims"), 
-          where("status", "==", "Pending Principal Approval"),
-          where('institute', '==', user.institute),
-        );
-        unsubscribes.push(
-            onSnapshot(incentiveQuery, (snapshot) => {
-                setPendingIncentiveApprovalsCount(snapshot.size);
-            })
-        );
-    } else {
-        const approverModule = user.allowedModules?.find((m) => m.startsWith("incentive-approver-"))
-        if (approverModule) {
-          const stage = Number.parseInt(approverModule.split("-")[2], 10)
-          const statusToFetch = `Pending Stage ${stage} Approval`
-          const incentiveQuery = query(collection(db, "incentiveClaims"), where("status", "==", statusToFetch))
-          unsubscribes.push(
-            onSnapshot(incentiveQuery, (snapshot) => {
-              setPendingIncentiveApprovalsCount(snapshot.size)
-            }),
-          )
-        }
+    const approverModule = user.allowedModules?.find((m) => m.startsWith("incentive-approver-"))
+    if (approverModule) {
+      const stage = Number.parseInt(approverModule.split("-")[2], 10)
+      const statusToFetch = `Pending Stage ${stage} Approval`
+      const incentiveQuery = query(collection(db, "incentiveClaims"), where("status", "==", statusToFetch))
+      unsubscribes.push(
+        onSnapshot(incentiveQuery, (snapshot) => {
+          setPendingIncentiveApprovalsCount(snapshot.size)
+        }),
+      )
     }
-
 
     // Pending Bank Claims listener (for admins)
     if (user.allowedModules?.includes("manage-incentive-claims")) {
@@ -566,6 +512,35 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           setPendingBankClaimsCount(snapshot.size)
         }),
       )
+    }
+    
+    // Pending Evaluations listener
+    if (user.allowedModules?.includes("evaluator-dashboard")) {
+        let imrCount = 0;
+        let emrCount = 0;
+        const updateCounts = () => setPendingEvaluationsCount(imrCount + emrCount);
+        
+        const imrQuery = query(collection(db, "projects"), where("status", "==", "Under Review"), where("meetingDetails.assignedEvaluators", "array-contains", user.uid));
+        unsubscribes.push(
+            onSnapshot(imrQuery, (snapshot) => {
+                imrCount = snapshot.docs.filter(doc => {
+                    const project = doc.data() as Project;
+                    return !project.evaluatedBy?.includes(user.uid) && !project.wasAbsent;
+                }).length;
+                updateCounts();
+            })
+        );
+        
+        const emrQuery = query(collection(db, "emrInterests"), where("status", "==", "Evaluation Pending"), where("assignedEvaluators", "array-contains", user.uid));
+        unsubscribes.push(
+            onSnapshot(emrQuery, (snapshot) => {
+                emrCount = snapshot.docs.filter(doc => {
+                    const interest = doc.data() as EmrInterest;
+                    return !interest.evaluatedBy?.includes(user.uid) && !interest.wasAbsent;
+                }).length;
+                updateCounts();
+            })
+        );
     }
 
     return () => unsubscribes.forEach((unsub) => unsub())
@@ -711,10 +686,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           </SidebarContent>
           <SidebarFooter className="hidden md:flex mt-auto group-data-[collapsible=icon]:hidden">
             <Image
-              src="https://lhdlkrfbkon55i6u.public.blob.vercel-storage.com/Pu%20Goa%20White.png"
-              alt="Parul University Goa Logo"
-              width={180}
-              height={70}
+              src="https://lhdlkrfbkon55i6u.public.blob.vercel-storage.com/PU%20Goa%20Black.png"
+              alt="Parul University Logo"
+              width={150}
+              height={50}
               className="mx-auto"
               style={{ height: "auto" }}
             />
@@ -735,7 +710,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               <h1 className="text-xl font-semibold">{getPageTitle()}</h1>
             </div>
             <div className="flex items-center gap-2">
-              <TutorialDialog user={user} />
               <HelpDialog />
               <ThemeToggle />
               <UserNav user={user} onLogout={attemptLogout} />

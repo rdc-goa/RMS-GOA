@@ -1,4 +1,3 @@
-
 'use client';
 
 import { useRouter } from 'next/navigation';
@@ -81,6 +80,9 @@ export default function ForgotPasswordPage() {
 
   return (
     <div className="flex flex-col min-h-screen bg-background dark:bg-transparent">
+       <header className="container mx-auto px-4 lg:px-6 h-20 flex items-center justify-between sticky top-0 z-50 bg-background/80 backdrop-blur-lg border-b">
+        <Logo />
+      </header>
       <main className="flex-1 flex min-h-screen items-center justify-center bg-muted/40 p-4 dark:bg-transparent">
         <div className="w-full max-w-md">
           <Card className="shadow-xl">

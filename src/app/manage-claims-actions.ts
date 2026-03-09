@@ -4,9 +4,10 @@
 
 import { adminDb } from '@/lib/admin';
 import type { IncentiveClaim, User } from '@/types';
+import { isEligibleForFinancialDisbursement } from '@/lib/incentive-eligibility';
 import { sendEmail as sendEmailUtility } from "@/lib/email";
 import ExcelJS from 'exceljs';
-import { getSystemSettings } from './server-actions';
+import { getSystemSettings } from './actions';
 import { format } from 'date-fns';
 import { FieldPath } from 'firebase-admin/firestore';
 
@@ -27,7 +28,7 @@ async function logActivity(level: 'INFO' | 'WARNING' | 'ERROR', message: string,
 
 const EMAIL_STYLES = {
   background:
-    'style="background: linear-gradient(135deg, #0f2027, #203a43, #ff0000); color:#ffffff; font-family:Arial, sans-serif; padding:20px; border-radius:8px;"',
+    'style="background: linear-gradient(135deg, #0f2027, #203a43, #2c5364); color:#ffffff; font-family:Arial, sans-serif; padding:20px; border-radius:8px;"',
   logo: '<div style="text-align:center; margin-bottom:20px;"><img src="https://lhdlkrfbkon55i6u.public.blob.vercel-storage.com/Pu%20Goa%20White.png" alt="RDC Logo" style="max-width:300px; height:auto;" /></div>',
   footer: ` 
     <p style="color:#b0bec5; margin-top: 30px;">Best Regards,</p>
@@ -40,7 +41,7 @@ const EMAIL_STYLES = {
 };
 
 
-export async function markPaymentsCompleted(claimIds: string[]): Promise<{ success: boolean; error?: string }> {
+export async function markPaymentsCompleted(claimIds: string[]): Promise<{ success: boolean; error?: string; processedCount?: number; skippedCount?: number }> {
   if (!claimIds || claimIds.length === 0) {
     return { success: false, error: 'No claim IDs provided.' };
   }
@@ -51,11 +52,20 @@ export async function markPaymentsCompleted(claimIds: string[]): Promise<{ succe
     
     const claimsQuery = await claimsRef.where(FieldPath.documentId(), 'in', claimIds).get();
     
+    let processedCount = 0;
+    let skippedCount = 0;
+
     for (const doc of claimsQuery.docs) {
       const claim = { id: doc.id, ...doc.data() } as IncentiveClaim;
+
+      if (!isEligibleForFinancialDisbursement(claim)) {
+        skippedCount++;
+        continue;
+      }
       
       if(claim.status !== 'Submitted to Accounts') {
           console.warn(`Skipping claim ${claim.id} for payment completion as its status is not 'Submitted to Accounts'.`);
+          skippedCount++;
           continue;
       }
       
@@ -97,12 +107,14 @@ export async function markPaymentsCompleted(claimIds: string[]): Promise<{ succe
             from: 'default'
         });
       }
+
+      processedCount++;
     }
 
     await batch.commit();
     await logActivity('INFO', 'Marked incentive payments as completed', { claimIds, count: claimIds.length });
 
-    return { success: true };
+    return { success: true, processedCount, skippedCount };
   } catch (error: any) {
     console.error('Error marking payments as completed:', error);
     await logActivity('ERROR', 'Failed to mark payments as completed', { claimIds, error: error.message });
@@ -110,7 +122,7 @@ export async function markPaymentsCompleted(claimIds: string[]): Promise<{ succe
   }
 }
 
-export async function submitToAccounts(claimIds: string[]): Promise<{ success: boolean; error?: string }> {
+export async function submitToAccounts(claimIds: string[]): Promise<{ success: boolean; error?: string; processedCount?: number; skippedCount?: number }> {
   if (!claimIds || claimIds.length === 0) {
     return { success: false, error: 'No claim IDs provided.' };
   }
@@ -121,19 +133,33 @@ export async function submitToAccounts(claimIds: string[]): Promise<{ success: b
     
     const claimsQuery = await claimsRef.where(FieldPath.documentId(), 'in', claimIds).get();
     
+    let processedCount = 0;
+    let skippedCount = 0;
+
     for (const doc of claimsQuery.docs) {
         const claim = doc.data() as IncentiveClaim;
+      if (!isEligibleForFinancialDisbursement(claim)) {
+        skippedCount++;
+        continue;
+      }
         if(claim.status !== 'Accepted') {
             console.warn(`Skipping claim ${doc.id} for submission to accounts as its status is not 'Accepted'.`);
+        skippedCount++;
+            continue;
+        }
+        if (!claim.paymentSheetRef) {
+            console.warn(`Skipping claim ${doc.id} for submission to accounts as payment sheet has not been generated.`);
+            skippedCount++;
             continue;
         }
         batch.update(doc.ref, { status: 'Submitted to Accounts' });
+      processedCount++;
     }
 
     await batch.commit();
     await logActivity('INFO', 'Submitted claims to accounts', { claimIds, count: claimIds.length });
 
-    return { success: true };
+    return { success: true, processedCount, skippedCount };
   } catch (error: any) {
     console.error('Error submitting claims to accounts:', error);
     await logActivity('ERROR', 'Failed to submit claims to accounts', { claimIds, error: error.message });
@@ -172,7 +198,7 @@ export async function generateIncentivePaymentSheet(
   claimIds: string[],
   remarks: Record<string, string>,
   referenceNumber: string
-): Promise<{ success: boolean; fileData?: string; error?: string }> {
+): Promise<{ success: boolean; fileData?: string; error?: string; includedCount?: number; skippedCount?: number }> {
   try {
     const { toWords } = await import('number-to-words');
     
@@ -180,12 +206,14 @@ export async function generateIncentivePaymentSheet(
     const q = claimsRef.where(FieldPath.documentId(), 'in', claimIds);
     const claimsSnapshot = await q.get();
     const claims = claimsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as IncentiveClaim));
+    const payableClaims = claims.filter(isEligibleForFinancialDisbursement);
+    const skippedCount = claims.length - payableClaims.length;
 
-    if (claims.length === 0) {
+    if (payableClaims.length === 0) {
         return { success: false, error: "No valid claims found for the provided IDs." };
     }
 
-    const userIds = [...new Set(claims.map(c => c.uid))];
+    const userIds = [...new Set(payableClaims.map(c => c.uid))];
     const usersRef = adminDb.collection('users');
     const usersQuery = usersRef.where(FieldPath.documentId(), 'in', userIds);
     const usersSnapshot = await usersQuery.get();
@@ -215,7 +243,7 @@ export async function generateIncentivePaymentSheet(
     const batch = adminDb.batch();
     let totalAmount = 0;
 
-    const paymentData = claims.map((claim, index) => {
+    const paymentData = payableClaims.map((claim, index) => {
       const user = usersMap.get(claim.uid);
       const amount = claim.finalApprovedAmount || 0;
       totalAmount += amount;
@@ -260,11 +288,105 @@ export async function generateIncentivePaymentSheet(
     const buffer = await workbook.xlsx.writeBuffer();
     const base64 = Buffer.from(buffer).toString('base64');
     
-    await logActivity('INFO', 'Generated incentive payment sheet', { referenceNumber, claimCount: claims.length });
-    return { success: true, fileData: base64 };
+    await logActivity('INFO', 'Generated incentive payment sheet', { referenceNumber, claimCount: payableClaims.length, skippedCount });
+    return { success: true, fileData: base64, includedCount: payableClaims.length, skippedCount };
   } catch (error: any) {
     console.error('Error generating payment sheet:', error);
     await logActivity('ERROR', 'Failed to generate payment sheet', { error: error.message });
     return { success: false, error: error.message || 'Failed to generate the sheet.' };
+  }
+}
+
+export async function downloadPaymentSheetByRef(
+  paymentSheetRef: string
+): Promise<{ success: boolean; fileData?: string; error?: string }> {
+  try {
+    const { toWords } = await import('number-to-words');
+    
+    // Find all claims with this payment sheet reference
+    const claimsRef = adminDb.collection('incentiveClaims');
+    const q = claimsRef.where('paymentSheetRef', '==', paymentSheetRef);
+    const claimsSnapshot = await q.get();
+    const claims = claimsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as IncentiveClaim));
+
+    if (claims.length === 0) {
+      return { success: false, error: 'No claims found for this payment sheet reference.' };
+    }
+
+    const userIds = [...new Set(claims.map(c => c.uid))];
+    const usersRef = adminDb.collection('users');
+    const usersQuery = usersRef.where(FieldPath.documentId(), 'in', userIds);
+    const usersSnapshot = await usersQuery.get();
+    const usersMap = new Map(usersSnapshot.docs.map(doc => [doc.id, doc.data()]));
+
+    const settings = await getSystemSettings();
+    const templateUrl = settings.templateUrls?.INCENTIVE_PAYMENT_SHEET;
+
+    if (!templateUrl) {
+      return { success: false, error: 'Incentive Payment Sheet template URL is not configured.' };
+    }
+    
+    const { getTemplateContentFromUrl } = await import('@/lib/template-manager');
+    const templateContent = await getTemplateContentFromUrl(templateUrl);
+    if (!templateContent) {
+      return { success: false, error: 'Payment sheet template not found or could not be loaded.' };
+    }
+    
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.load(templateContent);
+    const worksheet = workbook.worksheets[0];
+
+    if (!worksheet) {
+      return { success: false, error: 'Could not find a worksheet in the template file.' };
+    }
+    
+    let totalAmount = 0;
+
+    const paymentData = claims.map((claim, index) => {
+      const user = usersMap.get(claim.uid);
+      const amount = claim.finalApprovedAmount || 0;
+      totalAmount += amount;
+      
+      return {
+        [`beneficiary_${index + 1}`]: user?.bankDetails?.beneficiaryName || user?.name || '',
+        [`account_${index + 1}`]: user?.bankDetails?.accountNumber || '',
+        [`ifsc_${index + 1}`]: user?.bankDetails?.ifscCode || '',
+        [`branch_${index + 1}`]: user?.bankDetails?.branchName || '',
+        [`amount_${index + 1}`]: amount,
+        [`college_${index + 1}`]: getInstituteAcronym(user?.institute),
+        [`mis_${index + 1}`]: user?.misId || '',
+        [`remarks_${index + 1}`]: claim.paymentSheetRemarks || '',
+      };
+    });
+
+    const flatData: { [key: string]: any } = paymentData.reduce((acc, item) => ({ ...acc, ...item }), {});
+    
+    flatData.date = format(new Date(), 'dd/MM/yyyy');
+    flatData.reference_number = paymentSheetRef;
+    flatData.total_amount = totalAmount;
+    flatData.amount_in_words = toWords(totalAmount).replace(/\b\w/g, (l: string) => l.toUpperCase()) + ' Only';
+
+    worksheet.eachRow((row) => {
+        row.eachCell((cell) => {
+            if (cell.value && typeof cell.value === 'string') {
+                const templateVarMatch = cell.value.match(/\{(.*?)\}/);
+                if (templateVarMatch && templateVarMatch[1]) {
+                    const key = templateVarMatch[1];
+                    const newValue = flatData[key] !== undefined ? flatData[key] : '';
+                    cell.value = newValue;
+                }
+            }
+        });
+    });
+
+    const buffer = await workbook.xlsx.writeBuffer();
+    const base64 = Buffer.from(buffer).toString('base64');
+    
+    await logActivity('INFO', 'Downloaded incentive payment sheet', { paymentSheetRef, claimCount: claims.length });
+    return { success: true, fileData: base64 };
+  } catch (error: any) {
+    console.error('Error downloading payment sheet:', error);
+    await logActivity('ERROR', 'Failed to download payment sheet', { error: error.message });
+    return { success: false, error: error.message || 'Failed to download the sheet.' };
   }
 }

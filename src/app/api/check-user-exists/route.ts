@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { collection, query, where, getDocs } from 'firebase/firestore';
 import { db } from '@/lib/config';
-import { getSystemSettings } from '@/app/server-actions';
+import { getSystemSettings } from '@/app/actions';
 
 export async function POST(request: NextRequest) {
   try {

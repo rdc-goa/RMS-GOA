@@ -10,7 +10,7 @@ import { PageHeader } from "@/components/page-header"
 import { ProfileClient } from "@/components/profile/profile-client"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Card, CardContent } from "@/components/ui/card"
-import { fetchEvaluatorProjectsForUser } from "@/app/server-actions"
+import { fetchEvaluatorProjectsForUser } from "@/app/actions"
 import { isToday, parseISO } from "date-fns"
 
 export default function ProfilePage() {

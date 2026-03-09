@@ -17,7 +17,7 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Loader2, Upload, File, Trash2, MessageSquareWarning } from 'lucide-react';
-import { uploadEmrPpt, uploadEmrPptByAdmin, uploadRevisedEmrPpt, removeEmrPpt } from '@/app/emr-actions';
+import { uploadEmrPpt, uploadRevisedEmrPpt, removeEmrPpt } from '@/app/emr-actions';
 import { format, isAfter, parseISO } from 'date-fns';
 import { Alert, AlertDescription, AlertTitle } from '../ui/alert';
 
@@ -26,10 +26,10 @@ interface UploadPptDialogProps {
     onOpenChange: (open: boolean) => void;
     interest: EmrInterest;
     call: FundingCall;
-    user: User; // This is the currently logged-in user (admin or faculty)
+    user: User; // The PI
+    adminUser?: User; // The admin performing the action, if any
     onUploadSuccess: () => void;
     isRevision?: boolean;
-    isAdminUpload?: boolean;
 }
 
 const fileToDataUrl = (file: File): Promise<string> => {
@@ -41,7 +41,7 @@ const fileToDataUrl = (file: File): Promise<string> => {
     });
 };
 
-export function UploadPptDialog({ isOpen, onOpenChange, interest, call, user, onUploadSuccess, isRevision = false, isAdminUpload = false }: UploadPptDialogProps) {
+export function UploadPptDialog({ isOpen, onOpenChange, interest, call, user, adminUser, onUploadSuccess, isRevision = false }: UploadPptDialogProps) {
     const [pptFile, setPptFile] = useState<File | null>(null);
     const [isUploading, setIsUploading] = useState(false);
     const { toast } = useToast();
@@ -60,11 +60,9 @@ export function UploadPptDialog({ isOpen, onOpenChange, interest, call, user, on
             
             let result;
             if (isRevision) {
-                result = await uploadRevisedEmrPpt(interest.id, dataUrl, pptFile.name, user.name);
-            } else if (isAdminUpload) {
-                result = await uploadEmrPptByAdmin(interest.id, dataUrl, pptFile.name, user);
+                result = await uploadRevisedEmrPpt(interest.id, dataUrl, pptFile.name, user, adminUser?.name);
             } else {
-                result = await uploadEmrPpt(interest.id, dataUrl, pptFile.name, user.name);
+                result = await uploadEmrPpt(interest.id, dataUrl, pptFile.name, user, adminUser?.name);
             }
 
             if (result.success) {
@@ -100,18 +98,16 @@ export function UploadPptDialog({ isOpen, onOpenChange, interest, call, user, on
 
     const deadlineWithTime = interest.meetingSlot?.pptDeadline ? parseISO(interest.meetingSlot.pptDeadline) : null;
     const isDeadlinePast = deadlineWithTime ? isAfter(new Date(), deadlineWithTime) : false;
-    const isSuperAdmin = user.role === 'Super-admin';
+    const isSuperAdmin = adminUser?.role === 'Super-admin';
 
-    // Upload is disabled if the deadline is past, UNLESS the user is a Super Admin or it's an admin upload.
-    const isUploadDisabled = (isDeadlinePast && !isSuperAdmin) && !isAdminUpload;
+    // Super Admins are never disabled by deadlines.
+    const isUploadDisabled = isDeadlinePast && !isSuperAdmin;
 
     let dialogDescription = 'Upload your presentation (below 5MB) for the upcoming evaluation meeting.';
     
     // For revisions, the dialog title and description are always the same.
     if (isRevision) {
         dialogDescription = "Upload the revised presentation file. This will replace any previous submission."
-    } else if (isAdminUpload) {
-        dialogDescription = `You are uploading a presentation for ${interest.userName}.`;
     } else if (deadlineWithTime && !isSuperAdmin) {
         dialogDescription = `The deadline to upload is ${format(deadlineWithTime, 'PPpp')}. After this time, you will not be able to upload a new presentation.`;
     } else if (isSuperAdmin) {
@@ -125,7 +121,7 @@ export function UploadPptDialog({ isOpen, onOpenChange, interest, call, user, on
                     <DialogTitle>{isRevision ? 'Submit Revised Presentation' : 'Manage Your Presentation'}</DialogTitle>
                     <DialogDescription>{dialogDescription}</DialogDescription>
                 </DialogHeader>
-                 {isUploadDisabled && !isRevision && !isAdminUpload && (
+                 {isUploadDisabled && !isRevision && !isSuperAdmin && (
                     <Alert variant="destructive">
                       <MessageSquareWarning className="h-4 w-4" />
                       <AlertTitle>Deadline Passed</AlertTitle>
@@ -147,7 +143,7 @@ export function UploadPptDialog({ isOpen, onOpenChange, interest, call, user, on
                 </div>
                 <DialogFooter>
                     <DialogClose asChild><Button variant="outline" disabled={isUploading}>Cancel</Button></DialogClose>
-                    <Button onClick={handleUpload} disabled={isUploading || !pptFile || (isUploadDisabled && !isRevision && !isAdminUpload)}>
+                    <Button onClick={handleUpload} disabled={isUploading || !pptFile || (isUploadDisabled && !isRevision && !isSuperAdmin)}>
                         {isUploading ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Upload className="mr-2 h-4 w-4"/>}
                         {interest.pptUrl && !isRevision ? 'Replace' : 'Upload'}
                     </Button>
@@ -156,3 +152,5 @@ export function UploadPptDialog({ isOpen, onOpenChange, interest, call, user, on
         </Dialog>
     )
 }
+
+    

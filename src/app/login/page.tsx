@@ -1,4 +1,3 @@
-
 "use client"
 
 import { useRouter } from "next/navigation"
@@ -15,15 +14,15 @@ import Link from "next/link"
 import { auth, db } from "@/lib/config"
 import {
   signInWithEmailAndPassword,
-  signInWithCredential,
   GoogleAuthProvider,
+  signInWithPopup,
+  signOut,
   type User as FirebaseUser,
   onAuthStateChanged,
 } from "firebase/auth"
-import { doc, getDoc, setDoc, addDoc, collection } from "firebase/firestore"
-import type { User, SystemSettings } from "@/types"
-import { useState, useEffect, useCallback, useRef } from "react"
-import { useTheme } from "next-themes"
+import { doc, getDoc, setDoc, collection, addDoc } from "firebase/firestore"
+import type { User } from "@/types"
+import { useState, useEffect } from "react"
 import { getDefaultModulesForRole } from "@/lib/modules"
 import {
   linkHistoricalData,
@@ -33,13 +32,10 @@ import {
   linkEmrInterestsToNewUser,
   linkEmrCoPiInterestsToNewUser,
   verifyLoginOtp,
-  linkPapersToNewUser,
-} from "@/app/server-actions"
+} from "@/app/actions"
 import { Eye, EyeOff, Loader2 } from "lucide-react"
 import { OtpDialog } from "@/components/otp-dialog"
 import { Skeleton } from "@/components/ui/skeleton"
-import Script from "next/script"
-
 
 const loginSchema = z.object({
   email: z.string().email("Invalid email address."),
@@ -64,15 +60,12 @@ async function logLogin(uid: string, email: string) {
 export default function LoginPage() {
   const router = useRouter()
   const { toast } = useToast()
-  const { theme } = useTheme()
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [showPassword, setShowPassword] = useState(false)
   const [isOtpOpen, setIsOtpOpen] = useState(false)
   const [pendingUser, setPendingUser] = useState<LoginFormValues | null>(null);
   const [loading, setLoading] = useState(true);
-  const [authSettings, setAuthSettings] = useState<SystemSettings['authMethods']>({ email: true, google: true });
-  const [googleClientId, setGoogleClientId] = useState<string | null>(process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || null);
-
+  
   const form = useForm<LoginFormValues>({
     resolver: zodResolver(loginSchema),
     defaultValues: {
@@ -80,6 +73,19 @@ export default function LoginPage() {
       password: "",
     },
   });
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      if (user) {
+        router.replace('/dashboard');
+      } else {
+        setLoading(false);
+      }
+    });
+
+    return () => unsubscribe();
+  }, [router]);
+
 
   const processSignIn = async (firebaseUser: FirebaseUser) => {
     const userDocRef = doc(db, "users", firebaseUser.uid)
@@ -127,7 +133,6 @@ export default function LoginPage() {
         email: firebaseUser.email!,
         role,
         designation,
-        campus: 'Goa',
         faculty: userDataFromExcel.faculty || domainCheck.croFaculty || '',
         institute: userDataFromExcel.institute || '',
         department: userDataFromExcel.department || '',
@@ -135,7 +140,6 @@ export default function LoginPage() {
         misId: userDataFromExcel.misId || '',
         profileComplete,
         allowedModules: getDefaultModulesForRole(role, designation),
-        hasCompletedTutorial: false, // Ensure this is set for new users
       }
     }
 
@@ -163,17 +167,27 @@ export default function LoginPage() {
     await logLogin(user.uid, user.email);
 
     try {
-        const { count: imrCount } = await linkHistoricalData(user);
-        const { count: emrCount } = await linkEmrInterestsToNewUser(user.uid, user.email);
-        await linkPapersToNewUser(user.uid, user.email);
-        await linkEmrCoPiInterestsToNewUser(user.uid, user.email);
+      const result = await linkHistoricalData(user)
+      if (result.success && result.count > 0) {
+        console.log(`Successfully linked ${result.count} historical projects for user ${user.email}.`)
+      }
 
-        if (imrCount > 0 || emrCount > 0) {
-             sessionStorage.setItem('postSetupInfo', JSON.stringify({ imr: imrCount, emr: emrCount }));
-        }
+      const emrResult = await linkEmrInterestsToNewUser(user.uid, user.email)
+      if (emrResult.success && emrResult.count > 0) {
+        console.log(`Successfully linked ${emrResult.count} EMR interests for user ${user.email}.`)
+      }
 
+      const emrCoPiResult = await linkEmrCoPiInterestsToNewUser(user.uid, user.email)
+      if (emrCoPiResult.success && emrCoPiResult.count > 0) {
+        console.log(`Successfully linked ${emrCoPiResult.count} EMR Co-PI interests for user ${user.email}.`);
+      }
+
+
+      if (!result.success) {
+        console.error("Failed to link historical projects:", result.error)
+      }
     } catch (e) {
-      console.error("Error calling linking actions:", e)
+      console.error("Error calling linkHistoricalData action:", e)
     }
 
     if (typeof window !== "undefined") {
@@ -195,101 +209,6 @@ export default function LoginPage() {
     }
   }
 
-  // Define handleCredentialResponse using useCallback so it can be used in useEffect
-  const handleCredentialResponse = useCallback(async (response: any) => {
-    setIsSubmitting(true);
-    try {
-      // Exchange Google credential for Firebase credential
-      const credential = GoogleAuthProvider.credential(response.credential);
-      const userCredential = await signInWithCredential(auth, credential);
-      await processSignIn(userCredential.user);
-    } catch (error: any) {
-      toast({
-        variant: "destructive",
-        title: "Sign In Failed",
-        description: error.message || "Could not sign in with Google. Please try again.",
-      });
-    } finally {
-      setIsSubmitting(false);
-    }
-  }, [toast]);
-
-  useEffect(() => {
-    const checkAuthAndSettings = async () => {
-        const settings = await getSystemSettings();
-        setAuthSettings({ email: true, google: true, ...settings.authMethods });
-        
-        const unsubscribe = onAuthStateChanged(auth, (user) => {
-            if (user) {
-                router.replace('/dashboard');
-            } else {
-                setLoading(false);
-            }
-        });
-        return () => unsubscribe();
-    };
-
-    checkAuthAndSettings();
-
-    if (!googleClientId) {
-      console.error("Google Client ID is missing. The 'Sign in with Google' button will not be displayed. Please set NEXT_PUBLIC_GOOGLE_CLIENT_ID in your environment variables.");
-      return;
-    }
-
-    // Initialize Google Sign-In (script is loaded globally by AuthInitializer)
-    const initializeGoogleSignIn = async () => {
-      // Wait for Google script to load
-      let attempts = 0;
-      while (!window.google && attempts < 50) {
-        await new Promise(resolve => setTimeout(resolve, 100));
-        attempts++;
-      }
-
-      if (!window.google) {
-        console.error('Google Sign-In script failed to load');
-        return;
-      }
-
-      try {
-        // Use the global GSI helper to ensure a single initialize and safe prompt
-        // @ts-ignore
-        if (window.__gsi) {
-          console.debug('[GSI] login page calling __gsi.init', { googleClientId, hasGsi: !!window.__gsi });
-          // Initialize once with the client id (no-op if already initialized)
-          // @ts-ignore
-          window.__gsi.init(googleClientId);
-          // Register our callback so forwarded credentials reach our handler
-          // @ts-ignore
-          window.__gsi.setCallback(handleCredentialResponse);
-          const buttonParent = document.getElementById('google-signin-button');
-          // @ts-ignore
-          window.__gsi.renderButton(buttonParent, {
-            theme: theme === 'dark' ? 'filled_black' : 'outline',
-            size: 'large',
-            text: 'signin_with',
-            shape: 'rectangular',
-            logo_alignment: 'left',
-          });
-          // Prompt safely
-          // @ts-ignore
-          window.__gsi.promptSafe();
-        } else {
-          console.error('GSI helper not available on window.');
-        }
-      } catch (error) {
-        console.error('Failed to initialize or use GSI helper:', error);
-      }
-    };
-
-    initializeGoogleSignIn();
-
-    return () => {
-      // Cleanup not needed as script is global
-    };
-
-  }, [router, toast, googleClientId, theme, handleCredentialResponse]);
-
-
   const handleSuccessfulOtp = async (otp: string) => {
     if (!pendingUser) return;
     setIsSubmitting(true);
@@ -299,6 +218,7 @@ export default function LoginPage() {
             throw new Error(otpResult.error || "Invalid OTP");
         }
         
+        // Now that OTP is verified, sign the user in
         const userCredential = await signInWithEmailAndPassword(auth, pendingUser.email, pendingUser.password);
         setIsOtpOpen(false);
         await processSignIn(userCredential.user);
@@ -344,6 +264,55 @@ export default function LoginPage() {
       setIsSubmitting(false)
     }
   }
+
+  const handleGoogleSignIn = async () => {
+    setIsSubmitting(true)
+    const provider = new GoogleAuthProvider()
+    try {
+      const result = await signInWithPopup(auth, provider)
+      const firebaseUser = result.user
+      const email = firebaseUser.email
+
+      if (!email) {
+        throw new Error("No email found in Google account")
+      }
+
+      const domainCheck = await isEmailDomainAllowed(email)
+
+      if (email && /^\d+$/.test(email.split("@")[0]) && email !== "rathipranav07@gmail.com") {
+        await signOut(auth)
+        toast({
+          variant: "destructive",
+          title: "Access Denied",
+          description: "Access is for faculty members only. Student accounts are not permitted.",
+        })
+        setIsSubmitting(false)
+        return
+      }
+
+      if (!domainCheck.allowed) {
+        await signOut(auth)
+        toast({
+          variant: "destructive",
+          title: "Access Denied",
+          description: "Access is restricted to authorized university domains.",
+        })
+        setIsSubmitting(false)
+        return
+      }
+
+      await processSignIn(firebaseUser)
+    } catch (error: any) {
+      console.error("Google Sign-in error:", error)
+      toast({
+        variant: "destructive",
+        title: "Sign In Failed",
+        description: error.message || "Could not sign in with Google. Please try again.",
+      })
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
   
   if (loading) {
     return (
@@ -352,10 +321,6 @@ export default function LoginPage() {
         </div>
     )
   }
-  
-  const showEmailForm = authSettings.email !== false;
-  const showGoogleButton = authSettings.google !== false && googleClientId;
-  const showSeparator = showEmailForm && showGoogleButton;
 
   return (
     <>
@@ -371,95 +336,84 @@ export default function LoginPage() {
                 <CardDescription>Sign in to access the Research Projects Portal.</CardDescription>
               </CardHeader>
               <CardContent>
-                {showEmailForm && (
-                  <Form {...form}>
-                    <form onSubmit={form.handleSubmit(onEmailSubmit)} className="space-y-4">
-                      <FormField
-                        control={form.control}
-                        name="email"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>University Email</FormLabel>
-                            <FormControl>
-                              <Input placeholder="your.name@paruluniversity.ac.in" {...field} disabled={isSubmitting} />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                      <FormField
-                        control={form.control}
-                        name="password"
-                        render={({ field }) => (
-                          <FormItem>
-                            <div className="flex items-center justify-between">
-                              <FormLabel>Password</FormLabel>
+                <Form {...form}>
+                  <form onSubmit={form.handleSubmit(onEmailSubmit)} className="space-y-4">
+                    <FormField
+                      control={form.control}
+                      name="email"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>University Email</FormLabel>
+                          <FormControl>
+                            <Input placeholder="your.name@paruluniversity.ac.in" {...field} disabled={isSubmitting} />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={form.control}
+                      name="password"
+                      render={({ field }) => (
+                        <FormItem>
+                          <div className="flex items-center justify-between">
+                            <FormLabel>Password</FormLabel>
+                          </div>
+                          <FormControl>
+                            <div className="relative">
+                              <Input
+                                type={showPassword ? "text" : "password"}
+                                placeholder="••••••••"
+                                {...field}
+                                disabled={isSubmitting}
+                              />
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                className="absolute right-1 top-1/2 h-7 w-7 -translate-y-1/2 text-muted-foreground"
+                                onClick={() => setShowPassword(!showPassword)}
+                              >
+                                {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                              </Button>
                             </div>
-                            <FormControl>
-                              <div className="relative">
-                                <Input
-                                  type={showPassword ? "text" : "password"}
-                                  placeholder="••••••••"
-                                  {...field}
-                                  disabled={isSubmitting}
-                                />
-                                <Button
-                                  type="button"
-                                  variant="ghost"
-                                  size="icon"
-                                  className="absolute right-1 top-1/2 h-7 w-7 -translate-y-1/2 text-muted-foreground"
-                                  onClick={() => setShowPassword(!showPassword)}
-                                >
-                                  {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                                </Button>
-                              </div>
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                      <Button type="submit" className="w-full" disabled={isSubmitting}>
-                        {isSubmitting ? "Signing In..." : "Sign In"}
-                      </Button>
-                    </form>
-                  </Form>
-                )}
-                
-                {showEmailForm && (
-                    <div className="mt-4 text-center">
-                      <Link href="/forgot-password" passHref>
-                        <Button variant="link" className="p-0 h-auto text-xs">
-                          Forgot password?
-                        </Button>
-                      </Link>
-                    </div>
-                )}
-                
-                {showSeparator && (
-                    <div className="relative my-6">
-                      <div className="absolute inset-0 flex items-center">
-                        <span className="w-full border-t" />
-                      </div>
-                      <div className="relative flex justify-center text-xs uppercase">
-                        <span className="bg-card px-2 text-muted-foreground">Or continue with</span>
-                      </div>
-                    </div>
-                )}
-                
-                {showGoogleButton ? (
-                    <div id="google-signin-button" className="flex justify-center"></div>
-                ) : authSettings.google && !googleClientId ? (
-                  <div className="text-center text-destructive p-4 border border-destructive/50 rounded-md bg-destructive/10">
-                      Google Sign-In is misconfigured. Administrator: Please set the `NEXT_PUBLIC_GOOGLE_CLIENT_ID` in your environment variables.
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <Button type="submit" className="w-full" disabled={isSubmitting}>
+                      {isSubmitting ? "Signing In..." : "Sign In"}
+                    </Button>
+                  </form>
+                </Form>
+                <div className="mt-4 text-center">
+                  <Link href="/forgot-password" passHref>
+                    <Button variant="link" className="p-0 h-auto text-xs">
+                      Forgot password?
+                    </Button>
+                  </Link>
+                </div>
+                <div className="relative my-6">
+                  <div className="absolute inset-0 flex items-center">
+                    <span className="w-full border-t" />
                   </div>
-                ) : null}
-
-                 {!showEmailForm && !showGoogleButton && (
-                    <div className="text-center text-muted-foreground p-4 border rounded-md">
-                        Login is temporarily disabled. Please contact an administrator.
-                    </div>
-                 )}
-
+                  <div className="relative flex justify-center text-xs uppercase">
+                    <span className="bg-card px-2 text-muted-foreground">Or continue with</span>
+                  </div>
+                </div>
+                <Button
+                  variant="outline"
+                  className="w-full bg-transparent"
+                  onClick={handleGoogleSignIn}
+                  disabled={isSubmitting}
+                >
+                  <svg role="img" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" className="mr-2 h-4 w-4">
+                    <title>Google</title>
+                    <path d="M12.48 10.92v3.28h7.84c-.24 1.84-.85 3.18-1.73 4.1-1.02 1.02-2.62 1.9-4.63 1.9-3.87 0-7-3.13-7-7s3.13-7 7-7c2.18 0 3.66.87 4.53 1.73l2.43-2.38C18.04 2.33 15.47 1 12.48 1 7.01 1 3 5.02 3 9.98s4.01 8.98 9.48 8.98c2.96 0 5.42-1 7.15-2.68 1.78-1.74 2.37-4.24 2.37-6.52 0-.6-.05-1.18-.15-1.72H12.48z" />
+                  </svg>
+                  Sign in with Google
+                </Button>
               </CardContent>
               <CardFooter className="justify-center text-sm">
                 <p className="text-muted-foreground">Don't have an account?&nbsp;</p>
@@ -474,7 +428,7 @@ export default function LoginPage() {
         </main>
         <footer className="flex flex-col gap-2 sm:flex-row py-6 w-full shrink-0 items-center px-4 md:px-6 border-t">
           <p className="text-xs text-muted-foreground">
-            &copy; {new Date().getFullYear()} Parul University. All rights reserved.
+            &copy; {new Date().getFullYear()} Parul University Goa. All rights reserved.
           </p>
           <nav className="sm:ml-auto flex gap-4 sm:gap-6">
             <Link className="text-xs hover:underline underline-offset-4" href="/help">

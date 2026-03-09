@@ -8,11 +8,12 @@ import { db } from '@/lib/config';
 import { collection, query, where, getDocs, orderBy } from 'firebase/firestore';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Eye, ArrowUpDown } from 'lucide-react';
+import { Checkbox } from '@/components/ui/checkbox';
 import { ClaimDetailsDialog } from '@/components/incentives/claim-details-dialog';
 import { ApprovalDialog } from '@/components/incentives/approval-dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -21,7 +22,7 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 const CLAIM_TYPES = ['Research Papers', 'Patents', 'Conference Presentations', 'Books', 'Membership of Professional Bodies', 'Seed Money for APC'];
-type SortableKeys = 'userName' | 'claimType' | 'submissionDate' | 'status';
+type SortableKeys = 'userName' | 'claimType' | 'submissionDate' | 'status' | 'paperTitle';
 
 export default function IncentiveApprovalsPage() {
     const [user, setUser] = useState<User | null>(null);
@@ -36,53 +37,41 @@ export default function IncentiveApprovalsPage() {
     const [isApprovalOpen, setIsApprovalOpen] = useState(false);
     const [searchTerm, setSearchTerm] = useState('');
     const [claimTypeFilter, setClaimTypeFilter] = useState('all');
+    const [facultyFilter, setFacultyFilter] = useState('all');
+    const [instituteFilter, setInstituteFilter] = useState('all');
     const [sortConfig, setSortConfig] = useState<{ key: SortableKeys; direction: 'ascending' | 'descending' }>({ key: 'submissionDate', direction: 'descending' });
     const [activeTab, setActiveTab] = useState('pending');
+    const [selectedClaimIds, setSelectedClaimIds] = useState<Set<string>>(new Set());
 
-    const fetchClaimsAndUsers = useCallback(async (currentUser: User, stage: number | null) => {
+    const fetchClaimsAndUsers = useCallback(async (currentUser: User, stage: number) => {
         setLoading(true);
         try {
             const claimsCollection = collection(db, 'incentiveClaims');
             const usersQuery = query(collection(db, 'users'));
             
-            let pendingClaimsQuery;
-            if (currentUser.designation === 'Principal') {
-                pendingClaimsQuery = query(
-                    claimsCollection, 
-                    where('status', '==', 'Pending Principal Approval'),
-                    where('institute', '==', currentUser.institute),
-                    orderBy('submissionDate', 'desc')
-                );
-            } else if (stage !== null) {
-                const statusToFetch = `Pending Stage ${stage + 1} Approval`;
-                 pendingClaimsQuery = query(
-                    claimsCollection, 
-                    where('status', '==', statusToFetch), 
-                    orderBy('submissionDate', 'desc')
-                );
-            }
-
-            const historyQuery = query(
-                claimsCollection,
-                where('approverUids', 'array-contains', currentUser.uid),
+            const statusToFetch = `Pending Stage ${stage + 1} Approval`;
+            
+            const pendingClaimsQuery = query(
+                claimsCollection, 
+                where('status', '==', statusToFetch), 
                 orderBy('submissionDate', 'desc')
             );
 
+            // History should include all claims the user has acted upon at their stage
+            const historyQuery = query(
+              claimsCollection, 
+              where(`approvals.${stage}.approverUid`, '==', currentUser.uid),
+              orderBy('submissionDate', 'desc')
+            );
+            
             const [pendingSnapshot, historySnapshot, usersSnapshot] = await Promise.all([
-                pendingClaimsQuery ? getDocs(pendingClaimsQuery) : Promise.resolve({ docs: [] }),
+                getDocs(pendingClaimsQuery),
                 getDocs(historyQuery),
                 getDocs(usersQuery)
             ]);
-            
-            const pendingClaimsData = pendingSnapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as IncentiveClaim));
-            setPendingClaims(pendingClaimsData);
-            
-            const pendingIds = new Set(pendingClaimsData.map(c => c.id));
-            const historyClaimsData = historySnapshot.docs
-                .map(doc => ({ ...doc.data(), id: doc.id } as IncentiveClaim))
-                .filter(claim => !pendingIds.has(claim.id)); // Filter out claims that are currently pending for this user
 
-            setHistoryClaims(historyClaimsData);
+            setPendingClaims(pendingSnapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as IncentiveClaim)));
+            setHistoryClaims(historySnapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as IncentiveClaim)));
             setAllUsers(usersSnapshot.docs.map(doc => ({ ...doc.data(), uid: doc.id } as User)));
 
         } catch (error) {
@@ -98,20 +87,13 @@ export default function IncentiveApprovalsPage() {
         if (storedUser) {
             const parsedUser = JSON.parse(storedUser) as User;
             setUser(parsedUser);
-            
-            let stage: number | null = null;
-            if (parsedUser.designation === 'Principal') {
-                stage = 0; // Principals are stage 1, which is index 0
-            } else {
-                const approverModule = parsedUser.allowedModules?.find(m => m.startsWith('incentive-approver-'));
-                if (approverModule) {
-                    stage = parseInt(approverModule.split('-')[2], 10) - 1;
-                }
-            }
+            const stage = parsedUser.allowedModules?.find(m => m.startsWith('incentive-approver-'))
+                ? parseInt(parsedUser.allowedModules.find(m => m.startsWith('incentive-approver-'))!.split('-')[2], 10) - 1
+                : null;
             
             setApprovalStage(stage);
 
-            if (stage !== null || parsedUser.designation === 'Principal') {
+            if (stage !== null) {
                 fetchClaimsAndUsers(parsedUser, stage);
             } else {
                 setLoading(false);
@@ -132,7 +114,7 @@ export default function IncentiveApprovalsPage() {
     };
 
     const handleActionComplete = () => {
-        if (user) {
+        if (user && approvalStage !== null) {
             fetchClaimsAndUsers(user, approvalStage);
         }
     };
@@ -140,10 +122,27 @@ export default function IncentiveApprovalsPage() {
     const getClaimTitle = (claim: IncentiveClaim) => {
         return claim.paperTitle || claim.patentTitle || claim.conferencePaperTitle || claim.publicationTitle || claim.professionalBodyName || claim.apcPaperTitle || 'N/A';
     };
+
+    const uniqueFaculties = useMemo(() => {
+        const faculties = new Set([...pendingClaims, ...historyClaims].map(claim => claim.faculty).filter(Boolean));
+        return Array.from(faculties).sort();
+    }, [pendingClaims, historyClaims]);
+
+    const uniqueInstitutes = useMemo(() => {
+        const institutes = new Set(
+            allUsers.map(u => u.institute).filter(Boolean)
+        );
+        return Array.from(institutes).sort();
+    }, [allUsers]);
     
     const applyFiltersAndSort = useCallback((claims: IncentiveClaim[]) => {
         let filteredClaims = claims.filter(claim => {
             if (claimTypeFilter !== 'all' && claim.claimType !== claimTypeFilter) return false;
+            if (facultyFilter !== 'all' && claim.faculty !== facultyFilter) return false;
+            if (instituteFilter !== 'all') {
+                const claimUser = allUsers.find(u => u.uid === claim.uid);
+                if (claimUser?.institute !== instituteFilter) return false;
+            }
             if (!searchTerm) return true;
             const lowerCaseSearch = searchTerm.toLowerCase();
             return claim.userName.toLowerCase().includes(lowerCaseSearch) || 
@@ -152,8 +151,17 @@ export default function IncentiveApprovalsPage() {
         });
 
         filteredClaims.sort((a, b) => {
-            const aValue = a[sortConfig.key] || '';
-            const bValue = b[sortConfig.key] || '';
+            const key = sortConfig.key;
+            let aValue, bValue;
+
+            if (key === 'paperTitle') {
+                aValue = getClaimTitle(a) || '';
+                bValue = getClaimTitle(b) || '';
+            } else {
+                aValue = a[key as keyof IncentiveClaim] || '';
+                bValue = b[key as keyof IncentiveClaim] || '';
+            }
+            
             if (aValue < bValue) {
                 return sortConfig.direction === 'ascending' ? -1 : 1;
             }
@@ -164,7 +172,7 @@ export default function IncentiveApprovalsPage() {
         });
 
         return filteredClaims;
-    }, [claimTypeFilter, searchTerm, sortConfig]);
+    }, [claimTypeFilter, facultyFilter, instituteFilter, searchTerm, sortConfig, allUsers]);
 
     const filteredPendingClaims = useMemo(() => applyFiltersAndSort(pendingClaims), [pendingClaims, applyFiltersAndSort]);
     const filteredHistoryClaims = useMemo(() => applyFiltersAndSort(historyClaims), [historyClaims, applyFiltersAndSort]);
@@ -186,7 +194,7 @@ export default function IncentiveApprovalsPage() {
         )
     }
 
-    if (approvalStage === null && user?.designation !== 'Principal') {
+    if (approvalStage === null) {
         return (
             <div className="container mx-auto py-10">
                 <PageHeader title="Access Denied" description="You do not have permission to view this page." />
@@ -194,16 +202,28 @@ export default function IncentiveApprovalsPage() {
         )
     }
 
-    const pageTitle = user?.designation === 'Principal'
-        ? `Incentive Approvals (Stage 1 - Principal)`
-        : `Incentive Approvals (Stage ${approvalStage === null ? '' : approvalStage + 1})`;
-
-
-    const renderTable = (claimsList: IncentiveClaim[], isHistory = false) => (
+    const renderTable = (claimsList: IncentiveClaim[], isHistory = false) => {
+        const allSelected = claimsList.length > 0 && claimsList.every(claim => selectedClaimIds.has(claim.id));
+        return (
       <div className="hidden md:block">
         <Table>
             <TableHeader><TableRow>
+                <TableHead className="w-12">
+                    <Checkbox 
+                        checked={allSelected}
+                        onCheckedChange={(checked) => {
+                            if (checked) {
+                                setSelectedClaimIds(new Set([...selectedClaimIds, ...claimsList.map(c => c.id)]));
+                            } else {
+                                const newSet = new Set(selectedClaimIds);
+                                claimsList.forEach(c => newSet.delete(c.id));
+                                setSelectedClaimIds(newSet);
+                            }
+                        }}
+                    />
+                </TableHead>
                 <TableHead><Button variant="ghost" onClick={() => requestSort('userName')}>Claimant <ArrowUpDown className="ml-2 h-4 w-4" /></Button></TableHead>
+                <TableHead><Button variant="ghost" onClick={() => requestSort('paperTitle')}>Title <ArrowUpDown className="ml-2 h-4 w-4" /></Button></TableHead>
                 <TableHead><Button variant="ghost" onClick={() => requestSort('claimType')}>Claim Type <ArrowUpDown className="ml-2 h-4 w-4" /></Button></TableHead>
                 <TableHead><Button variant="ghost" onClick={() => requestSort('submissionDate')}>Submitted On <ArrowUpDown className="ml-2 h-4 w-4" /></Button></TableHead>
                 {isHistory && <TableHead>Approved Amount</TableHead>}
@@ -218,6 +238,20 @@ export default function IncentiveApprovalsPage() {
                     const myApproval = isHistory ? claim.approvals?.find(a => a?.approverUid === user?.uid) : null;
                     return (
                         <TableRow key={claim.id}>
+                            <TableCell className="w-12">
+                                <Checkbox 
+                                    checked={selectedClaimIds.has(claim.id)}
+                                    onCheckedChange={(checked) => {
+                                        const newSet = new Set(selectedClaimIds);
+                                        if (checked) {
+                                            newSet.add(claim.id);
+                                        } else {
+                                            newSet.delete(claim.id);
+                                        }
+                                        setSelectedClaimIds(newSet);
+                                    }}
+                                />
+                            </TableCell>
                             <TableCell>
                                 {hasProfileLink ? (
                                     <Link href={profileLink} target="_blank" className="text-primary hover:underline">
@@ -227,6 +261,7 @@ export default function IncentiveApprovalsPage() {
                                     claim.userName
                                 )}
                             </TableCell>
+                            <TableCell className="font-medium max-w-xs whitespace-normal break-words">{getClaimTitle(claim)}</TableCell>
                             <TableCell><Badge variant="outline">{claim.claimType}</Badge></TableCell>
                             <TableCell>{new Date(claim.submissionDate).toLocaleDateString()}</TableCell>
                             {isHistory && <TableCell>₹{myApproval?.approvedAmount.toLocaleString('en-IN') || 'N/A'}</TableCell>}
@@ -248,7 +283,8 @@ export default function IncentiveApprovalsPage() {
             </TableBody>
         </Table>
       </div>
-    );
+        )
+    };
 
     const renderCards = (claimsList: IncentiveClaim[], isHistory = false) => (
       <div className="grid md:hidden grid-cols-1 sm:grid-cols-2 gap-4">
@@ -262,15 +298,22 @@ export default function IncentiveApprovalsPage() {
                   <Card key={claim.id}>
                       <CardHeader>
                           <CardTitle className="text-base break-words">
-                              {hasProfileLink ? (
-                                  <Link href={profileLink} target="_blank" className="text-primary hover:underline">{claim.userName}</Link>
-                              ) : (
-                                  claim.userName
-                              )}
+                            {getClaimTitle(claim)}
                           </CardTitle>
-                          <CardDescription>{new Date(claim.submissionDate).toLocaleDateString()}</CardDescription>
+                          <CardDescription>
+                            Claimant: {' '}
+                            {hasProfileLink ? (
+                                <Link href={profileLink} target="_blank" className="text-primary hover:underline">{claim.userName}</Link>
+                            ) : (
+                                claim.userName
+                            )}
+                          </CardDescription>
                       </CardHeader>
                       <CardContent className="space-y-3">
+                           <div>
+                              <p className="text-xs font-semibold text-muted-foreground">Submitted On</p>
+                              <p className="text-sm">{new Date(claim.submissionDate).toLocaleDateString()}</p>
+                          </div>
                           <div>
                               <p className="text-xs font-semibold text-muted-foreground">Claim Type</p>
                               <Badge variant="outline">{claim.claimType}</Badge>
@@ -286,17 +329,17 @@ export default function IncentiveApprovalsPage() {
                             </div>
                           )}
                       </CardContent>
-                      <CardFooter className="flex flex-col gap-2">
-                          <Button variant="outline" onClick={() => handleViewDetails(claim)} className="w-full">
+                      <CardContent className="flex flex-col gap-2">
+                          <Button variant="outline" onClick={() => handleViewDetails(claim)}>
                               <Eye className="h-4 w-4 mr-2" />
                               View Details
                           </Button>
                           {!isHistory && (
-                              <Button onClick={() => handleOpenApproval(claim)} className="w-full">
+                              <Button onClick={() => handleOpenApproval(claim)}>
                                   Take Action
                               </Button>
                           )}
-                      </CardFooter>
+                      </CardContent>
                   </Card>
               )
           })}
@@ -311,7 +354,7 @@ export default function IncentiveApprovalsPage() {
     return (
         <>
             <div className="container mx-auto py-10">
-                <PageHeader title={pageTitle} description="Claims awaiting your review and approval." />
+                <PageHeader title={`Incentive Approvals (Stage ${approvalStage + 1})`} description="Claims awaiting your review and approval." />
                  <div className="flex flex-col sm:flex-row items-center py-4 gap-4">
                     <Input
                         placeholder="Filter by claimant, title, or Claim ID..."
@@ -319,17 +362,50 @@ export default function IncentiveApprovalsPage() {
                         onChange={(event) => setSearchTerm(event.target.value)}
                         className="w-full sm:max-w-sm"
                     />
-                    <Select value={claimTypeFilter} onValueChange={setClaimTypeFilter}>
-                        <SelectTrigger className="w-full sm:w-[240px]">
-                            <SelectValue placeholder="Filter by claim type" />
-                        </SelectTrigger>
-                        <SelectContent>
-                            <SelectItem value="all">All Claim Types</SelectItem>
-                            {CLAIM_TYPES.map(type => (
-                                <SelectItem key={type} value={type}>{type}</SelectItem>
-                            ))}
-                        </SelectContent>
-                    </Select>
+                    {selectedClaimIds.size === 0 && (
+                        <>
+                            <Select value={claimTypeFilter} onValueChange={setClaimTypeFilter}>
+                                <SelectTrigger className="w-full sm:w-[200px]">
+                                    <SelectValue placeholder="Filter by claim type" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="all">All Claim Types</SelectItem>
+                                    {CLAIM_TYPES.map(type => (
+                                        <SelectItem key={type} value={type}>{type}</SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                            <Select value={facultyFilter} onValueChange={setFacultyFilter}>
+                                <SelectTrigger className="w-full sm:w-[200px]">
+                                    <SelectValue placeholder="Filter by faculty" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="all">All Faculties</SelectItem>
+                                    {uniqueFaculties.map(faculty => (
+                                        <SelectItem key={faculty} value={faculty}>{faculty}</SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                            <Select value={instituteFilter} onValueChange={setInstituteFilter}>
+                                <SelectTrigger className="w-full sm:w-[200px]">
+                                    <SelectValue placeholder="Filter by institute" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="all">All Institutes</SelectItem>
+                                    {uniqueInstitutes.map(institute => (
+                                        <SelectItem key={institute} value={institute}>{institute}</SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </>
+                    )}
+                    {selectedClaimIds.size > 0 && (
+                        <Button variant="outline" onClick={() => {
+                            setSelectedClaimIds(new Set());
+                        }}>
+                            Deselect All
+                        </Button>
+                    )}
                 </div>
                 <div className="mt-4">
                      <Tabs defaultValue="pending" value={activeTab} onValueChange={setActiveTab}>
@@ -376,7 +452,7 @@ export default function IncentiveApprovalsPage() {
                         claim={selectedClaim} 
                         approver={user}
                         claimant={allUsers.find(u => u.uid === selectedClaim.uid) || null}
-                        stageIndex={approvalStage!}
+                        stageIndex={approvalStage}
                         isOpen={isApprovalOpen} 
                         onOpenChange={setIsApprovalOpen} 
                         onActionComplete={handleActionComplete}
@@ -386,5 +462,3 @@ export default function IncentiveApprovalsPage() {
         </>
     );
 }
-
-    

@@ -1,4 +1,3 @@
-
 'use client';
 
 import {
@@ -11,6 +10,7 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from './ui/button';
 import { HelpCircle, Mail } from 'lucide-react';
+import { SopDialog } from './sop-dialog'; // Import the SOP Dialog
 
 export function HelpDialog() {
   return (
@@ -22,19 +22,23 @@ export function HelpDialog() {
       </DialogTrigger>
       <DialogContent className="sm:max-w-md">
         <DialogHeader className="text-center items-center">
-            <Mail className="h-12 w-12 text-primary" />
+            <Mail className="mx-auto h-12 w-12 text-primary" />
           <DialogTitle className="mt-4">Need Assistance?</DialogTitle>
           <DialogDescription>
-            For any queries or issues, please contact our support team.
+            For any queries or technical issues, please contact our support team.
           </DialogDescription>
         </DialogHeader>
         <div className="text-center py-4">
             <a
-                href="mailto:rdc@goa.paruluniversity.ac.in"
+                href="mailto:helpdesk.rdc@paruluniversity.ac.in"
                 className="text-lg font-semibold text-primary hover:underline"
             >
-                rdc@goa.paruluniversity.ac.in
+                helpdesk.rdc@paruluniversity.ac.in
             </a>
+            <div className="mt-4">
+              <SopDialog />
+              <p className="text-xs text-muted-foreground mt-1">View SOP</p>
+            </div>
         </div>
       </DialogContent>
     </Dialog>

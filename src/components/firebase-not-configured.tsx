@@ -29,7 +29,7 @@ export function FirebaseNotConfigured() {
               <li>
                 Follow the instructions in that file to copy and paste the required keys from your Firebase project. You will need:
                 <ul className="list-disc list-inside pl-6 mt-1">
-                    <li><strong className="text-foreground">Client-side keys</strong> (prefixed with <code className="bg-muted px-1 py-0.5 rounded font-mono text-xs"></code>) found under Project Settings &gt; General &gt; Your apps &gt; Config.</li>
+                    <li><strong className="text-foreground">Client-side keys</strong> (prefixed with <code className="bg-muted px-1 py-0.5 rounded font-mono text-xs">NEXT_PUBLIC_</code>) found under Project Settings &gt; General &gt; Your apps &gt; Config.</li>
                     <li><strong className="text-foreground">Server-side keys</strong> (like `FIREBASE_PRIVATE_KEY`) from a new service account file, found under Project Settings &gt; Service accounts &gt; Generate new private key.</li>
                 </ul>
               </li>

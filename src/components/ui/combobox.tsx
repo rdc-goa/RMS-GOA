@@ -40,7 +40,6 @@ export function Combobox({
     disabled = false,
 }: ComboboxProps) {
   const [open, setOpen] = React.useState(false)
-  const [inputValue, setInputValue] = React.useState("")
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -53,7 +52,7 @@ export function Combobox({
           disabled={disabled}
         >
           {value
-            ? options.find((option) => option.value.toLowerCase() === value.toLowerCase())?.label
+            ? options.find((option) => option.value === value)?.label
             : placeholder}
           <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
         </Button>
@@ -62,39 +61,33 @@ export function Combobox({
         <Command>
           <CommandInput 
             placeholder={searchPlaceholder}
-            value={inputValue}
-            onValueChange={setInputValue}
           />
           <CommandList>
-            {inputValue.length < 3 ? (
-              <div className="py-6 text-center text-sm">
-                Please type at least 3 characters to see results.
-              </div>
-            ) : (
-              <>
-                <CommandEmpty>{emptyPlaceholder}</CommandEmpty>
-                <CommandGroup>
-                  {options.map((option) => (
-                    <CommandItem
-                      key={option.value}
-                      value={option.value}
-                      onSelect={(currentValue) => {
-                        onChange(currentValue === value ? "" : currentValue)
-                        setOpen(false)
-                      }}
-                    >
-                      <Check
-                        className={cn(
-                          "mr-2 h-4 w-4",
-                          value === option.value ? "opacity-100" : "opacity-0"
-                        )}
-                      />
-                      {option.label}
-                    </CommandItem>
-                  ))}
-                </CommandGroup>
-              </>
-            )}
+            <CommandEmpty>{emptyPlaceholder}</CommandEmpty>
+            <CommandGroup>
+              {options.map((option) => (
+                <CommandItem
+                  key={option.value}
+                  value={option.label}
+                  onSelect={(currentValue) => {
+                    // Find the option whose label matches the selection, then pass its value.
+                    const selectedOption = options.find(o => o.label.toLowerCase() === currentValue.toLowerCase());
+                    if (selectedOption) {
+                        onChange(selectedOption.value === value ? "" : selectedOption.value)
+                    }
+                    setOpen(false)
+                  }}
+                >
+                  <Check
+                    className={cn(
+                      "mr-2 h-4 w-4",
+                      value === option.value ? "opacity-100" : "opacity-0"
+                    )}
+                  />
+                  {option.label}
+                </CommandItem>
+              ))}
+            </CommandGroup>
           </CommandList>
         </Command>
       </PopoverContent>

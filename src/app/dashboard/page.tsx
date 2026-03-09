@@ -43,22 +43,21 @@ export default function DashboardPage() {
       // Redirect Evaluators to their specific dashboard
       if (parsedUser.role === 'Evaluator') {
         router.replace('/dashboard/evaluator-dashboard');
-      } else {
-        setLoading(false);
       }
     } else {
-      router.replace('/login');
+      router.replace('/');
     }
+    setLoading(false);
   }, [router]);
   
   if (loading || !user || user.role === 'Evaluator') {
       return <DashboardSkeleton />;
   }
 
-  const adminRoles: User['role'][] = ['admin', 'Super-admin', 'CRO', 'IQAC'];
+  const adminRoles: User['role'][] = ['admin', 'Super-admin'];
   
   // Show the admin dashboard for admins, principals, HODs, and CROs. The component itself handles data filtering based on the user's specific role/designation.
-  const showAdminView = adminRoles.includes(user.role) || user.designation === 'Principal' || user.designation === 'HOD';
+  const showAdminView = adminRoles.includes(user.role) || user.designation === 'Principal' || user.designation === 'HOD' || user.role === 'CRO';
 
   // Show the faculty-specific dashboard components for standard faculty and CROs.
   const showFacultyView = user.role === 'faculty' || user.role === 'CRO';
@@ -68,8 +67,14 @@ export default function DashboardPage() {
     <div className="animate-in fade-in-0 duration-500">
       {user && user.hasCompletedTutorial === false && <WelcomeTutorial user={user} />}
       
-      {showAdminView && <AdminDashboard />}
-      {showFacultyView && !showAdminView && <FacultyDashboard user={user} />}
+      {loading ? (
+        <DashboardSkeleton />
+      ) : (
+        <>
+            {showAdminView && <AdminDashboard />}
+            {showFacultyView && <FacultyDashboard user={user} />}
+        </>
+      )}
     </div>
   );
 }

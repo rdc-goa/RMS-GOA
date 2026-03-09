@@ -1,4 +1,3 @@
-
 "use client"
 
 import { useRouter } from "next/navigation"
@@ -16,14 +15,14 @@ import { auth, db } from "@/lib/config"
 import {
   createUserWithEmailAndPassword,
   GoogleAuthProvider,
-  signInWithCredential,
+  signInWithPopup,
   signOut,
   type User as FirebaseUser,
   onAuthStateChanged,
 } from "firebase/auth"
 import { doc, getDoc, setDoc } from "firebase/firestore"
-import type { User, SystemSettings } from "@/types"
-import { useState, useEffect, useCallback } from "react"
+import type { User } from "@/types"
+import { useState, useEffect } from "react"
 import { getDefaultModulesForRole } from "@/lib/modules"
 import {
   linkHistoricalData,
@@ -32,11 +31,8 @@ import {
   linkEmrInterestsToNewUser,
   isEmailDomainAllowed,
   linkEmrCoPiInterestsToNewUser,
-  getSystemSettings,
-} from "@/app/server-actions"
+} from "@/app/actions"
 import { Eye, EyeOff, Loader2 } from "lucide-react"
-import { useTheme } from "next-themes"
-import Script from "next/script"
 
 const signupSchema = z
   .object({
@@ -54,13 +50,10 @@ type SignupFormValues = z.infer<typeof signupSchema>
 export default function SignupPage() {
   const router = useRouter()
   const { toast } = useToast()
-  const { theme } = useTheme()
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [showPassword, setShowPassword] = useState(false)
   const [showConfirmPassword, setShowConfirmPassword] = useState(false)
   const [loading, setLoading] = useState(true);
-  const [authSettings, setAuthSettings] = useState<SystemSettings['authMethods']>({ email: true, google: true });
-  const [googleClientId, setGoogleClientId] = useState<string | null>(process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || null);
 
   const form = useForm<SignupFormValues>({
     resolver: zodResolver(signupSchema),
@@ -71,7 +64,32 @@ export default function SignupPage() {
     },
   });
 
-  const processNewUser = async (firebaseUser: Partial<FirebaseUser> & { uid: string; email: string; }) => {
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      if (user) {
+        router.replace('/dashboard');
+      } else {
+        setLoading(false);
+      }
+    });
+
+    return () => unsubscribe();
+  }, [router]);
+
+  const validateEmailDomain = async (email: string): Promise<boolean> => {
+    if (email === "rathipranav07@gmail.com" || email === "vicepresident_86@paruluniversity.ac.in") {
+      return true
+    }
+
+    if (/^\d+$/.test(email.split("@")[0])) {
+      return false
+    }
+
+    const domainCheck = await isEmailDomainAllowed(email)
+    return domainCheck.allowed
+  }
+
+  const processNewUser = async (firebaseUser: FirebaseUser) => {
     const userDocRef = doc(db, "users", firebaseUser.uid)
     const userDocSnap = await getDoc(userDocRef)
 
@@ -94,7 +112,15 @@ export default function SignupPage() {
     let designation: User["designation"] = "faculty"
     let profileComplete = false
     let notifyRole: string | null = null
-    let campus: User['campus'] = 'Goa';
+    let campus: User['campus'] = 'Vadodara';
+
+    if (firebaseUser.email?.endsWith('@goa.paruluniversity.ac.in')) {
+        campus = 'Goa';
+    } else if (firebaseUser.email?.endsWith('@rajkot.paruluniversity.ac.in')) {
+        campus = 'Rajkot';
+    } else if (firebaseUser.email?.endsWith('@ahmedabad.paruluniversity.ac.in')) {
+        campus = 'Ahmedabad';
+    }
 
 
     if (firebaseUser.email === "vicepresident_86@paruluniversity.ac.in") {
@@ -102,11 +128,10 @@ export default function SignupPage() {
       designation = "Super-admin"
       profileComplete = true
       notifyRole = "Super-admin"
-    } else if (staffResult.success && staffResult.data.length > 0) {
-      const userData = staffResult.data[0];
-      userDataFromExcel = userData
-      const userType = userData.type
-      campus = userData.campus || campus
+    } else if (staffResult.success) {
+      userDataFromExcel = staffResult.data
+      const userType = staffResult.data.type
+      campus = staffResult.data.campus || campus
 
       if (userType === "CRO") {
         role = "CRO"
@@ -141,7 +166,6 @@ export default function SignupPage() {
       profileComplete,
       allowedModules: getDefaultModulesForRole(role, designation),
       hasCompletedTutorial: false,
-      photoURL: firebaseUser.photoURL || '',
     }
 
     if (firebaseUser.photoURL) {
@@ -198,93 +222,6 @@ export default function SignupPage() {
     }
   }
 
-  // Define handleCredentialResponse using useCallback so it can be used in useEffect
-  const handleCredentialResponse = useCallback(async (response: any) => {
-    setIsSubmitting(true);
-    try {
-      // Exchange Google credential for Firebase credential
-      const credential = GoogleAuthProvider.credential(response.credential);
-      const userCredential = await signInWithCredential(auth, credential);
-      await processNewUser(userCredential.user);
-    } catch (error: any) {
-      toast({
-        variant: "destructive",
-        title: "Sign Up Failed",
-        description: error.message || "Could not sign up with Google. Please try again.",
-      });
-    } finally {
-      setIsSubmitting(false);
-    }
-  }, [toast, router]); // Added router to dependency array
-
-  useEffect(() => {
-    const checkAuthAndSettings = async () => {
-        const settings = await getSystemSettings();
-        setAuthSettings({ email: true, google: true, ...settings.authMethods });
-        
-        const unsubscribe = onAuthStateChanged(auth, (user) => {
-          if (user) {
-            router.replace('/dashboard');
-          } else {
-            setLoading(false);
-          }
-        });
-        return () => unsubscribe();
-    };
-
-    checkAuthAndSettings();
-
-    if (!googleClientId) return;
-
-    // Initialize Google Sign-In (script is loaded globally by AuthInitializer)
-    const initializeGoogleSignIn = async () => {
-      // Wait for Google script to load
-      let attempts = 0;
-      while (!window.google && attempts < 50) {
-        await new Promise(resolve => setTimeout(resolve, 100));
-        attempts++;
-      }
-
-      if (!window.google) {
-        console.error('Google Sign-In script failed to load');
-        return;
-      }
-
-      try {
-        // Use global GSI helper
-        // @ts-ignore
-        if (window.__gsi) {
-          console.debug('[GSI] signup page calling __gsi.init', { googleClientId, hasGsi: !!window.__gsi });
-          // @ts-ignore
-          window.__gsi.init(googleClientId);
-          // @ts-ignore
-          window.__gsi.setCallback(handleCredentialResponse);
-          // @ts-ignore
-          window.__gsi.promptSafe();
-        } else {
-          console.error('GSI helper not available on window.');
-        }
-      } catch (error) {
-        console.error('Failed to initialize or use GSI helper:', error);
-      }
-    };
-
-    initializeGoogleSignIn();
-  }, [router, toast, googleClientId, handleCredentialResponse]);
-
-  const validateEmailDomain = async (email: string): Promise<boolean> => {
-    if (email === "rathipranav07@gmail.com" || email === "vicepresident_86@paruluniversity.ac.in") {
-      return true
-    }
-
-    if (/^\\d+$/.test(email.split("@")[0])) {
-      return false
-    }
-
-    const domainCheck = await isEmailDomainAllowed(email)
-    return domainCheck.allowed
-  }
-
   const onEmailSubmit = async (data: SignupFormValues) => {
     setIsSubmitting(true)
     try {
@@ -314,6 +251,42 @@ export default function SignupPage() {
       setIsSubmitting(false)
     }
   }
+
+  const handleGoogleSignUp = async () => {
+    setIsSubmitting(true)
+    const provider = new GoogleAuthProvider()
+    try {
+      const result = await signInWithPopup(auth, provider)
+      const firebaseUser = result.user
+      const email = firebaseUser.email
+
+      if (!email) {
+        throw new Error("No email found in Google account")
+      }
+
+      const isValidDomain = await validateEmailDomain(email)
+      if (!isValidDomain) {
+        await signOut(auth)
+        toast({
+          variant: "destructive",
+          title: "Access Denied",
+          description: "This email domain is not authorized for portal access, or student accounts are not permitted.",
+        })
+        setIsSubmitting(false)
+        return
+      }
+
+      await processNewUser(firebaseUser)
+    } catch (error: any) {
+      console.error("Google Sign-up error:", error)
+      toast({
+        variant: "destructive",
+        title: "Sign Up Failed",
+        description: error.message || "Could not sign up with Google. Please try again.",
+      })
+      setIsSubmitting(false)
+    }
+  }
   
   if (loading) {
     return (
@@ -322,15 +295,8 @@ export default function SignupPage() {
         </div>
     )
   }
-  
-  const showEmailForm = authSettings.email !== false;
-  const showGoogleButton = authSettings.google !== false && googleClientId;
-  const showSeparator = showEmailForm && showGoogleButton;
-
 
   return (
-    <>
-    <Script src="https://accounts.google.com/gsi/client" async defer />
     <div className="flex flex-col min-h-screen bg-background dark:bg-transparent">
       <main className="flex-1 flex min-h-screen items-center justify-center bg-muted/40 p-4">
         <div className="w-full max-w-md">
@@ -343,112 +309,104 @@ export default function SignupPage() {
               <CardDescription>Join the Parul University Goa Research Projects Portal.</CardDescription>
             </CardHeader>
             <CardContent>
-              {showEmailForm && (
-                <Form {...form}>
-                  <form onSubmit={form.handleSubmit(onEmailSubmit)} className="space-y-4">
-                    <FormField
-                      control={form.control}
-                      name="email"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>University Email</FormLabel>
-                          <FormControl>
-                            <Input placeholder="your.name@paruluniversity.ac.in" {...field} disabled={isSubmitting} />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                    <FormField
-                      control={form.control}
-                      name="password"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Password</FormLabel>
-                          <FormControl>
-                            <div className="relative">
-                              <Input
-                                type={showPassword ? "text" : "password"}
-                                placeholder="••••••••"
-                                {...field}
-                                disabled={isSubmitting}
-                              />
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                size="icon"
-                                className="absolute right-1 top-1/2 h-7 w-7 -translate-y-1/2 text-muted-foreground"
-                                onClick={() => setShowPassword(!showPassword)}
-                              >
-                                {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                              </Button>
-                            </div>
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                    <FormField
-                      control={form.control}
-                      name="confirmPassword"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Confirm Password</FormLabel>
-                          <FormControl>
-                            <div className="relative">
-                              <Input
-                                type={showConfirmPassword ? "text" : "password"}
-                                placeholder="••••••••"
-                                {...field}
-                                disabled={isSubmitting}
-                              />
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                size="icon"
-                                className="absolute right-1 top-1/2 h-7 w-7 -translate-y-1/2 text-muted-foreground"
-                                onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                              >
-                                {showConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                              </Button>
-                            </div>
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                    <Button type="submit" className="w-full" disabled={isSubmitting}>
-                      {isSubmitting ? "Creating Account..." : "Sign Up with Email"}
-                    </Button>
-                  </form>
-                </Form>
-              )}
-               {showSeparator && (
-                <div className="relative my-6">
-                  <div className="absolute inset-0 flex items-center">
-                    <span className="w-full border-t" />
-                  </div>
-                  <div className="relative flex justify-center text-xs uppercase">
-                    <span className="bg-card px-2 text-muted-foreground">Or continue with</span>
-                  </div>
+              <Form {...form}>
+                <form onSubmit={form.handleSubmit(onEmailSubmit)} className="space-y-4">
+                  <FormField
+                    control={form.control}
+                    name="email"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>University Email</FormLabel>
+                        <FormControl>
+                          <Input placeholder="your.name@paruluniversity.ac.in" {...field} disabled={isSubmitting} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="password"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Password</FormLabel>
+                        <FormControl>
+                          <div className="relative">
+                            <Input
+                              type={showPassword ? "text" : "password"}
+                              placeholder="••••••••"
+                              {...field}
+                              disabled={isSubmitting}
+                            />
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              className="absolute right-1 top-1/2 h-7 w-7 -translate-y-1/2 text-muted-foreground"
+                              onClick={() => setShowPassword(!showPassword)}
+                            >
+                              {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                            </Button>
+                          </div>
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="confirmPassword"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Confirm Password</FormLabel>
+                        <FormControl>
+                          <div className="relative">
+                            <Input
+                              type={showConfirmPassword ? "text" : "password"}
+                              placeholder="••••••••"
+                              {...field}
+                              disabled={isSubmitting}
+                            />
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              className="absolute right-1 top-1/2 h-7 w-7 -translate-y-1/2 text-muted-foreground"
+                              onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                            >
+                              {showConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                            </Button>
+                          </div>
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <Button type="submit" className="w-full" disabled={isSubmitting}>
+                    {isSubmitting ? "Creating Account..." : "Sign Up with Email"}
+                  </Button>
+                </form>
+              </Form>
+              <div className="relative my-6">
+                <div className="absolute inset-0 flex items-center">
+                  <span className="w-full border-t" />
                 </div>
-              )}
-              
-               {showGoogleButton && (
-                    <div
-                        id="g_id_onload"
-                        data-client_id={googleClientId}
-                        data-context="signup"
-                        data-login_uri={`${process.env.NEXT_PUBLIC_BASE_URL}/login`}
-                        data-callback="handleCredentialResponse"
-                        data-itp_support="true"
-                    ></div>
-                )}
-               {!showEmailForm && !showGoogleButton && (
-                  <div className="text-center text-muted-foreground p-4 border rounded-md">
-                      Sign-up is temporarily disabled. Please contact an administrator.
-                  </div>
-              )}
+                <div className="relative flex justify-center text-xs uppercase">
+                  <span className="bg-card px-2 text-muted-foreground">Or continue with</span>
+                </div>
+              </div>
+              <Button
+                variant="outline"
+                className="w-full bg-transparent"
+                onClick={handleGoogleSignUp}
+                disabled={isSubmitting}
+              >
+                <svg role="img" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" className="mr-2 h-4 w-4">
+                  <title>Google</title>
+                  <path d="M12.48 10.92v3.28h7.84c-.24 1.84-.85 3.18-1.73 4.1-1.02 1.02-2.62 1.9-4.63 1.9-3.87 0-7-3.13-7-7s3.13-7 7-7c2.18 0 3.66.87 4.53 1.73l2.43-2.38C18.04 2.33 15.47 1 12.48 1 7.01 1 3 5.02 3 9.98s4.01 8.98 9.48 8.98c2.96 0 5.42-1 7.15-2.68 1.78-1.74 2.37-4.24 2.37-6.52 0-.6-.05-1.18-.15-1.72H12.48z" />
+                </svg>
+                Sign up with Google
+              </Button>
             </CardContent>
             <CardFooter className="justify-center text-sm">
               <p className="text-muted-foreground">Already have an account?&nbsp;</p>
@@ -478,6 +436,5 @@ export default function SignupPage() {
         </nav>
       </footer>
     </div>
-    </>
   )
 }

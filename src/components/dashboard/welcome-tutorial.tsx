@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import { useState } from 'react';
@@ -12,7 +13,7 @@ import {
   DialogTitle,
   DialogFooter,
 } from '@/components/ui/dialog';
-import { updateUserTutorialStatus } from '@/app/server-actions';
+import { updateUserTutorialStatus } from '@/app/actions';
 import { useToast } from '@/hooks/use-toast';
 import {
   FilePlus2,

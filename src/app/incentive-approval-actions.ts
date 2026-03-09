@@ -147,6 +147,54 @@ export async function submitIncentiveClaim(claimData: Omit<IncentiveClaim, 'id' 
 
         await newClaimRef.set(finalClaimData);
 
+        // Notify the principal if the claim is pending their approval (Stage 1)
+        if (finalClaimData.status === 'Pending Principal Approval') {
+            try {
+                const principalQuery = adminDb.collection('users').where('designation', '==', 'Principal').where('institute', '==', claimData.institute);
+                const principalSnap = await principalQuery.get();
+                
+                if (!principalSnap.empty) {
+                    const principal = principalSnap.docs[0].data() as User;
+                    const claimTitle = getClaimTitle(finalClaimData);
+                    
+                    if (principal.email) {
+                        const emailHtml = `
+                            <div ${EMAIL_STYLES.background}>
+                                ${EMAIL_STYLES.logo}
+                                <p style="color:#ffffff;">Dear ${principal.name},</p>
+                                <p style="color:#e0e0e0;">
+                                    An incentive claim has been submitted by ${claimData.userName} (${claimData.faculty}) and is awaiting your institutional approval for the work titled "<strong style="color:#ffffff;">${claimTitle}</strong>".
+                                </p>
+                                <p style="color:#e0e0e0;">
+                                    <strong>Claim Type:</strong> ${claimData.claimType}<br/>
+                                    <strong>Claimed Incentive Amount:</strong> ₹${(claimData.calculatedIncentive || 0).toLocaleString('en-IN')}
+                                </p>
+                                <p style="text-align:center; margin-top:25px;">
+                                    <a href="${process.env.BASE_URL}/dashboard/incentive-approvals" style="background-color: #64B5F6; color: white; padding: 12px 20px; text-decoration: none; border-radius: 5px; font-weight: bold;">
+                                        Review Claim
+                                    </a>
+                                </p>
+                                <p style="color:#e0e0e0;">
+                                    Please review and approve/reject this claim at your earliest convenience.
+                                </p>
+                                ${EMAIL_STYLES.footer}
+                            </div>
+                        `;
+
+                        await sendEmail({
+                            to: principal.email,
+                            subject: `New Incentive Claim Awaiting Your Approval - ${claimTitle}`,
+                            from: 'default',
+                            html: emailHtml
+                        });
+                    }
+                }
+            } catch (error) {
+                console.error('Error notifying principal:', error);
+                await logActivity('WARNING', 'Failed to notify principal of new claim', { claimId: standardizedClaimId, error: error instanceof Error ? error.message : 'Unknown error' });
+            }
+        }
+
         if (finalClaimData.status !== 'Draft' && finalClaimData.authors) {
             const coAuthorsToNotify = finalClaimData.authors.filter(a => a.uid && a.uid !== claimData.uid);
             for (const coAuthor of coAuthorsToNotify) {
@@ -399,6 +447,60 @@ export async function processIncentiveClaimAction(
             `
         });
     }
+
+    // Notify the next stage approver when claim is approved and moves to next stage
+    if (action === 'approve' && newStatus !== 'Accepted' && newStatus !== 'Rejected') {
+        try {
+            const nextStageMatch = newStatus.match(/Pending Stage (\d+) Approval/);
+            if (nextStageMatch) {
+                const nextStage = parseInt(nextStageMatch[1]);
+                const nextStageApprover = settings.incentiveApprovers?.find(a => a.stage === nextStage);
+                
+                if (nextStageApprover && nextStageApprover.email) {
+                    // Find the approver user to get their name
+                    const approverUsersQuery = adminDb.collection('users').where('email', '==', nextStageApprover.email.toLowerCase());
+                    const approverSnapshot = await approverUsersQuery.get();
+                    const approverName = !approverSnapshot.empty ? (approverSnapshot.docs[0].data() as User).name : 'Approver';
+
+                    const emailHtml = `
+                        <div ${EMAIL_STYLES.background}>
+                            ${EMAIL_STYLES.logo}
+                            <p style="color:#ffffff;">Dear ${approverName},</p>
+                            <p style="color:#e0e0e0;">
+                                An incentive claim has been approved by the previous stage and is now awaiting your review for stage ${nextStage} approval.
+                            </p>
+                            <p style="color:#e0e0e0;">
+                                <strong>Claim Type:</strong> ${claim.claimType}<br/>
+                                <strong>Claimant:</strong> ${claim.userName} (${claim.faculty})<br/>
+                                <strong>Work Title:</strong> ${claimTitle}<br/>
+                                <strong>Current Approved Amount:</strong> ₹${(data.amount || claim.calculatedIncentive || 0).toLocaleString('en-IN')}
+                            </p>
+                            <p style="text-align:center; margin-top:25px;">
+                                <a href="${process.env.BASE_URL}/dashboard/incentive-approvals" style="background-color: #64B5F6; color: white; padding: 12px 20px; text-decoration: none; border-radius: 5px; font-weight: bold;">
+                                    Review Claim
+                                </a>
+                            </p>
+                            <p style="color:#e0e0e0;">
+                                Please review and approve/reject this claim at your earliest convenience.
+                            </p>
+                            ${EMAIL_STYLES.footer}
+                        </div>
+                    `;
+
+                    await sendEmail({
+                        to: nextStageApprover.email,
+                        subject: `Incentive Claim Awaiting Stage ${nextStage} Approval - ${claimTitle}`,
+                        from: 'default',
+                        html: emailHtml
+                    });
+                }
+            }
+        } catch (error) {
+            console.error('Error notifying next stage approver:', error);
+            await logActivity('WARNING', 'Failed to notify next stage approver', { claimId, error: error instanceof Error ? error.message : 'Unknown error' });
+        }
+    }
+
 
     if (newStatus === 'Accepted' && claim.userEmail) {
         if (claim.userEmail) {

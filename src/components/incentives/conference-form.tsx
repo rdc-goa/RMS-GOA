@@ -1052,7 +1052,7 @@ function ConferenceFormContent({ onEventTypeChange }: ConferenceFormContentProps
                     render={({ field }) => (
                       <FormItem>
                         <div className="flex items-center justify-between">
-                          <FormLabel>Is "Parul University" name present in the paper?</FormLabel>
+                          <FormLabel>Is "Parul University Goa" name present in the paper?</FormLabel>
                           <FormControl>
                             <Checkbox checked={field.value} onCheckedChange={field.onChange} disabled={isFormDisabled} />
                           </FormControl>

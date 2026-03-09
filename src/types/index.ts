@@ -98,6 +98,7 @@ export type Transaction = {
   gstNumber?: string
   invoiceUrl?: string // URL to the uploaded invoice in Firebase Storage
   description: string
+  isDraft?: boolean;
 }
 
 export type GrantPhase = {
@@ -204,7 +205,7 @@ export type ApprovalStage = {
   timestamp: string; // ISO string
   comments: string;
   approvedAmount: number;
-  stage: number; // 1, 2, 3, 4, or 5
+  stage: number; // 1, 2, 3, 4 or 5
   verifiedFields?: { [key: string]: boolean };
   suggestions?: { [key: string]: string };
 };
@@ -221,10 +222,9 @@ export type IncentiveClaim = {
   userName: string
   userEmail: string
   claimId?: string; // Standardized, sequential ID like RDC/IC/PAPER/0001
-  status: "Pending" | "Accepted" | "Rejected" | "Draft" | "Pending Principal Approval" | "Pending Stage 2 Approval" | "Pending Stage 3 Approval" | "Pending Stage 4 Approval" | "Pending Stage 5 Approval" | "Submitted to Accounts" | "Payment Completed";
+  status: "Pending" | "Accepted" | "Rejected" | "Draft" | "Pending Principal Approval" | "Pending Stage 2 Approval" | "Pending Stage 3 Approval" | "Pending Stage 4 Approval" | "Pending Stage 5 Approval" | "Submitted to Accounts" | "Payment Completed" | "Pending Stage 1 Approval";
   submissionDate: string // ISO String
   faculty: string
-  institute: string;
   bankDetails?: UserBankDetails
   originalClaimId?: string // Link to the primary author's claim
   misId?: string
@@ -232,7 +232,6 @@ export type IncentiveClaim = {
   calculatedIncentive?: number
   finalApprovedAmount?: number;
   approvals?: ApprovalStage[];
-  approverUids?: string[];
   autoFetchedFields?: (keyof IncentiveClaim)[];
   paperId?: string; // Link to the entry in the 'papers' collection
   paymentSheetRef?: string;
@@ -246,10 +245,11 @@ export type IncentiveClaim = {
   sdgGoals?: string[];
   authors?: Author[];
   authorUids?: string[];
+  authorEmails?: string[];
 
   // Research Paper Fields
   publicationType?: string;
-  indexType?: "wos" | "scopus" | "both" | "sci";
+  indexType?: "wos" | "scopus" | "both" | "sci" | "other";
   doi?: string;
   scopusLink?: string;
   wosLink?: string;
@@ -259,7 +259,7 @@ export type IncentiveClaim = {
   journalWebsite?: string;
   paperTitle?: string;
   relevantLink?: string;
-  authorPosition?: '1st' | '2nd' | '3rd' | '4th' | '5th' | '6th';
+  authorPosition?: '1st' | '2nd' | '3rd' | '4th' | '5th' | '6th' | '7th' | '8th' | '9th' | '10th' ;
   locale?: 'National' | 'International';
   printIssn?: string;
   electronicIssn?: string;
@@ -272,7 +272,6 @@ export type IncentiveClaim = {
   totalPuStudentAuthors?: number;
   puStudentNames?: string;
   authorType?: string;
-  wosAccessionNumber?: string;
 
 
   // Patent Fields
@@ -347,6 +346,13 @@ export type IncentiveClaim = {
   conferenceSelfDeclaration?: boolean
   totalAuthors?: string;
 
+  // Workshop/Training/FDP fields
+  workshopName?: string;
+  attendanceMode?: "Online" | "Offline";
+  eventTypeLevel?: "International" | "National" | "Regional/State" | "Other";
+  workshopCertificateUrl?: string;
+  workshopSelfDeclaration?: boolean;
+  travelDetails?: string;
 
   // Book/Book Chapter Fields
   bookApplicationType?: "Book Chapter" | "Book"
@@ -384,6 +390,18 @@ export type IncentiveClaim = {
   membershipPaymentDate?: string; // ISO string
   membershipProofUrl?: string;
   membershipSelfDeclaration?: boolean
+
+  // Award fields
+  awardTitle?: string;
+  awardingBody?: string;
+  awardStature?: 'National' | 'International';
+  awardBodyType?: 'Government' | 'NGO (Non-Governmental Organization)' | 'Any Other';
+  awardLocale?: string;
+  amountPaid?: number;
+  paymentDate?: string; // ISO string
+  awardDate?: string; // ISO string
+  awardProofUrls?: string[];
+  awardSelfDeclaration?: boolean;
 
   // Seed Money for APC Fields
   apcTypeOfArticle?: string
@@ -474,6 +492,8 @@ export type EmrInterest = {
     time: string // HH:mm
     pptDeadline: string; // ISO string
   }
+  assignedEvaluators?: string[];
+  evaluatedBy?: string[];
   endorsementFormUrl?: string
   signedEndorsementUrl?: string
   endorsementSignedAt?: string
@@ -530,24 +550,8 @@ export type ApiIntegrations = {
     sci?: boolean;
 };
 
-export type AuthMethods = {
-    email?: boolean;
-    google?: boolean;
-};
-
-export type DefaultModules = {
-  [key in 'faculty' | 'CRO' | 'Evaluator' | 'Principal' | 'HOD' | 'IQAC']?: string[];
-};
-
-export type ThemeSettings = {
-    primary?: string;
-    accent?: string;
-    background?: string;
-}
-
 export type SystemSettings = {
   is2faEnabled: boolean
-  authMethods?: AuthMethods;
   allowedDomains?: string[]
   croAssignments?: CroAssignment[]
   incentiveApprovers?: ApproverSetting[];
@@ -560,8 +564,7 @@ export type SystemSettings = {
   dndEmail?: string;
   templateUrls?: TemplateUrls;
   apiIntegrations?: ApiIntegrations;
-  defaultModules?: DefaultModules;
-  theme?: ThemeSettings;
+  driveParentFolderId?: string;
 }
 
 export type LoginOtp = {
@@ -578,4 +581,38 @@ export type FoundUser = {
   campus: string;
 }
 
-    
+// New types for Project Recruitment
+export type ProjectRecruitment = {
+  id: string;
+  projectId: string; // IMR or EMR project ID
+  projectName: string;
+  positionTitle: string;
+  positionType: 'Intern' | 'Project Associate' | 'JRF' | 'SRF' | 'Other';
+  jobDescription: string;
+  responsibilities?: string;
+  qualifications: string;
+  targetBranches: string[];
+  targetDepartments: string[];
+  salary?: string;
+  applicationDeadline: string; // ISO String
+  postedByUid: string;
+  postedByName: string;
+  status: 'Draft' | 'Pending Approval' | 'Approved' | 'Rejected' | 'Closed';
+  createdAt: string; // ISO String
+  approvedAt?: string;
+  adminRemarks?: string;
+};
+
+export type RecruitmentApplication = {
+  id: string;
+  recruitmentId: string;
+  applicantName: string;
+  applicantEmail: string;
+  applicantPhone: string;
+  applicantMisId?: string;
+  department?: string;
+  institute?: string;
+  cvUrl: string;
+  coverLetterUrl?: string;
+  appliedAt: string; // ISO String
+};

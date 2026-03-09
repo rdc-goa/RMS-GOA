@@ -1,4 +1,3 @@
-
 import { Logo } from '@/components/logo';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
@@ -31,10 +30,10 @@ export default function HelpPage() {
                         For any queries, technical issues, or assistance with the Research Project Portal, please do not hesitate to reach out to our dedicated support team.
                     </p>
                     <a
-                        href="mailto:rdc@goa.paruluniversity.ac.in"
+                        href="mailto:helpdesk.rdc@paruluniversity.ac.in"
                         className="mt-4 inline-block text-lg font-semibold text-primary hover:underline"
                     >
-                        rdc@goa.paruluniversity.ac.in
+                        helpdesk.rdc@paruluniversity.ac.in
                     </a>
                 </CardContent>
             </Card>

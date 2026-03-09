@@ -20,7 +20,7 @@ interface StaffData {
   ORCID_ID?: string | number;
   Vidwan_ID?: string | number;
   Type?: 'CRO' | 'Institutional' | 'faculty';
-  Campus?: 'Vadodara' | 'Ahmedabad' | 'Rajkot' | 'Goa';
+  Campus?: 'Goa';
   // Goa specific columns
   Orcid?: string | number;
 }
@@ -45,25 +45,24 @@ const readStaffDataFromUrl = async (url: string): Promise<StaffData[]> => {
     }
 }
 
-const formatUserRecord = (record: StaffData) => {
-    // Goa data might use 'Orcid' while others use 'ORCID_ID'
-    const orcid = String(record.ORCID_ID || record.Orcid || '');
+const formatUserRecord = (record: StaffData, defaultCampus: 'Goa') => {
+    const resolvedCampus = record.Campus || defaultCampus;
 
     return {
         name: record.Name,
         email: record.Email,
         phoneNumber: String(record.Phone || ''),
-        institute: record.Institute,
+        institute: record.Type === 'Institutional' ? record.Name : record.Institute,
         department: record.Department,
         designation: record.Designation,
         faculty: record.Faculty,
         misId: String(record['MIS ID'] || ''),
         scopusId: String(record.Scopus_ID || ''),
         googleScholarId: String(record.Google_Scholar_ID || ''),
-        orcidId: orcid,
+        orcidId: String(record.ORCID_ID || record.Orcid || ''),
         vidwanId: String(record.Vidwan_ID || ''),
         type: record.Type || 'faculty',
-        campus: 'Goa',
+        campus: resolvedCampus,
     };
 };
 
@@ -71,42 +70,47 @@ export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const email = searchParams.get('email');
   const misId = searchParams.get('misId');
+  const userEmailForFileCheck = searchParams.get('userEmailForFileCheck');
   const fetchAll = searchParams.get('fetchAll');
 
   if (!email && !misId) {
     return NextResponse.json({ success: false, error: 'Email or MIS ID query parameter is required.' }, { status: 400 });
   }
 
-  const allFoundRecords: any[] = [];
+  const allFoundRecords: StaffData[] = [];
   const foundEmails = new Set<string>();
+
+  const searchAndAdd = (data: StaffData[], defaultCampus: 'Goa') => {
+      let foundRecord: StaffData | undefined;
+      if (email) {
+          foundRecord = data.find(row => row.Email && row.Email.toLowerCase() === email.toLowerCase());
+      } else if (misId) {
+          foundRecord = data.find(row => row['MIS ID'] && String(row['MIS ID']).toLowerCase() === misId.toLowerCase());
+      }
+      
+      if (foundRecord && foundRecord.Email && !foundEmails.has(foundRecord.Email.toLowerCase())) {
+          allFoundRecords.push(formatUserRecord(foundRecord, defaultCampus) as any);
+          foundEmails.add(foundRecord.Email.toLowerCase());
+      }
+  };
   
-  const goastaffdata = await readStaffDataFromUrl(GOA_STAFF_DATA_URL);
-
-  if (goastaffdata.length === 0) {
-      return NextResponse.json({ success: false, error: 'Could not load staff data source.' }, { status: 500 });
-  }
-
-  if (fetchAll && misId) {
-      goastaffdata.forEach(row => {
-          if (row['MIS ID'] && String(row['MIS ID']).toLowerCase() === misId.toLowerCase()) {
+  const searchAndAddAll = (data: StaffData[], defaultCampus: 'Goa') => {
+      data.forEach(row => {
+          if (row['MIS ID'] && String(row['MIS ID']).toLowerCase() === misId?.toLowerCase()) {
              if (row.Email && !foundEmails.has(row.Email.toLowerCase())) {
-                allFoundRecords.push(formatUserRecord(row));
+                allFoundRecords.push(formatUserRecord(row, defaultCampus) as any);
                 foundEmails.add(row.Email.toLowerCase());
             }
           }
       });
-  } else {
-    let foundRecord: StaffData | undefined;
-    if (email) {
-        foundRecord = goastaffdata.find(row => row.Email && row.Email.toLowerCase() === email.toLowerCase());
-    } else if (misId) {
-        foundRecord = goastaffdata.find(row => row['MIS ID'] && String(row['MIS ID']).toLowerCase() === misId.toLowerCase());
-    }
-    
-    if (foundRecord && foundRecord.Email && !foundEmails.has(foundRecord.Email.toLowerCase())) {
-        allFoundRecords.push(formatUserRecord(foundRecord));
-        foundEmails.add(foundRecord.Email.toLowerCase());
-    }
+  };
+
+  const goastaffdata = await readStaffDataFromUrl(GOA_STAFF_DATA_URL);
+
+  if (fetchAll) {
+      searchAndAddAll(goastaffdata, 'Goa');
+  } else if (email || misId) {
+    searchAndAdd(goastaffdata, 'Goa');
   }
 
   if (allFoundRecords.length > 0) {
