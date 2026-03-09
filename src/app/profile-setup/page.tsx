@@ -436,7 +436,7 @@ export default function ProfileSetupPage() {
                     );
                   }} />
                  <FormField name="institute" control={form.control} render={({ field }) => {
-                    const instituteOptions = institutes;
+                    const instituteOptions = form.getValues("campus") === "Goa" ? goaInstitutes : institutes;
                     return (
                       <FormItem>
                         <FormLabel>Institute</FormLabel>

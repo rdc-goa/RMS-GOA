@@ -5,7 +5,6 @@
 import { adminDb } from '@/lib/admin';
 import type { ResearchPaper, Author, User, Notification, IncentiveClaim } from '@/types';
 import { FieldValue } from 'firebase-admin/firestore';
-import { getResearchDomainSuggestion } from '@/ai/flows/research-domain-suggestion';
 import admin from 'firebase-admin';
 import { sendEmail } from '@/app/server-actions';
 
