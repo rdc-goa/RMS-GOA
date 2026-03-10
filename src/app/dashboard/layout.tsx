@@ -366,6 +366,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         }
 
         setUser(appUser)
+        console.log('User profile loaded in dashboard layout:', appUser.name)
+        console.log('User designation:', appUser.designation)
+        console.log('User role:', appUser.role)
+        console.log('User modules:', appUser.allowedModules)
         localStorage.setItem("user", JSON.stringify(appUser))
         setLoading(false)
       } else {
@@ -417,10 +421,15 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       const filtered = allNavItems.filter((item) => {
         if (item.condition) return true
         if (item.id === "incentive-approvals") {
-          return user.allowedModules?.some((m) => m.startsWith("incentive-approver-"))
+          const hasApproverModule = user.allowedModules?.some((m) => m.startsWith("incentive-approver-")) || false;
+          const isPrincipal = user.designation === 'Principal';
+          const shouldShow = hasApproverModule || isPrincipal;
+          console.log('Checking incentive-approvals - has approver module:', hasApproverModule, 'is principal:', isPrincipal, 'show:', shouldShow);
+          return shouldShow;
         }
         return user.allowedModules?.includes(item.id)
       })
+      console.log('Filtered menu items:', filtered.map(item => item.id));
       const sorted = user.sidebarOrder
         ? filtered.sort((a, b) => user.sidebarOrder!.indexOf(a.id) - user.sidebarOrder!.indexOf(b.id))
         : filtered
@@ -490,12 +499,24 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
     // Incentive Approvals listener
     const approverModule = user.allowedModules?.find((m) => m.startsWith("incentive-approver-"))
-    if (approverModule) {
-      const stage = Number.parseInt(approverModule.split("-")[2], 10)
-      const statusToFetch = `Pending Stage ${stage} Approval`
+    console.log('Checking for incentive approvals - approverModule:', approverModule);
+    
+    let shouldFetchIncentiveApprovals = !!approverModule;
+    let statusToFetch = approverModule ? `Pending Stage ${Number.parseInt(approverModule.split("-")[2], 10)} Approval` : null;
+    
+    // Principals also need to see pending principal approvals
+    if (user.designation === 'Principal' && !shouldFetchIncentiveApprovals) {
+      console.log('User is Principal, enabling incentive approvals fetch');
+      shouldFetchIncentiveApprovals = true;
+      statusToFetch = 'Pending Principal Approval';
+    }
+    
+    if (shouldFetchIncentiveApprovals && statusToFetch) {
+      console.log('Fetching incentive approvals with status:', statusToFetch);
       const incentiveQuery = query(collection(db, "incentiveClaims"), where("status", "==", statusToFetch))
       unsubscribes.push(
         onSnapshot(incentiveQuery, (snapshot) => {
+          console.log('Incentive approvals count updated:', snapshot.size);
           setPendingIncentiveApprovalsCount(snapshot.size)
         }),
       )

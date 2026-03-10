@@ -751,7 +751,7 @@ export default function SettingsPage() {
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                         {[2, 3, 4, 5].map(stage => {
                             const approver = systemSettings?.incentiveApprovers?.find(a => a.stage === stage);
-                            return (<div key={stage} className="p-4 border rounded-lg space-y-3"><FormItem><FormLabel>Stage {stage} Approver Email</FormLabel><Input type="email" placeholder={`approver.stage${stage}@paruluniversity.ac.in`} value={approver?.email || ''} onChange={(e) => handleApproverChange(stage as 2 | 3 | 4 | 5, e.target.value)} disabled={isSavingSettings} /></FormItem></div>);
+                            return (<div key={stage} className="p-4 border rounded-lg space-y-3"><div className="space-y-2"><Label>Stage {stage} Approver Email</Label><Input type="email" placeholder={`approver.stage${stage}@paruluniversity.ac.in`} value={approver?.email || ''} onChange={(e) => handleApproverChange(stage as 2 | 3 | 4 | 5, e.target.value)} disabled={isSavingSettings} /></div></div>);
                         })}
                     </div>
                   </Form>
@@ -764,8 +764,8 @@ export default function SettingsPage() {
                   </div>
                   <p className="text-sm text-muted-foreground">Configure the principal email addresses for each institute. These emails will receive incentive application approvals for Stage 1.</p>
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end p-4 border rounded-lg">
-                    <FormItem>
-                      <FormLabel>Institute</FormLabel>
+                    <div className="space-y-2">
+                      <Label>Institute</Label>
                       <Select value={selectedInstituteForPrincipal} onValueChange={setSelectedInstituteForPrincipal}>
                         <SelectTrigger>
                           <SelectValue placeholder="Select institute" />
@@ -776,9 +776,9 @@ export default function SettingsPage() {
                           ))}
                         </SelectContent>
                       </Select>
-                    </FormItem>
-                    <FormItem>
-                      <FormLabel>Principal Email</FormLabel>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Principal Email</Label>
                       <Input 
                         type="email"
                         placeholder="principal@paruluniversity.ac.in"
@@ -786,7 +786,7 @@ export default function SettingsPage() {
                         onChange={(e) => setPrincipalEmailForInstitute(e.target.value)}
                         disabled={isSavingSettings}
                       />
-                    </FormItem>
+                    </div>
                     <Button onClick={addPrincipalEmailForInstitute} disabled={isSavingSettings || !selectedInstituteForPrincipal || !principalEmailForInstitute}>
                       <Plus className="h-4 w-4 mr-2" /> Set Principal
                     </Button>

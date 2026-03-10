@@ -49,7 +49,9 @@ export default function IncentiveApprovalsPage() {
             const claimsCollection = collection(db, 'incentiveClaims');
             const usersQuery = query(collection(db, 'users'));
             
-            const statusToFetch = `Pending Stage ${stage + 1} Approval`;
+            // Determine the status to fetch based on the approval stage
+            // Stage 0 (Principal) uses "Pending Principal Approval", others use "Pending Stage X Approval"
+            const statusToFetch = stage === 0 ? 'Pending Principal Approval' : `Pending Stage ${stage + 1} Approval`;
             
             const pendingClaimsQuery = query(
                 claimsCollection, 
@@ -87,18 +89,38 @@ export default function IncentiveApprovalsPage() {
         if (storedUser) {
             const parsedUser = JSON.parse(storedUser) as User;
             setUser(parsedUser);
-            const stage = parsedUser.allowedModules?.find(m => m.startsWith('incentive-approver-'))
-                ? parseInt(parsedUser.allowedModules.find(m => m.startsWith('incentive-approver-'))!.split('-')[2], 10) - 1
-                : null;
+            
+            console.log('User loaded:', parsedUser.name);
+            console.log('User designation:', parsedUser.designation);
+            console.log('User allowedModules:', parsedUser.allowedModules);
+            
+            // Determine approval stage:
+            // - Principals automatically have Stage 1 (0) access
+            // - Others get access based on their assigned module permission
+            let stage: number | null = null;
+            if (parsedUser.designation === 'Principal') {
+                stage = 0; // Stage 1 for principals
+                console.log('User is Principal - assigned stage 0');
+            } else {
+                const approverModule = parsedUser.allowedModules?.find(m => m.startsWith('incentive-approver-'));
+                console.log('Looking for incentive-approver module:', approverModule);
+                stage = approverModule
+                    ? parseInt(approverModule.split('-')[2], 10) - 1
+                    : null;
+                console.log('Determined stage:', stage);
+            }
             
             setApprovalStage(stage);
 
             if (stage !== null) {
+                console.log('Fetching claims for stage:', stage);
                 fetchClaimsAndUsers(parsedUser, stage);
             } else {
+                console.log('No approval stage assigned - access denied');
                 setLoading(false);
             }
         } else {
+            console.log('No stored user found');
             setLoading(false);
         }
     }, [fetchClaimsAndUsers]);
