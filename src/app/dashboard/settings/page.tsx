@@ -618,6 +618,35 @@ export default function SettingsPage() {
     { key: 'IMR_SANCTION_ORDER', label: 'IMR Sanction Order' },
   ];
 
+  const [selectedInstituteForPrincipal, setSelectedInstituteForPrincipal] = useState<string>('');
+  const [principalEmailForInstitute, setPrincipalEmailForInstitute] = useState<string>('');
+
+  const handlePrincipalEmailChange = async (instituteName: string, email: string) => {
+    if (!systemSettings) return;
+    const updatedPrincipalEmails = { ...systemSettings.principalEmailsByInstitute, [instituteName]: email };
+    // Remove if empty
+    if (!email) {
+      delete updatedPrincipalEmails[instituteName];
+    }
+    await handleSystemSettingsSave({ ...systemSettings, principalEmailsByInstitute: updatedPrincipalEmails });
+  };
+
+  const addPrincipalEmailForInstitute = async () => {
+    if (!selectedInstituteForPrincipal.trim() || !principalEmailForInstitute.trim()) {
+      toast({ variant: 'destructive', title: 'Error', description: 'Please select an institute and enter an email.' });
+      return;
+    }
+    await handlePrincipalEmailChange(selectedInstituteForPrincipal, principalEmailForInstitute);
+    setSelectedInstituteForPrincipal('');
+    setPrincipalEmailForInstitute('');
+    toast({ title: 'Principal email updated', description: `Principal email for ${selectedInstituteForPrincipal} has been set.` });
+  };
+
+  const removePrincipalEmailForInstitute = async (instituteName: string) => {
+    if (!systemSettings) return;
+    await handlePrincipalEmailChange(instituteName, '');
+    toast({ title: 'Principal email removed', description: `Principal email for ${instituteName} has been removed.` });
+  };
 
   const isAcademicInfoLocked = isCro || isPrincipal
 
@@ -726,6 +755,71 @@ export default function SettingsPage() {
                         })}
                     </div>
                   </Form>
+                </div>
+                <Separator />
+                <div className="space-y-4">
+                  <div className="flex items-center gap-2">
+                    <Mail className="h-5 w-5" />
+                    <Label className="text-base">Principal Email Addresses by Institute</Label>
+                  </div>
+                  <p className="text-sm text-muted-foreground">Configure the principal email addresses for each institute. These emails will receive incentive application approvals for Stage 1.</p>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end p-4 border rounded-lg">
+                    <FormItem>
+                      <FormLabel>Institute</FormLabel>
+                      <Select value={selectedInstituteForPrincipal} onValueChange={setSelectedInstituteForPrincipal}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select institute" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {institutes.map(inst => (
+                            <SelectItem key={inst} value={inst}>{inst}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </FormItem>
+                    <FormItem>
+                      <FormLabel>Principal Email</FormLabel>
+                      <Input 
+                        type="email"
+                        placeholder="principal@paruluniversity.ac.in"
+                        value={principalEmailForInstitute}
+                        onChange={(e) => setPrincipalEmailForInstitute(e.target.value)}
+                        disabled={isSavingSettings}
+                      />
+                    </FormItem>
+                    <Button onClick={addPrincipalEmailForInstitute} disabled={isSavingSettings || !selectedInstituteForPrincipal || !principalEmailForInstitute}>
+                      <Plus className="h-4 w-4 mr-2" /> Set Principal
+                    </Button>
+                  </div>
+                  {(systemSettings?.principalEmailsByInstitute && Object.keys(systemSettings.principalEmailsByInstitute).length > 0) && (
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Institute</TableHead>
+                          <TableHead>Principal Email</TableHead>
+                          <TableHead className="text-right">Action</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {Object.entries(systemSettings.principalEmailsByInstitute).map(([institute, email]) => (
+                          <TableRow key={institute}>
+                            <TableCell className="font-medium">{institute}</TableCell>
+                            <TableCell>{email}</TableCell>
+                            <TableCell className="text-right">
+                              <Button 
+                                variant="ghost" 
+                                size="icon" 
+                                onClick={() => removePrincipalEmailForInstitute(institute)}
+                                disabled={isSavingSettings}
+                              >
+                                <X className="h-4 w-4" />
+                              </Button>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  )}
                 </div>
             </CardContent>
           </Card>

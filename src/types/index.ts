@@ -565,6 +565,7 @@ export type SystemSettings = {
   templateUrls?: TemplateUrls;
   apiIntegrations?: ApiIntegrations;
   driveParentFolderId?: string;
+  principalEmailsByInstitute?: Record<string, string>;
 }
 
 export type LoginOtp = {

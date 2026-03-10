@@ -104,7 +104,11 @@ export async function submitIncentiveClaim(claimData: Omit<IncentiveClaim, 'id' 
         let initialApprovals: ApprovalStage[] = [];
         let approverUids: string[] = [];
 
-        if (claimantUser.designation === 'Principal' && firstStage === 1) {
+        const configuredPrincipalEmail = settings.principalEmailsByInstitute?.[claimData.institute];
+        const isClaimantDesignatedPrincipal = claimantUser.designation === 'Principal';
+        const isClaimantConfiguredPrincipal = configuredPrincipalEmail && claimantUser.email?.toLowerCase() === configuredPrincipalEmail.toLowerCase();
+
+        if ((isClaimantDesignatedPrincipal || isClaimantConfiguredPrincipal) && firstStage === 1) {
              const autoApproval: ApprovalStage = {
                 approverUid: claimantUser.uid,
                 approverName: `${claimantUser.name} (Auto-approved)`,
@@ -150,43 +154,82 @@ export async function submitIncentiveClaim(claimData: Omit<IncentiveClaim, 'id' 
         // Notify the principal if the claim is pending their approval (Stage 1)
         if (finalClaimData.status === 'Pending Principal Approval') {
             try {
-                const principalQuery = adminDb.collection('users').where('designation', '==', 'Principal').where('institute', '==', claimData.institute);
-                const principalSnap = await principalQuery.get();
+                // First, check if there's a configured principal email for this institute
+                const principalEmail = settings.principalEmailsByInstitute?.[claimData.institute];
                 
-                if (!principalSnap.empty) {
-                    const principal = principalSnap.docs[0].data() as User;
+                if (principalEmail) {
+                    // Use the configured principal email
                     const claimTitle = getClaimTitle(finalClaimData);
                     
-                    if (principal.email) {
-                        const emailHtml = `
-                            <div ${EMAIL_STYLES.background}>
-                                ${EMAIL_STYLES.logo}
-                                <p style="color:#ffffff;">Dear ${principal.name},</p>
-                                <p style="color:#e0e0e0;">
-                                    An incentive claim has been submitted by ${claimData.userName} (${claimData.faculty}) and is awaiting your institutional approval for the work titled "<strong style="color:#ffffff;">${claimTitle}</strong>".
-                                </p>
-                                <p style="color:#e0e0e0;">
-                                    <strong>Claim Type:</strong> ${claimData.claimType}<br/>
-                                    <strong>Claimed Incentive Amount:</strong> ₹${(claimData.calculatedIncentive || 0).toLocaleString('en-IN')}
-                                </p>
-                                <p style="text-align:center; margin-top:25px;">
-                                    <a href="${process.env.BASE_URL}/dashboard/incentive-approvals" style="background-color: #64B5F6; color: white; padding: 12px 20px; text-decoration: none; border-radius: 5px; font-weight: bold;">
-                                        Review Claim
-                                    </a>
-                                </p>
-                                <p style="color:#e0e0e0;">
-                                    Please review and approve/reject this claim at your earliest convenience.
-                                </p>
-                                ${EMAIL_STYLES.footer}
-                            </div>
-                        `;
+                    const emailHtml = `
+                        <div ${EMAIL_STYLES.background}>
+                            ${EMAIL_STYLES.logo}
+                            <p style="color:#ffffff;">Dear Principal,</p>
+                            <p style="color:#e0e0e0;">
+                                An incentive claim has been submitted by ${claimData.userName} (${claimData.faculty}) and is awaiting your institutional approval for the work titled "<strong style="color:#ffffff;">${claimTitle}</strong>".
+                            </p>
+                            <p style="color:#e0e0e0;">
+                                <strong>Claim Type:</strong> ${claimData.claimType}<br/>
+                                <strong>Claimed Incentive Amount:</strong> ₹${(claimData.calculatedIncentive || 0).toLocaleString('en-IN')}
+                            </p>
+                            <p style="text-align:center; margin-top:25px;">
+                                <a href="${process.env.BASE_URL}/dashboard/incentive-approvals" style="background-color: #64B5F6; color: white; padding: 12px 20px; text-decoration: none; border-radius: 5px; font-weight: bold;">
+                                    Review Claim
+                                </a>
+                            </p>
+                            <p style="color:#e0e0e0;">
+                                Please review and approve/reject this claim at your earliest convenience.
+                            </p>
+                            ${EMAIL_STYLES.footer}
+                        </div>
+                    `;
 
-                        await sendEmail({
-                            to: principal.email,
-                            subject: `New Incentive Claim Awaiting Your Approval - ${claimTitle}`,
-                            from: 'default',
-                            html: emailHtml
-                        });
+                    await sendEmail({
+                        to: principalEmail,
+                        subject: `New Incentive Claim Awaiting Your Approval - ${claimTitle}`,
+                        from: 'default',
+                        html: emailHtml
+                    });
+                } else {
+                    // Fallback: Query for Principal user if no configured email
+                    const principalQuery = adminDb.collection('users').where('designation', '==', 'Principal').where('institute', '==', claimData.institute);
+                    const principalSnap = await principalQuery.get();
+                    
+                    if (!principalSnap.empty) {
+                        const principal = principalSnap.docs[0].data() as User;
+                        const claimTitle = getClaimTitle(finalClaimData);
+                        
+                        if (principal.email) {
+                            const emailHtml = `
+                                <div ${EMAIL_STYLES.background}>
+                                    ${EMAIL_STYLES.logo}
+                                    <p style="color:#ffffff;">Dear ${principal.name},</p>
+                                    <p style="color:#e0e0e0;">
+                                        An incentive claim has been submitted by ${claimData.userName} (${claimData.faculty}) and is awaiting your institutional approval for the work titled "<strong style="color:#ffffff;">${claimTitle}</strong>".
+                                    </p>
+                                    <p style="color:#e0e0e0;">
+                                        <strong>Claim Type:</strong> ${claimData.claimType}<br/>
+                                        <strong>Claimed Incentive Amount:</strong> ₹${(claimData.calculatedIncentive || 0).toLocaleString('en-IN')}
+                                    </p>
+                                    <p style="text-align:center; margin-top:25px;">
+                                        <a href="${process.env.BASE_URL}/dashboard/incentive-approvals" style="background-color: #64B5F6; color: white; padding: 12px 20px; text-decoration: none; border-radius: 5px; font-weight: bold;">
+                                            Review Claim
+                                        </a>
+                                    </p>
+                                    <p style="color:#e0e0e0;">
+                                        Please review and approve/reject this claim at your earliest convenience.
+                                    </p>
+                                    ${EMAIL_STYLES.footer}
+                                </div>
+                            `;
+
+                            await sendEmail({
+                                to: principal.email,
+                                subject: `New Incentive Claim Awaiting Your Approval - ${claimTitle}`,
+                                from: 'default',
+                                html: emailHtml
+                            });
+                        }
                     }
                 }
             } catch (error) {
@@ -364,7 +407,11 @@ export async function processIncentiveClaimAction(
 
     // Authorization check
     if (currentStage === 1) { // Principal's stage
-        if (approver.designation !== 'Principal' || approver.institute !== claim.institute) {
+        const configuredPrincipalEmail = settings.principalEmailsByInstitute?.[claim.institute];
+        const isPrincipalDesignation = approver.designation === 'Principal' && approver.institute === claim.institute;
+        const isConfiguredPrincipalEmail = configuredPrincipalEmail && approver.email?.toLowerCase() === configuredPrincipalEmail.toLowerCase();
+        
+        if (!isPrincipalDesignation && !isConfiguredPrincipalEmail) {
              return { success: false, error: 'You are not the authorized Principal for this claim.' };
         }
     } else { // System approvers for stages 2-5
