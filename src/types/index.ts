@@ -225,6 +225,7 @@ export type IncentiveClaim = {
   status: "Pending" | "Accepted" | "Rejected" | "Draft" | "Pending Principal Approval" | "Pending Stage 2 Approval" | "Pending Stage 3 Approval" | "Pending Stage 4 Approval" | "Pending Stage 5 Approval" | "Submitted to Accounts" | "Payment Completed" | "Pending Stage 1 Approval";
   submissionDate: string // ISO String
   faculty: string
+  institute?: string
   bankDetails?: UserBankDetails
   originalClaimId?: string // Link to the primary author's claim
   misId?: string

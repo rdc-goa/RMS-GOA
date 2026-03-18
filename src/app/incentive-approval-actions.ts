@@ -100,12 +100,15 @@ export async function submitIncentiveClaim(claimData: Omit<IncentiveClaim, 'id' 
         
         const claimantUserSnap = await adminDb.collection('users').doc(claimData.uid).get();
         const claimantUser = claimantUserSnap.data() as User;
-        
+
+        // Ensure we always have the claim's institute resolved, even if the frontend did not pass it.
+        const claimInstitute = (claimData.institute || claimantUser.institute || '').trim();
+
         let initialApprovals: ApprovalStage[] = [];
         let approverUids: string[] = [];
 
-        const configuredPrincipalEmail = settings.principalEmailsByInstitute?.[claimData.institute];
-        const isClaimantDesignatedPrincipal = claimantUser.designation === 'Principal';
+        const configuredPrincipalEmail = settings.principalEmailsByInstitute?.[claimInstitute];
+        const isClaimantDesignatedPrincipal = claimantUser.designation === 'Principal' && claimantUser.institute?.trim() === claimInstitute;
         const isClaimantConfiguredPrincipal = configuredPrincipalEmail && claimantUser.email?.toLowerCase() === configuredPrincipalEmail.toLowerCase();
 
         if ((isClaimantDesignatedPrincipal || isClaimantConfiguredPrincipal) && firstStage === 1) {
@@ -132,6 +135,7 @@ export async function submitIncentiveClaim(claimData: Omit<IncentiveClaim, 'id' 
 
         const finalClaimData: Omit<IncentiveClaim, 'id'> = {
             ...claimData,
+            institute: claimInstitute,
             claimId: standardizedClaimId,
             status: claimData.status === 'Draft' ? 'Draft' : initialStatus,
             approvals: initialApprovals,
@@ -155,7 +159,7 @@ export async function submitIncentiveClaim(claimData: Omit<IncentiveClaim, 'id' 
         if (finalClaimData.status === 'Pending Principal Approval') {
             try {
                 // First, check if there's a configured principal email for this institute
-                const principalEmail = settings.principalEmailsByInstitute?.[claimData.institute];
+                const principalEmail = settings.principalEmailsByInstitute?.[claimInstitute];
                 
                 if (principalEmail) {
                     // Use the configured principal email
@@ -192,7 +196,7 @@ export async function submitIncentiveClaim(claimData: Omit<IncentiveClaim, 'id' 
                     });
                 } else {
                     // Fallback: Query for Principal user if no configured email
-                    const principalQuery = adminDb.collection('users').where('designation', '==', 'Principal').where('institute', '==', claimData.institute);
+                    const principalQuery = adminDb.collection('users').where('designation', '==', 'Principal').where('institute', '==', claimInstitute);
                     const principalSnap = await principalQuery.get();
                     
                     if (!principalSnap.empty) {
@@ -407,8 +411,10 @@ export async function processIncentiveClaimAction(
 
     // Authorization check
     if (currentStage === 1) { // Principal's stage
-        const configuredPrincipalEmail = settings.principalEmailsByInstitute?.[claim.institute];
-        const isPrincipalDesignation = approver.designation === 'Principal' && approver.institute === claim.institute;
+        // Ensure we have the institute for the claim (older claims might not store it)
+        const claimInstitute = claim.institute || (await adminDb.collection('users').doc(claim.uid).get()).data()?.institute || '';
+        const configuredPrincipalEmail = settings.principalEmailsByInstitute?.[claimInstitute];
+        const isPrincipalDesignation = approver.designation === 'Principal' && approver.institute === claimInstitute;
         const isConfiguredPrincipalEmail = configuredPrincipalEmail && approver.email?.toLowerCase() === configuredPrincipalEmail.toLowerCase();
         
         if (!isPrincipalDesignation && !isConfiguredPrincipalEmail) {

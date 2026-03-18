@@ -53,18 +53,39 @@ export default function IncentiveApprovalsPage() {
             // Stage 0 (Principal) uses "Pending Principal Approval", others use "Pending Stage X Approval"
             const statusToFetch = stage === 0 ? 'Pending Principal Approval' : `Pending Stage ${stage + 1} Approval`;
             
-            const pendingClaimsQuery = query(
-                claimsCollection, 
-                where('status', '==', statusToFetch), 
-                orderBy('submissionDate', 'desc')
-            );
+            // Build pending claims query with institute filter for principals
+            let pendingClaimsQuery;
+            if (stage === 0 && currentUser.institute) {
+                pendingClaimsQuery = query(
+                    claimsCollection, 
+                    where('status', '==', statusToFetch),
+                    where('institute', '==', currentUser.institute),
+                    orderBy('submissionDate', 'desc')
+                );
+            } else {
+                pendingClaimsQuery = query(
+                    claimsCollection, 
+                    where('status', '==', statusToFetch), 
+                    orderBy('submissionDate', 'desc')
+                );
+            }
 
-            // History should include all claims the user has acted upon at their stage
-            const historyQuery = query(
-              claimsCollection, 
-              where(`approvals.${stage}.approverUid`, '==', currentUser.uid),
-              orderBy('submissionDate', 'desc')
-            );
+            // Build history query with institute filter for principals
+            let historyQuery;
+            if (stage === 0 && currentUser.institute) {
+                historyQuery = query(
+                    claimsCollection, 
+                    where(`approvals.${stage}.approverUid`, '==', currentUser.uid),
+                    where('institute', '==', currentUser.institute),
+                    orderBy('submissionDate', 'desc')
+                );
+            } else {
+                historyQuery = query(
+                    claimsCollection, 
+                    where(`approvals.${stage}.approverUid`, '==', currentUser.uid),
+                    orderBy('submissionDate', 'desc')
+                );
+            }
             
             const [pendingSnapshot, historySnapshot, usersSnapshot] = await Promise.all([
                 getDocs(pendingClaimsQuery),
