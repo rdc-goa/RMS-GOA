@@ -497,27 +497,38 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       fetchSettingsAndSubscribe();
     }
 
-    // Incentive Approvals listener
+    // Incentive Approvals listener - handles both principal and stage approver roles
     const approverModule = user.allowedModules?.find((m) => m.startsWith("incentive-approver-"))
-    console.log('Checking for incentive approvals - approverModule:', approverModule);
+    const isPrincipal = user.designation === 'Principal'
     
-    let shouldFetchIncentiveApprovals = !!approverModule;
-    let statusToFetch = approverModule ? `Pending Stage ${Number.parseInt(approverModule.split("-")[2], 10)} Approval` : null;
+    // Track counts separately for aggregation
+    let stageApprovalCount = 0
+    let principalApprovalCount = 0
     
-    // Principals also need to see pending principal approvals
-    if (user.designation === 'Principal' && !shouldFetchIncentiveApprovals) {
-      console.log('User is Principal, enabling incentive approvals fetch');
-      shouldFetchIncentiveApprovals = true;
-      statusToFetch = 'Pending Principal Approval';
+    // Listen to stage approvals if user has an approver module
+    if (approverModule) {
+      const stageNumber = Number.parseInt(approverModule.split("-")[2], 10)
+      const statusToFetch = `Pending Stage ${stageNumber} Approval`
+      console.log('Fetching stage approvals with status:', statusToFetch);
+      const stageQuery = query(collection(db, "incentiveClaims"), where("status", "==", statusToFetch))
+      unsubscribes.push(
+        onSnapshot(stageQuery, (snapshot) => {
+          stageApprovalCount = snapshot.size
+          console.log('Stage approvals count updated:', stageApprovalCount);
+          setPendingIncentiveApprovalsCount(stageApprovalCount + principalApprovalCount)
+        }),
+      )
     }
     
-    if (shouldFetchIncentiveApprovals && statusToFetch) {
-      console.log('Fetching incentive approvals with status:', statusToFetch);
-      const incentiveQuery = query(collection(db, "incentiveClaims"), where("status", "==", statusToFetch))
+    // Listen to principal approvals if user is a principal
+    if (isPrincipal) {
+      console.log('User is Principal, enabling principal approvals fetch');
+      const principalQuery = query(collection(db, "incentiveClaims"), where("status", "==", "Pending Principal Approval"), where("institute", "==", user.institute))
       unsubscribes.push(
-        onSnapshot(incentiveQuery, (snapshot) => {
-          console.log('Incentive approvals count updated:', snapshot.size);
-          setPendingIncentiveApprovalsCount(snapshot.size)
+        onSnapshot(principalQuery, (snapshot) => {
+          principalApprovalCount = snapshot.size
+          console.log('Principal approvals count updated:', principalApprovalCount);
+          setPendingIncentiveApprovalsCount(stageApprovalCount + principalApprovalCount)
         }),
       )
     }
