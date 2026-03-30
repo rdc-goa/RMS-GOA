@@ -1,51 +1,54 @@
-# Privacy Policy
+# Privacy Policy for the R&D Portal
 
 **Last updated:** {new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}
 
-This Privacy Policy describes Our policies and procedures on the collection, use and disclosure of Your information when You use the Service and tells You about Your privacy rights and how the law protects You.
+This Privacy Policy describes Our policies and procedures on the collection, use, and disclosure of Your information when You use the Service and tells You about Your privacy rights and how the law protects You.
 
-## Interpretation and Definitions
-### Interpretation
-The words of which the initial letter is capitalized have meanings defined under the following conditions. The following definitions shall have the same meaning regardless of whether they appear in singular or in plural.
+## 1. Interpretation and Definitions
 
-### Definitions
-For the purposes of this Privacy Policy:
+-   **Account:** A unique account created for You to access our Service.
+-   **University:** Refers to Parul University Goa, the operator of this portal.
+-   **Service:** Refers to the Research & Development Portal website.
+-   **Personal Data:** Any information that relates to an identified or identifiable individual.
+-   **You:** The individual faculty member, staff, or administrator accessing or using the Service.
 
-- **Account** means a unique account created for You to access our Service or parts of our Service.
-- **University** (referred to as either "the University", "We", "Us" or "Our" in this Agreement) refers to Parul University Goa.
-- **Service** refers to the Research & Development Portal website.
-- **Personal Data** is any information that relates to an identified or identifiable individual.
-- **You** means the individual accessing or using the Service, or the company, or other legal entity on behalf of which such individual is accessing or using the Service, as applicable.
+## 2. Collecting and Using Your Personal Data
 
-## Collecting and Using Your Personal Data
 ### Types of Data Collected
+
 #### Personal Data
-While using Our Service, We may ask You to provide Us with certain personally identifiable information that can be used to contact or identify You. Personally identifiable information may include, but is not limited to:
-- Email address
-- First name and last name
-- Phone number
-- Academic information (Faculty, Institute, Department, Designation, MIS ID)
-- Researcher IDs (ORCID, Scopus, etc.)
-- Bank account details for grant disbursement and incentive claims
+While using Our Service, We collect and store information necessary for the portal's functionality. This includes:
+-   **Identity & Contact Data:** Email address, first and last name, phone number.
+-   **Academic & Professional Data:** Faculty, Institute, Department, Designation, MIS ID, and Researcher IDs (e.g., ORCID, Scopus).
+-   **Financial Data:** Bank account details are collected solely for the purpose of disbursing project grants and processing incentive claims.
+-   **Research Data:** All data submitted as part of project proposals, incentive claims, publications, and other research-related activities.
 
 #### Usage Data
-Usage Data is collected automatically when using the Service. This may include information such as Your device's Internet Protocol address (e.g. IP address), browser type, browser version, the pages of our Service that You visit, the time and date of Your visit, the time spent on those pages, unique device identifiers and other diagnostic data.
+Usage Data is collected automatically when using the Service. This may include your IP address, browser type, pages visited, time spent on pages, and other diagnostic data to help us improve the service.
 
 ### Use of Your Personal Data
-The University may use Personal Data for the following purposes:
-- **To provide and maintain our Service**, including to monitor the usage of our Service.
-- **To manage Your Account:** to manage Your registration as a user of the Service. The Personal Data You provide can give You access to different functionalities of the Service that are available to You as a registered user.
-- **For the performance of a contract:** the development, compliance and undertaking of the research grant or incentive claim process.
-- **To contact You:** To contact You by email, telephone calls, SMS, or other equivalent forms of electronic communication, such as a mobile application's push notifications regarding updates or informative communications related to the functionalities, products or contracted services, including the security updates, when necessary or reasonable for their implementation.
-- **To manage Your requests:** To attend and manage Your requests to Us.
+The University uses Personal Data for the following purposes:
+-   **To provide and maintain our Service,** including monitoring usage and ensuring stability.
+-   **To manage Your Account** and provide access to the functionalities available to your role.
+-   **To execute our core services,** such as processing project proposals, managing grant finances, and handling incentive claims.
+-   **To contact You** by email, SMS, or other electronic means regarding updates, security alerts, or important information related to your activities on the portal.
+-   **To manage Your requests** and provide support.
 
-## Security of Your Personal Data
-The security of Your Personal Data is important to Us, but remember that no method of transmission over the Internet, or method of electronic storage is 100% secure. While We strive to use commercially acceptable means to protect Your Personal Data, We cannot guarantee its absolute security. All data is stored within Google's Firebase platform, which provides robust security measures for data in transit and at rest.
+## 3. Data Sharing and Disclosure
 
-## Changes to this Privacy Policy
-We may update Our Privacy Policy from time to time. We will notify You of any changes by posting the new Privacy Policy on this page.
+We do not sell or rent your Personal Data to third parties. We may share your data in the following limited circumstances:
+-   **With Service Providers:** We use Firebase (a Google service) for our database, authentication, and hosting needs. Your data is stored securely within this platform.
+-   **For Internal University Processes:** Your data will be accessible to relevant university personnel (e.g., evaluators, finance department, administrators) as required to fulfill the research management and payment workflows.
+-   **For Legal Requirements:** We may disclose Your Personal Data if required to do so by law or in response to valid requests by public authorities.
 
-You are advised to review this Privacy Policy periodically for any changes. Changes to this Privacy Policy are effective when they are posted on this page.
+## 4. Security of Your Personal Data
 
-## Contact Us
-If you have any questions about this Privacy Policy, You can contact us at: [helpdesk.rdc@paruluniversity.ac.in](mailto:helpdesk.rdc@paruluniversity.ac.in)
+The security of Your PersonalData is important to Us. We use commercially acceptable means to protect it, including storing all data within Google's secure Firebase platform, which provides robust security measures for data in transit and at rest. However, no method of transmission over the Internet or method of electronic storage is 100% secure.
+
+## 5. Changes to this Privacy Policy
+
+We may update Our Privacy Policy from time to time. We will notify You of any changes by posting the new Privacy Policy on this page and updating the "Last updated" date. You are advised to review this Privacy Policy periodically for any changes.
+
+## 6. Contact Us
+
+If you have any questions about this Privacy Policy, You can contact us at: **[rdc@goa.paruluniversity.ac.in](mailto:rdc@goa.paruluniversity.ac.in)**

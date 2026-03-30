@@ -1,11 +1,10 @@
 
-
 'use server';
 
 import { adminDb, adminStorage } from "@/lib/admin";
 import type { Project, GrantPhase, GrantDetails, User, Transaction } from "@/types";
 import { sendEmail as sendEmailUtility } from "@/lib/email";
-import { getSystemSettings, uploadFileToServer } from './server-actions';
+import { getSystemSettings } from './actions';
 
 async function logActivity(level: 'INFO' | 'WARNING' | 'ERROR', message: string, context: Record<string, any> = {}) {
   try {
@@ -22,20 +21,8 @@ async function logActivity(level: 'INFO' | 'WARNING' | 'ERROR', message: string,
 }
 
 const EMAIL_STYLES = {
-  background: `
-  style="
-    background-color:#0f2027;
-    background-image:
-      radial-gradient(at 5% 95%, hsla(0,70%,40%,0.25) 0px, transparent 50%),
-      radial-gradient(at 95% 95%, hsla(0,80%,50%,0.25) 0px, transparent 50%),
-      linear-gradient(135deg, #0f2027, #203a43);
-    background-attachment:fixed;
-    color:#ffffff;
-    font-family:Arial, sans-serif;
-    padding:20px;
-    border-radius:8px;
-  "
-`,
+  background:
+    'style="background: linear-gradient(135deg, #0f2027, #203a43, #2c5364); color:#ffffff; font-family:Arial, sans-serif; padding:20px; border-radius:8px;"',
   logo: '<div style="text-align:center; margin-bottom:20px;"><img src="https://lhdlkrfbkon55i6u.public.blob.vercel-storage.com/Pu%20Goa%20White.png" alt="RDC Logo" style="max-width:300px; height:auto;" /></div>',
   footer: ` 
     <p style="color:#b0bec5; margin-top: 30px;">Best Regards,</p>
@@ -49,51 +36,51 @@ const EMAIL_STYLES = {
 
 
 export async function awardInitialGrant(
-    projectId: string,
-    grantData: { 
-      sanctionNumber: string; 
-      totalAmount: number; 
-      phases: { name: string; amount: number;}[];
-    },
-    pi: { uid: string; name: string; email?: string; campus?: string },
-    projectTitle: string
+  projectId: string,
+  grantData: {
+    sanctionNumber: string;
+    totalAmount: number;
+    phases: { name: string; amount: number; }[];
+  },
+  pi: { uid: string; name: string; email?: string; campus?: string },
+  projectTitle: string
 ): Promise<{ success: boolean; error?: string, updatedProject?: Project }> {
-    try {
-        if (!grantData.phases || grantData.phases.length === 0) {
-            return { success: false, error: "At least one grant phase must be defined." };
-        }
+  try {
+    if (!grantData.phases || grantData.phases.length === 0) {
+      return { success: false, error: "At least one grant phase must be defined." };
+    }
 
-        const projectRef = adminDb.collection('projects').doc(projectId);
+    const projectRef = adminDb.collection('projects').doc(projectId);
 
-        const newPhases: GrantPhase[] = grantData.phases.map((phase, index) => ({
-            id: new Date().toISOString() + `-${index}`,
-            name: phase.name,
-            amount: phase.amount,
-            status: index === 0 ? "Pending Disbursement" : "Pending",
-            transactions: [],
-        }));
+    const newPhases: GrantPhase[] = grantData.phases.map((phase, index) => ({
+      id: new Date().toISOString() + `-${index}`,
+      name: phase.name,
+      amount: phase.amount,
+      status: index === 0 ? "Pending Disbursement" : "Pending",
+      transactions: [],
+    }));
 
-        const newGrant: GrantDetails = {
-            totalAmount: grantData.totalAmount,
-            sanctionNumber: grantData.sanctionNumber,
-            status: "Awarded",
-            phases: newPhases,
-        };
+    const newGrant: GrantDetails = {
+      totalAmount: grantData.totalAmount,
+      sanctionNumber: grantData.sanctionNumber,
+      status: "Awarded",
+      phases: newPhases,
+    };
 
-        await projectRef.update({ grant: newGrant, status: 'In Progress' });
+    await projectRef.update({ grant: newGrant, status: 'In Progress', sanctionDate: new Date().toISOString() });
 
-        const notification = {
-            uid: pi.uid,
-            title: `Congratulations! Your project "${projectTitle}" has been awarded a grant.`,
-            projectId: projectId,
-            createdAt: new Date().toISOString(),
-            isRead: false,
-        };
-        await adminDb.collection('notifications').add(notification);
+    const notification = {
+      uid: pi.uid,
+      title: `Congratulations! Your project "${projectTitle}" has been awarded a grant.`,
+      projectId: projectId,
+      createdAt: new Date().toISOString(),
+      isRead: false,
+    };
+    await adminDb.collection('notifications').add(notification);
 
-        if (pi.email) {
-            const firstPhase = newPhases[0];
-            const emailHtml = `
+    if (pi.email) {
+      const firstPhase = newPhases[0];
+      const emailHtml = `
                 <div ${EMAIL_STYLES.background}>
                     ${EMAIL_STYLES.logo}
                     <h2 style="color: #ffffff;">Congratulations, ${pi.name}!</h2>
@@ -109,31 +96,31 @@ export async function awardInitialGrant(
                 </div>
             `;
 
-            let ccEmails = 'rdc@paruluniversity.ac.in';
-            if (pi.campus === 'Goa') {
-                ccEmails += ', rdc@goa.paruluniversity.ac.in';
-            }
+      let ccEmails = process.env.RDC_EMAIL;
+      if (pi.campus === 'Goa') {
+        ccEmails += ', rdc@goa.paruluniversity.ac.in';
+      }
 
-            await sendEmailUtility({
-                to: pi.email,
-                cc: ccEmails,
-                subject: `Grant Awarded for Your IMR Project: ${projectTitle}`,
-                html: emailHtml,
-                from: 'default'
-            });
-        }
-        
-        await logActivity('INFO', 'Initial grant awarded', { projectId, sanctionNumber: grantData.sanctionNumber, totalAmount: grantData.totalAmount, phases: grantData.phases.length });
-        
-        const updatedProjectSnap = await projectRef.get();
-        const updatedProject = { id: updatedProjectSnap.id, ...updatedProjectSnap.data() } as Project;
-
-        return { success: true, updatedProject };
-    } catch (error: any) {
-        console.error("Error awarding grant:", error);
-        await logActivity('ERROR', 'Failed to award initial grant', { projectId, error: error.message });
-        return { success: false, error: error.message || "Failed to award grant." };
+      await sendEmailUtility({
+        to: pi.email,
+        cc: ccEmails,
+        subject: `Grant Awarded for Your IMR Project: ${projectTitle}`,
+        html: emailHtml,
+        from: 'default'
+      });
     }
+
+    await logActivity('INFO', 'Initial grant awarded', { projectId, sanctionNumber: grantData.sanctionNumber, totalAmount: grantData.totalAmount, phases: grantData.phases.length });
+
+    const updatedProjectSnap = await projectRef.get();
+    const updatedProject = { id: updatedProjectSnap.id, ...updatedProjectSnap.data() } as Project;
+
+    return { success: true, updatedProject };
+  } catch (error: any) {
+    console.error("Error awarding grant:", error);
+    await logActivity('ERROR', 'Failed to award initial grant', { projectId, error: error.message });
+    return { success: false, error: error.message || "Failed to award grant." };
+  }
 }
 
 
@@ -153,10 +140,10 @@ export async function addGrantPhase(
     if (!project.grant) {
       return { success: false, error: "Project does not have grant details." }
     }
-    
+
     const nextPhaseNumber = (project.grant.phases?.length || 0) + 1;
     if (nextPhaseNumber > 5) {
-        return { success: false, error: "Maximum of 5 phases can be added." };
+      return { success: false, error: "Maximum of 5 phases can be added." };
     }
     const phaseName = `Phase ${nextPhaseNumber}`;
 
@@ -188,7 +175,7 @@ export async function addGrantPhase(
     await adminDb.collection("notifications").add(notification)
 
     if (project.pi_email) {
-        const emailHtml = `
+      const emailHtml = `
             <div ${EMAIL_STYLES.background}>
                 ${EMAIL_STYLES.logo}
                 <p style="color:#ffffff;">Dear ${project.pi},</p>
@@ -203,16 +190,17 @@ export async function addGrantPhase(
                 ${EMAIL_STYLES.footer}
             </div>
         `;
-        await sendEmailUtility({
-            to: project.pi_email,
-            subject: `New Grant Phase Sanctioned for: ${project.title}`,
-            html: emailHtml,
-            from: 'default'
-        });
+      await sendEmailUtility({
+        to: project.pi_email,
+        subject: `New Grant Phase Sanctioned for: ${project.title}`,
+        html: emailHtml,
+        from: 'default'
+      });
     }
 
-    const updatedProject = { ...project, grant: updatedGrant }
-    return { success: true, updatedProject }
+    const updatedProjectSnap = await projectRef.get();
+    const updatedProject = { id: updatedProjectSnap.id, ...updatedProjectSnap.data() } as Project;
+    return { success: true, updatedProject };
   } catch (error: any) {
     console.error("Error adding grant phase:", error)
     await logActivity("ERROR", "Failed to add grant phase", { projectId, error: error.message, stack: error.stack })
@@ -230,22 +218,20 @@ export async function addTransaction(
     isGstRegistered: boolean;
     gstNumber?: string;
     description?: string;
-    invoiceUrl: string;
-    invoiceFileName: string;
+    invoiceUrl?: string;
+    invoiceFileName?: string;
+    isDraft?: boolean;
   }
 ): Promise<{ success: boolean; error?: string; updatedProject?: Project }> {
-  console.log("SERVER ACTION: addTransaction called with projectId:", projectId);
   if (!projectId) {
-    console.error("SERVER ACTION ERROR: projectId is missing.");
     return { success: false, error: "Project ID is missing. Cannot add transaction." };
   }
-  
+
   try {
     const projectRef = adminDb.collection("projects").doc(projectId);
     const projectSnap = await projectRef.get();
 
     if (!projectSnap.exists) {
-      console.error("Project not found in Firestore for ID:", projectId);
       return { success: false, error: "Project not found." };
     }
 
@@ -259,6 +245,9 @@ export async function addTransaction(
       return { success: false, error: "Phase not found." };
     }
 
+    // Invoice is now pre-uploaded via /api/upload, so we just use the URL directly
+    const invoiceUrl = transactionData.invoiceUrl || null;
+
     const newTransaction: Transaction = {
       id: new Date().toISOString() + Math.random(),
       phaseId: phaseId,
@@ -268,7 +257,8 @@ export async function addTransaction(
       isGstRegistered: transactionData.isGstRegistered,
       gstNumber: transactionData.gstNumber,
       description: transactionData.description || "",
-      invoiceUrl: transactionData.invoiceUrl,
+      invoiceUrl: invoiceUrl,
+      isDraft: transactionData.isDraft ?? false,
     };
 
     const updatedPhases = project.grant.phases.map((phase, index) => {
@@ -283,10 +273,11 @@ export async function addTransaction(
 
     const updatedGrant = { ...project.grant, phases: updatedPhases };
     await projectRef.update({ grant: updatedGrant });
-    
-    await logActivity("INFO", "Grant transaction added", { projectId, phaseId, amount: newTransaction.amount });
 
-    const updatedProject = { ...project, grant: updatedGrant };
+    await logActivity("INFO", "Grant transaction added", { projectId, phaseId, amount: newTransaction.amount, isDraft: newTransaction.isDraft });
+
+    const updatedProjectSnap = await projectRef.get();
+    const updatedProject = { id: updatedProjectSnap.id, ...updatedProjectSnap.data() } as Project;
     return { success: true, updatedProject };
   } catch (error: any) {
     console.error("Error in addTransaction server action:", error);
@@ -300,165 +291,164 @@ export async function addTransaction(
   }
 }
 
-export async function updateTransaction(
-    projectId: string,
-    phaseId: string,
-    transactionId: string,
-    transactionData: {
-      dateOfTransaction: string;
-      amount: number;
-      vendorName: string;
-      isGstRegistered: boolean;
-      gstNumber?: string;
-      description?: string;
-      invoiceUrl?: string;
-      invoiceFileName?: string;
-    }
-  ): Promise<{ success: boolean; error?: string; updatedProject?: Project }> {
-    try {
-      const projectRef = adminDb.collection("projects").doc(projectId);
-      const projectSnap = await projectRef.get();
-  
-      if (!projectSnap.exists) {
-        return { success: false, error: "Project not found." };
-      }
-  
-      const project = projectSnap.data() as Project;
-      if (!project.grant?.phases) {
-        return { success: false, error: "Grant details or phases not found." };
-      }
-  
-      const phaseIndex = project.grant.phases.findIndex((p) => p.id === phaseId);
-      if (phaseIndex === -1) {
-        return { success: false, error: "Phase not found." };
-      }
-  
-      const transactionIndex = project.grant.phases[phaseIndex].transactions?.findIndex(
-        (t) => t.id === transactionId
-      );
-      if (transactionIndex === -1 || transactionIndex === undefined) {
-        return { success: false, error: "Transaction not found." };
-      }
-      
-      const existingTransaction = project.grant.phases[phaseIndex].transactions![transactionIndex];
-      let newInvoiceUrl = existingTransaction.invoiceUrl;
-
-      if (transactionData.invoiceUrl && transactionData.invoiceFileName) {
-        // A new file was uploaded, replace the old one
-        if (existingTransaction.invoiceUrl) {
-            try {
-                const oldUrl = new URL(existingTransaction.invoiceUrl);
-                const oldFilePath = decodeURIComponent(oldUrl.pathname.substring(oldUrl.pathname.indexOf('/o/') + 3));
-                await adminStorage.bucket().file(oldFilePath).delete();
-            } catch (e) {
-                console.warn(`Could not delete old invoice file during update: ${e}`);
-            }
-        }
-        
-        newInvoiceUrl = transactionData.invoiceUrl;
-      }
-  
-      const updatedTransaction: Transaction = {
-        ...existingTransaction,
-        dateOfTransaction: transactionData.dateOfTransaction,
-        amount: transactionData.amount,
-        vendorName: transactionData.vendorName,
-        isGstRegistered: transactionData.isGstRegistered,
-        gstNumber: transactionData.gstNumber,
-        description: transactionData.description || "",
-        invoiceUrl: newInvoiceUrl,
-      };
-      
-      const updatedPhases = [...project.grant.phases];
-      const updatedTransactions = [...(updatedPhases[phaseIndex].transactions || [])];
-      updatedTransactions[transactionIndex] = updatedTransaction;
-      updatedPhases[phaseIndex] = { ...updatedPhases[phaseIndex], transactions: updatedTransactions };
-  
-      const updatedGrant = { ...project.grant, phases: updatedPhases };
-      await projectRef.update({ grant: updatedGrant });
-  
-      await logActivity("INFO", "Grant transaction updated", { projectId, phaseId, transactionId });
-      const updatedProject = { ...project, grant: updatedGrant };
-      return { success: true, updatedProject };
-  
-    } catch (error: any) {
-      console.error("Error in updateTransaction server action:", error);
-      await logActivity("ERROR", "Failed to update grant transaction", { projectId, transactionId, error: error.message });
-      return { success: false, error: error.message || "Failed to update transaction." };
-    }
+export async function deleteTransaction(
+  projectId: string,
+  phaseId: string,
+  transactionId: string
+): Promise<{ success: boolean; error?: string; updatedProject?: Project }> {
+  if (!projectId) {
+    return { success: false, error: "Project ID is missing. Cannot delete transaction." };
   }
 
-export async function deleteTransaction(
-    projectId: string, 
-    phaseId: string, 
-    transactionId: string
-): Promise<{ success: boolean; error?: string; updatedProject?: Project }> {
-    console.log("SERVER ACTION: deleteTransaction called with projectId:", projectId);
-    if (!projectId) {
-        console.error("SERVER ACTION ERROR: projectId is missing.");
-        return { success: false, error: "Project ID is missing. Cannot delete transaction." };
+  try {
+    const projectRef = adminDb.collection('projects').doc(projectId);
+    const projectSnap = await projectRef.get();
+
+    if (!projectSnap.exists) {
+      return { success: false, error: "Project not found." };
     }
-    
-    try {
-        const projectRef = adminDb.collection('projects').doc(projectId);
-        const projectSnap = await projectRef.get();
 
-        if (!projectSnap.exists) {
-            return { success: false, error: "Project not found." };
+    const project = projectSnap.data() as Project;
+    if (!project.grant || !project.grant.phases) {
+      return { success: false, error: "Grant details not found." };
+    }
+
+    let transactionToDelete: Transaction | undefined;
+
+    const updatedPhases = project.grant.phases.map(phase => {
+      if (phase.id === phaseId) {
+        if (phase.status === 'Utilization Submitted' || phase.status === 'Completed') {
+          throw new Error("Cannot delete transaction from a phase with submitted utilization.");
         }
-
-        const project = projectSnap.data() as Project;
-        if (!project.grant || !project.grant.phases) {
-            return { success: false, error: "Grant details not found." };
-        }
-
-        let transactionToDelete: Transaction | undefined;
-        
-        const updatedPhases = project.grant.phases.map(phase => {
-            if (phase.id === phaseId) {
-                const newTransactions = phase.transactions?.filter(t => {
-                    if (t.id === transactionId) {
-                        transactionToDelete = t;
-                        return false;
-                    }
-                    return true;
-                });
-                return { ...phase, transactions: newTransactions };
-            }
-            return phase;
+        const newTransactions = phase.transactions?.filter(t => {
+          if (t.id === transactionId) {
+            transactionToDelete = t;
+            return false;
+          }
+          return true;
         });
+        return { ...phase, transactions: newTransactions };
+      }
+      return phase;
+    });
 
-        if (!transactionToDelete) {
-            return { success: false, error: "Transaction not found." };
-        }
-
-        const updatedGrant = { ...project.grant, phases: updatedPhases };
-        await projectRef.update({ grant: updatedGrant });
-        
-        // Delete invoice from storage if it exists
-        if (transactionToDelete.invoiceUrl) {
-            try {
-                const bucket = adminStorage.bucket();
-                const url = new URL(transactionToDelete.invoiceUrl);
-                const filePath = decodeURIComponent(url.pathname.substring(url.pathname.indexOf('/o/') + 3));
-                await bucket.file(filePath).delete();
-            } catch (storageError: any) {
-                // Log the error but don't fail the entire operation if the file is already gone
-                console.warn(`Could not delete invoice from storage: ${storageError.message}`);
-                await logActivity('WARNING', 'Failed to delete invoice from storage during transaction deletion', { projectId, transactionId, filePath: transactionToDelete.invoiceUrl, error: storageError.message });
-            }
-        }
-
-        await logActivity('INFO', 'Grant transaction deleted', { projectId, phaseId, transactionId });
-
-        const updatedProject = { ...project, grant: updatedGrant };
-        return { success: true, updatedProject };
-        
-    } catch (error: any) {
-        console.error("Error in deleteTransaction server action:", error);
-        await logActivity('ERROR', 'Failed to delete grant transaction', { projectId, transactionId, error: error.message });
-        return { success: false, error: error.message || "Failed to delete transaction." };
+    if (!transactionToDelete) {
+      return { success: false, error: "Transaction not found." };
     }
+
+    const updatedGrant = { ...project.grant, phases: updatedPhases };
+    await projectRef.update({ grant: updatedGrant });
+
+    if (transactionToDelete.invoiceUrl) {
+      try {
+        const bucket = adminStorage.bucket();
+        const url = new URL(transactionToDelete.invoiceUrl);
+        const filePath = decodeURIComponent(url.pathname.substring(url.pathname.indexOf('/o/') + 3));
+        await bucket.file(filePath).delete();
+      } catch (storageError: any) {
+        if (storageError.code !== 404) {
+          console.warn(`Could not delete invoice from storage, but continuing: ${storageError.message}`);
+          await logActivity('WARNING', 'Failed to delete invoice from storage during transaction deletion', { projectId, transactionId, filePath: transactionToDelete.invoiceUrl, error: storageError.message });
+        }
+      }
+    }
+
+    await logActivity('INFO', 'Grant transaction deleted', { projectId, phaseId, transactionId });
+
+    const updatedProjectSnap = await projectRef.get();
+    const updatedProject = { id: updatedProjectSnap.id, ...updatedProjectSnap.data() } as Project;
+    return { success: true, updatedProject };
+
+  } catch (error: any) {
+    console.error("Error in deleteTransaction server action:", error);
+    await logActivity('ERROR', 'Failed to delete grant transaction', { projectId, transactionId, error: error.message });
+    return { success: false, error: error.message || "Failed to delete transaction." };
+  }
+}
+
+export async function updateTransaction(
+  projectId: string,
+  phaseId: string,
+  transactionId: string,
+  transactionData: {
+    dateOfTransaction: string;
+    amount: number;
+    vendorName: string;
+    isGstRegistered: boolean;
+    gstNumber?: string;
+    description?: string;
+    invoiceUrl?: string; // Pre-uploaded via /api/upload
+    invoiceFileName?: string;
+    isDraft?: boolean;
+  }
+): Promise<{ success: boolean; error?: string; updatedProject?: Project }> {
+  if (!projectId) {
+    return { success: false, error: "Project ID is missing. Cannot update transaction." };
+  }
+
+  try {
+    const projectRef = adminDb.collection("projects").doc(projectId);
+    const projectSnap = await projectRef.get();
+
+    if (!projectSnap.exists) {
+      return { success: false, error: "Project not found." };
+    }
+
+    const project = projectSnap.data() as Project;
+    if (!project.grant || !project.grant.phases) {
+      return { success: false, error: "Grant details not found." };
+    }
+
+    const phaseIndex = project.grant.phases.findIndex((p) => p.id === phaseId);
+    if (phaseIndex === -1) {
+      return { success: false, error: "Phase not found." };
+    }
+
+    const phase = project.grant.phases[phaseIndex];
+    if (phase.status === 'Utilization Submitted' || phase.status === 'Completed') {
+      throw new Error("Cannot edit transaction in a phase with submitted utilization.");
+    }
+
+    const transactionIndex = phase.transactions?.findIndex((t) => t.id === transactionId);
+    if (transactionIndex === -1 || !phase.transactions) {
+      return { success: false, error: "Transaction not found." };
+    }
+
+    const oldTransaction = phase.transactions[transactionIndex];
+
+    // Use the new invoice URL if provided, otherwise keep the old one
+    const newInvoiceUrl = transactionData.invoiceUrl ?? oldTransaction.invoiceUrl ?? null;
+
+    const updatedTransaction: Transaction = {
+      ...oldTransaction,
+      dateOfTransaction: transactionData.dateOfTransaction,
+      amount: transactionData.amount,
+      vendorName: transactionData.vendorName,
+      isGstRegistered: transactionData.isGstRegistered,
+      gstNumber: transactionData.gstNumber,
+      description: transactionData.description || "",
+      invoiceUrl: newInvoiceUrl,
+      isDraft: transactionData.isDraft ?? oldTransaction.isDraft ?? false,
+    };
+
+    const updatedTransactions = [...phase.transactions];
+    updatedTransactions[transactionIndex] = updatedTransaction;
+
+    const updatedPhases = [...project.grant.phases];
+    updatedPhases[phaseIndex] = { ...phase, transactions: updatedTransactions };
+
+    await projectRef.update({ 'grant.phases': updatedPhases });
+
+    await logActivity("INFO", "Grant transaction updated", { projectId, phaseId, transactionId });
+
+    const updatedProjectSnap = await projectRef.get();
+    return { success: true, updatedProject: { id: updatedProjectSnap.id, ...updatedProjectSnap.data() } as Project };
+
+  } catch (error: any) {
+    console.error("Error in updateTransaction server action:", error);
+    await logActivity("ERROR", "Failed to update grant transaction", { projectId, transactionId, error: error.message });
+    return { success: false, error: error.message || "Failed to update transaction." };
+  }
 }
 
 export async function updatePhaseStatus(
@@ -499,7 +489,14 @@ export async function updatePhaseStatus(
     })
 
     const updatedGrant = { ...project.grant, phases: updatedPhases }
-    await projectRef.update({ grant: updatedGrant })
+
+    // Set seedMoneyReceivedDate when first phase is disbursed
+    const updateData: any = { grant: updatedGrant };
+    if (newStatus === "Disbursed" && phaseIndex === 0 && !project.seedMoneyReceivedDate) {
+      updateData.seedMoneyReceivedDate = new Date().toISOString();
+    }
+
+    await projectRef.update(updateData);
     await logActivity("INFO", "Grant phase status updated", { projectId, phaseId, newStatus })
 
     // Add notification for grant phase status update for the PI
@@ -533,7 +530,7 @@ export async function updatePhaseStatus(
           isRead: false,
         })
       });
-      
+
       await batch.commit();
 
       if (settings.utilizationNotificationEmail) {
@@ -549,17 +546,18 @@ export async function updatePhaseStatus(
         `;
 
         await sendEmailUtility({
-            to: settings.utilizationNotificationEmail,
-            subject: `Action Required: Next Grant Phase Request for Project: ${project.title}`,
-            html: emailHtml,
-            from: 'default'
+          to: settings.utilizationNotificationEmail,
+          subject: `Action Required: Next Grant Phase Request for Project: ${project.title}`,
+          html: emailHtml,
+          from: 'default'
         });
         await logActivity("INFO", "Admins and designated contact notified for next phase disbursement", { projectId, notifiedEmail: settings.utilizationNotificationEmail });
       }
     }
 
-    const updatedProject = { ...project, grant: updatedGrant }
-    return { success: true, updatedProject }
+    const updatedProjectSnap = await projectRef.get();
+    const updatedProject = { id: updatedProjectSnap.id, ...updatedProjectSnap.data() } as Project;
+    return { success: true, updatedProject };
   } catch (error: any) {
     console.error("Error updating phase status:", error)
     await logActivity("ERROR", "Failed to update grant phase status", {

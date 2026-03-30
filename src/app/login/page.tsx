@@ -45,16 +45,16 @@ const loginSchema = z.object({
 type LoginFormValues = z.infer<typeof loginSchema>
 
 async function logLogin(uid: string, email: string) {
-    try {
-        await addDoc(collection(db, 'logs'), {
-            timestamp: new Date().toISOString(),
-            level: 'INFO',
-            message: 'User logged in',
-            context: { uid, email }
-        });
-    } catch (error) {
-        console.error("Failed to log user login:", error);
-    }
+  try {
+    await addDoc(collection(db, 'logs'), {
+      timestamp: new Date().toISOString(),
+      level: 'INFO',
+      message: 'User logged in',
+      context: { uid, email }
+    });
+  } catch (error) {
+    console.error("Failed to log user login:", error);
+  }
 }
 
 export default function LoginPage() {
@@ -65,7 +65,7 @@ export default function LoginPage() {
   const [isOtpOpen, setIsOtpOpen] = useState(false)
   const [pendingUser, setPendingUser] = useState<LoginFormValues | null>(null);
   const [loading, setLoading] = useState(true);
-  
+
   const form = useForm<LoginFormValues>({
     resolver: zodResolver(loginSchema),
     defaultValues: {
@@ -150,20 +150,20 @@ export default function LoginPage() {
     if (!user.allowedModules || user.allowedModules.length === 0) {
       user.allowedModules = getDefaultModulesForRole(user.role, user.designation)
     }
-    
+
     const systemSettings = await getSystemSettings();
     const approverSetting = systemSettings.incentiveApprovers?.find(a => a.email.toLowerCase() === user.email.toLowerCase());
-    
+
     if (approverSetting) {
-        const approverModule = `incentive-approver-${approverSetting.stage}`;
-        if (!user.allowedModules?.includes(approverModule)) {
-            user.allowedModules = [...(user.allowedModules || []), approverModule, 'incentive-approvals'];
-        }
+      const approverModule = `incentive-approver-${approverSetting.stage}`;
+      if (!user.allowedModules?.includes(approverModule)) {
+        user.allowedModules = [...(user.allowedModules || []), approverModule, 'incentive-approvals'];
+      }
     }
 
 
     await setDoc(userDocRef, user, { merge: true })
-    
+
     await logLogin(user.uid, user.email);
 
     try {
@@ -213,23 +213,23 @@ export default function LoginPage() {
     if (!pendingUser) return;
     setIsSubmitting(true);
     try {
-        const otpResult = await verifyLoginOtp(pendingUser.email, otp);
-        if (!otpResult.success) {
-            throw new Error(otpResult.error || "Invalid OTP");
-        }
-        
-        // Now that OTP is verified, sign the user in
-        const userCredential = await signInWithEmailAndPassword(auth, pendingUser.email, pendingUser.password);
-        setIsOtpOpen(false);
-        await processSignIn(userCredential.user);
+      const otpResult = await verifyLoginOtp(pendingUser.email, otp);
+      if (!otpResult.success) {
+        throw new Error(otpResult.error || "Invalid OTP");
+      }
+
+      // Now that OTP is verified, sign the user in
+      const userCredential = await signInWithEmailAndPassword(auth, pendingUser.email, pendingUser.password);
+      setIsOtpOpen(false);
+      await processSignIn(userCredential.user);
     } catch (error: any) {
-        toast({
-            variant: "destructive",
-            title: "Verification Failed",
-            description: error.message || "An error occurred.",
-        });
+      toast({
+        variant: "destructive",
+        title: "Verification Failed",
+        description: error.message || "An error occurred.",
+      });
     } finally {
-        setIsSubmitting(false);
+      setIsSubmitting(false);
     }
   };
 
@@ -237,7 +237,7 @@ export default function LoginPage() {
     setIsSubmitting(true)
     try {
       const settings = await getSystemSettings()
-      
+
       if (settings.is2faEnabled && data.email !== "vicepresident_86@paruluniversity.ac.in") {
         setPendingUser(data);
         const otpResult = await sendLoginOtp(data.email);
@@ -313,12 +313,12 @@ export default function LoginPage() {
       setIsSubmitting(false)
     }
   }
-  
+
   if (loading) {
     return (
-        <div className="flex flex-col min-h-screen items-center justify-center">
-            <Loader2 className="h-12 w-12 animate-spin text-primary" />
-        </div>
+      <div className="flex flex-col min-h-screen items-center justify-center">
+        <Loader2 className="h-12 w-12 animate-spin text-primary" />
+      </div>
     )
   }
 

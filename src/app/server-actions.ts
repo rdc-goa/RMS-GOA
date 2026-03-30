@@ -111,7 +111,7 @@ export async function deleteImrProject(
         from: "default",
       })
     }
-    
+
     await logActivity("INFO", "IMR project deleted", { projectId, title: project.title, deletedBy, reason });
     return { success: true }
   } catch (error: any) {
@@ -127,34 +127,34 @@ export async function deleteImrProject(
 }
 
 export async function checkPatentUniqueness(title: string, applicationNumber: string, currentClaimId?: string): Promise<{ isUnique: boolean; message?: string }> {
-    try {
-        const claimsRef = adminDb.collection('incentiveClaims');
-        
-        const titleQuery = claimsRef.where('patentTitle', '==', title);
-        const appNumberQuery = claimsRef.where('patentApplicationNumber', '==', applicationNumber);
+  try {
+    const claimsRef = adminDb.collection('incentiveClaims');
 
-        const [titleSnapshot, appNumberSnapshot] = await Promise.all([
-            titleQuery.get(),
-            appNumberQuery.get()
-        ]);
-        
-        const conflictingTitle = titleSnapshot.docs.find(doc => doc.id !== currentClaimId);
-        if (conflictingTitle) {
-            return { isUnique: false, message: `A claim with the title "${title}" already exists.` };
-        }
+    const titleQuery = claimsRef.where('patentTitle', '==', title);
+    const appNumberQuery = claimsRef.where('patentApplicationNumber', '==', applicationNumber);
 
-        const conflictingAppNumber = appNumberSnapshot.docs.find(doc => doc.id !== currentClaimId);
-        if (conflictingAppNumber) {
-            return { isUnique: false, message: `A claim with the application number "${applicationNumber}" already exists.` };
-        }
+    const [titleSnapshot, appNumberSnapshot] = await Promise.all([
+      titleQuery.get(),
+      appNumberQuery.get()
+    ]);
 
-        return { isUnique: true };
-    } catch (error: any) {
-        console.error("Error checking patent uniqueness:", error);
-        await logActivity('ERROR', 'Failed to check patent uniqueness', { title, applicationNumber, error: error.message });
-        // Fail open to avoid blocking users due to server errors, but log it.
-        return { isUnique: true }; 
+    const conflictingTitle = titleSnapshot.docs.find(doc => doc.id !== currentClaimId);
+    if (conflictingTitle) {
+      return { isUnique: false, message: `A claim with the title "${title}" already exists.` };
     }
+
+    const conflictingAppNumber = appNumberSnapshot.docs.find(doc => doc.id !== currentClaimId);
+    if (conflictingAppNumber) {
+      return { isUnique: false, message: `A claim with the application number "${applicationNumber}" already exists.` };
+    }
+
+    return { isUnique: true };
+  } catch (error: any) {
+    console.error("Error checking patent uniqueness:", error);
+    await logActivity('ERROR', 'Failed to check patent uniqueness', { title, applicationNumber, error: error.message });
+    // Fail open to avoid blocking users due to server errors, but log it.
+    return { isUnique: true };
+  }
 }
 
 export async function bulkGrantModuleAccess(
@@ -269,7 +269,7 @@ const EMAIL_STYLES = {
     border-radius:8px;
   "
 `,
-  logo: '<div style="text-align:center; margin-bottom:20px;"><img src="https://lhdlkrfbkon55i6u.public.blob.vercel-storage.com/Pu%20Goa%20White.png" alt="RDC Logo" style="max-width:300px; height:auto;" /></div>',
+  logo: '<div style="text-align:center; margin-bottom:20px;"><img src="https://lhdlkrfbkon55i6u.public.blob.vercel-storage.com/Pu%20Goa%20White.png" alt="RDC Logo" style="max-width:250px; height:auto;" /></div>',
   footer: ` 
     <p style="color:#b0bec5; margin-top: 30px;">Best Regards,</p>
     <p style="color:#b0bec5;">Research & Development Cell Team,</p>
@@ -293,11 +293,11 @@ export async function getSystemSettings(): Promise<SystemSettings> {
       return settingsSnap.data() as SystemSettings
     }
     // Default settings if none are found
-    return { is2faEnabled: false, authMethods: { email: true, google: true}, allowedDomains: [], croAssignments: [] }
+    return { is2faEnabled: false, authMethods: { email: true, google: true }, allowedDomains: [], croAssignments: [] }
   } catch (error) {
     console.error("Error fetching system settings:", error)
     // Return default settings on error to ensure app functionality
-    return { is2faEnabled: false, authMethods: { email: true, google: true}, allowedDomains: [], croAssignments: [] }
+    return { is2faEnabled: false, authMethods: { email: true, google: true }, allowedDomains: [], croAssignments: [] }
   }
 }
 
@@ -344,7 +344,7 @@ export async function resizeImage(file: File, maxWidth = 1024, maxHeight = 1024,
           return reject(new Error('Could not get canvas context'));
         }
         ctx.drawImage(img, 0, 0, width, height);
-        
+
         canvas.toBlob(blob => {
           if (!blob) {
             return reject(new Error('Canvas to Blob conversion failed'));
@@ -378,7 +378,7 @@ export async function uploadFileToServer(
     const mimeType = match[1];
     const base64Data = match[2];
     if (!mimeType || !base64Data) throw new Error("Could not extract file data from data URL.");
-    
+
     const buffer = Buffer.from(base64Data, "base64");
 
     await file.save(buffer, { metadata: { contentType: mimeType } });
@@ -394,7 +394,7 @@ export async function uploadFileToServer(
       const match = fileDataUrl.match(/^data:(.+);base64,(.+)$/);
       if (!match) throw new Error("Invalid data URL for Vercel fallback.");
       const buffer = Buffer.from(match[2], 'base64');
-      
+
       const blob = await put(path, buffer, {
         access: 'public',
         contentType: match[1],
@@ -494,10 +494,10 @@ export async function notifySuperAdminsOnEvaluation(projectId: string, projectNa
 export async function notifyAdminsOnCompletionRequest(projectId: string, projectTitle: string, piName: string) {
   try {
     const settings = await getSystemSettings();
-    
+
     // Send email notification only to the designated email address, if it exists
     if (settings.utilizationNotificationEmail) {
-        const emailHtml = `
+      const emailHtml = `
             <div ${EMAIL_STYLES.background}>
                 ${EMAIL_STYLES.logo}
                 <p style="color:#ffffff;">Dear Administrator,</p>
@@ -507,15 +507,15 @@ export async function notifyAdminsOnCompletionRequest(projectId: string, project
                 ${EMAIL_STYLES.footer}
             </div>
         `;
-        await sendEmailUtility({
-            to: settings.utilizationNotificationEmail,
-            subject: `Action Required: Next Grant Phase Request for Project: ${projectTitle}`,
-            html: emailHtml,
-            from: 'default'
-        });
-        await logActivity("INFO", "Utilization report notification sent to designated email", { projectId, projectTitle, notifiedEmail: settings.utilizationNotificationEmail });
+      await sendEmailUtility({
+        to: settings.utilizationNotificationEmail,
+        subject: `Action Required: Next Grant Phase Request for Project: ${projectTitle}`,
+        html: emailHtml,
+        from: 'default'
+      });
+      await logActivity("INFO", "Utilization report notification sent to designated email", { projectId, projectTitle, notifiedEmail: settings.utilizationNotificationEmail });
     } else {
-        await logActivity("WARNING", "Utilization report submitted, but no notification email is configured in system settings.", { projectId, projectTitle });
+      await logActivity("WARNING", "Utilization report submitted, but no notification email is configured in system settings.", { projectId, projectTitle });
     }
 
     // Send in-app notifications to all admins and super-admins
@@ -1194,16 +1194,16 @@ export async function markImrAttendance(
 
     // If triggered from a single project detail page, find all other projects in the same meeting
     if (meetingIdentifier) {
-        const q = projectsRef
-            .where('meetingDetails.date', '==', meetingIdentifier.date)
-            .where('meetingDetails.time', '==', meetingIdentifier.time)
-            .where('meetingDetails.venue', '==', meetingIdentifier.venue);
-        
-        const meetingSnapshot = await q.get();
-        allMeetingProjects = meetingSnapshot.docs.map(doc => ({
-            projectId: doc.id,
-            piUid: doc.data().pi_uid,
-        }));
+      const q = projectsRef
+        .where('meetingDetails.date', '==', meetingIdentifier.date)
+        .where('meetingDetails.time', '==', meetingIdentifier.time)
+        .where('meetingDetails.venue', '==', meetingIdentifier.venue);
+
+      const meetingSnapshot = await q.get();
+      allMeetingProjects = meetingSnapshot.docs.map(doc => ({
+        projectId: doc.id,
+        piUid: doc.data().pi_uid,
+      }));
     }
 
     const presentProjects = allMeetingProjects.filter(p => !absentPiUids.includes(p.piUid));
@@ -1230,10 +1230,10 @@ export async function markImrAttendance(
     }
 
     await batch.commit();
-    await logActivity('INFO', 'IMR meeting attendance marked', { 
+    await logActivity('INFO', 'IMR meeting attendance marked', {
       totalProjects: allMeetingProjects.length,
-      absentPiUids, 
-      absentEvaluatorUids 
+      absentPiUids,
+      absentEvaluatorUids
     });
     return { success: true };
   } catch (error: any) {
@@ -1248,17 +1248,17 @@ export async function markImrAttendance(
 
 // Re-export addTransaction so it's available to client components through the main actions file
 export async function addTransaction(
-    ...args: Parameters<typeof import('./grant-actions').addTransaction>
+  ...args: Parameters<typeof import('./grant-actions').addTransaction>
 ): Promise<ReturnType<typeof import('./grant-actions').addTransaction>> {
-    const { addTransaction: originalAddTransaction } = await import('./grant-actions');
-    return originalAddTransaction(...args);
+  const { addTransaction: originalAddTransaction } = await import('./grant-actions');
+  return originalAddTransaction(...args);
 }
 
 export async function deleteTransaction(
-    ...args: Parameters<typeof import('./grant-actions').deleteTransaction>
+  ...args: Parameters<typeof import('./grant-actions').deleteTransaction>
 ): Promise<ReturnType<typeof import('./grant-actions').deleteTransaction>> {
-    const { deleteTransaction: originalDeleteTransaction } = await import('./grant-actions');
-    return originalDeleteTransaction(...args);
+  const { deleteTransaction: originalDeleteTransaction } = await import('./grant-actions');
+  return originalDeleteTransaction(...args);
 }
 
 export async function notifySuperAdminsOnNewUser(userName: string, role: string) {
@@ -1296,77 +1296,77 @@ export async function notifySuperAdminsOnNewUser(userName: string, role: string)
 }
 
 export async function updateEmrInterestDetails(
-    interestId: string,
-    updates: Partial<EmrInterest>
+  interestId: string,
+  updates: Partial<EmrInterest>
 ): Promise<{ success: boolean; error?: string }> {
-    try {
-        const interestRef = adminDb.collection('emrInterests').doc(interestId);
-        await interestRef.update(updates);
-        await logActivity('INFO', 'EMR interest details updated', { interestId, updates });
-        return { success: true };
-    } catch (error: any) {
-        console.error("Error updating EMR interest details:", error);
-        await logActivity('ERROR', 'Failed to update EMR interest details', {
-            interestId,
-            error: error.message,
-            stack: error.stack
-        });
-        return { success: false, error: 'Failed to update details.' };
-    }
+  try {
+    const interestRef = adminDb.collection('emrInterests').doc(interestId);
+    await interestRef.update(updates);
+    await logActivity('INFO', 'EMR interest details updated', { interestId, updates });
+    return { success: true };
+  } catch (error: any) {
+    console.error("Error updating EMR interest details:", error);
+    await logActivity('ERROR', 'Failed to update EMR interest details', {
+      interestId,
+      error: error.message,
+      stack: error.stack
+    });
+    return { success: false, error: 'Failed to update details.' };
+  }
 }
 
 export async function linkPapersToNewUser(uid: string, email: string): Promise<{ success: boolean; count: number; error?: string }> {
-    try {
-        if (!uid || !email) {
-            return { success: false, count: 0, error: 'User UID and Email are required.' };
-        }
-        
-        const lowercasedEmail = email.toLowerCase();
-        const papersRef = adminDb.collection('papers');
-        const q = papersRef.where('authorEmails', 'array-contains', lowercasedEmail);
-        const snapshot = await q.get();
-
-        if (snapshot.empty) {
-            return { success: true, count: 0 };
-        }
-
-        const batch = adminDb.batch();
-        let updatedCount = 0;
-
-        snapshot.forEach(doc => {
-            const paper = doc.data() as ResearchPaper;
-            let needsUpdate = false;
-
-            const updatedAuthors = paper.authors.map(author => {
-                if (author.email.toLowerCase() === lowercasedEmail && !author.uid) {
-                    needsUpdate = true;
-                    return { ...author, uid: uid };
-                }
-                return author;
-            });
-            
-            if (needsUpdate) {
-                const updatedAuthorUids = [...new Set([...paper.authorUids, uid])];
-                batch.update(doc.ref, { 
-                    authors: updatedAuthors,
-                    authorUids: updatedAuthorUids,
-                });
-                updatedCount++;
-            }
-        });
-        
-        if (updatedCount > 0) {
-            await batch.commit();
-            await logActivity('INFO', 'Linked existing papers to new user', { uid, email, count: updatedCount });
-        }
-
-        return { success: true, count: updatedCount };
-
-    } catch (error: any) {
-        console.error("Error linking papers to new user:", error);
-        await logActivity('ERROR', 'Failed to link papers to new user', { uid, email, error: error.message });
-        return { success: false, count: 0, error: 'Failed to link papers.' };
+  try {
+    if (!uid || !email) {
+      return { success: false, count: 0, error: 'User UID and Email are required.' };
     }
+
+    const lowercasedEmail = email.toLowerCase();
+    const papersRef = adminDb.collection('papers');
+    const q = papersRef.where('authorEmails', 'array-contains', lowercasedEmail);
+    const snapshot = await q.get();
+
+    if (snapshot.empty) {
+      return { success: true, count: 0 };
+    }
+
+    const batch = adminDb.batch();
+    let updatedCount = 0;
+
+    snapshot.forEach(doc => {
+      const paper = doc.data() as ResearchPaper;
+      let needsUpdate = false;
+
+      const updatedAuthors = paper.authors.map(author => {
+        if (author.email.toLowerCase() === lowercasedEmail && !author.uid) {
+          needsUpdate = true;
+          return { ...author, uid: uid };
+        }
+        return author;
+      });
+
+      if (needsUpdate) {
+        const updatedAuthorUids = [...new Set([...paper.authorUids, uid])];
+        batch.update(doc.ref, {
+          authors: updatedAuthors,
+          authorUids: updatedAuthorUids,
+        });
+        updatedCount++;
+      }
+    });
+
+    if (updatedCount > 0) {
+      await batch.commit();
+      await logActivity('INFO', 'Linked existing papers to new user', { uid, email, count: updatedCount });
+    }
+
+    return { success: true, count: updatedCount };
+
+  } catch (error: any) {
+    console.error("Error linking papers to new user:", error);
+    await logActivity('ERROR', 'Failed to link papers to new user', { uid, email, error: error.message });
+    return { success: false, count: 0, error: 'Failed to link papers.' };
+  }
 }
 
 export async function sendLoginOtp(email: string): Promise<{ success: boolean; error?: string }> {
@@ -1375,14 +1375,14 @@ export async function sendLoginOtp(email: string): Promise<{ success: boolean; e
     if (!domainCheck.allowed) {
       return { success: false, error: "This email domain is not permitted to log in." };
     }
-    
+
     // Generate a 6-digit OTP
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
     const expiresAt = Date.now() + 10 * 60 * 1000; // 10 minutes from now
-    
+
     const otpRef = adminDb.collection('loginOtps').doc(email.toLowerCase());
     await otpRef.set({ email: email.toLowerCase(), otp, expiresAt });
-    
+
     const emailHtml = `
       <div ${EMAIL_STYLES.background}>
         ${EMAIL_STYLES.logo}
@@ -1422,7 +1422,7 @@ export async function verifyLoginOtp(email: string, otp: string): Promise<{ succ
     }
 
     const otpData = otpSnap.data() as LoginOtp;
-    
+
     if (otpData.expiresAt < Date.now()) {
       await otpRef.delete();
       return { success: false, error: 'OTP has expired. Please try again.' };
@@ -1431,10 +1431,10 @@ export async function verifyLoginOtp(email: string, otp: string): Promise<{ succ
     if (otpData.otp !== otp) {
       return { success: false, error: 'Invalid OTP.' };
     }
-    
+
     // OTP is valid, delete it so it can't be reused
     await otpRef.delete();
-    
+
     return { success: true };
   } catch (error: any) {
     console.error('Error verifying OTP:', error);
@@ -1470,9 +1470,9 @@ export async function saveProjectSubmission(
 }
 
 export async function getEvaluationPrompts(project: { title: string; abstract: string }): Promise<{ success: boolean; prompts: { guidance: string }; error?: string }> {
-    // This function can be replaced with a call to a GenAI model in the future.
-    // For now, it returns a static, detailed prompt.
-    const staticGuidance = `
+  // This function can be replaced with a call to a GenAI model in the future.
+  // For now, it returns a static, detailed prompt.
+  const staticGuidance = `
         Based on the project's title and abstract, please evaluate the following aspects:
         1.  **Relevance & Significance:** How important is the research problem? Does it address a current gap in knowledge or a societal need?
         2.  **Methodology:** Is the proposed research design and methodology sound? Are the methods appropriate for the research questions?
@@ -1480,7 +1480,7 @@ export async function getEvaluationPrompts(project: { title: string; abstract: s
         4.  **Innovation:** Does the project propose a novel approach or idea? What is the potential for generating new knowledge or intellectual property?
         5.  **Outcomes & Impact:** Are the expected outcomes clearly defined? What is the potential impact of this research on the field and beyond?
     `;
-    return { success: true, prompts: { guidance: staticGuidance } };
+  return { success: true, prompts: { guidance: staticGuidance } };
 }
 
 export async function updateProjectStatus(
@@ -1490,7 +1490,7 @@ export async function updateProjectStatus(
 ): Promise<{ success: boolean; error?: string }> {
   try {
     const projectRef = adminDb.collection("projects").doc(projectId)
-    const updateData: { status: string; [key: string]: any } = { status: newStatus }
+    const updateData: { status: string;[key: string]: any } = { status: newStatus }
 
     if (comments) {
       if (newStatus === "Revision Needed") {
@@ -1595,122 +1595,122 @@ export async function updateIncentiveClaimStatus(
 
 export async function bulkUploadProjects(
   projects: any[]
-): Promise<{ 
-    success: boolean; 
-    data: {
-        successfulCount: number;
-        failures: { projectTitle: string; piName: string; error: string }[];
-    };
-    error?: string; 
+): Promise<{
+  success: boolean;
+  data: {
+    successfulCount: number;
+    failures: { projectTitle: string; piName: string; error: string }[];
+  };
+  error?: string;
 }> {
   let successfulCount = 0;
   const failures: { projectTitle: string; piName: string; error: string }[] = [];
   const projectsRef = adminDb.collection('projects');
-  
+
   for (const p of projects) {
-      try {
-          const newProject: Partial<Project> = {
-              title: p.project_title,
-              pi: p.Name_of_staff,
-              pi_email: p.pi_email.toLowerCase(),
-              status: p.status,
-              submissionDate: p.sanction_date,
-              isBulkUploaded: true,
-              faculty: p.Faculty,
-              institute: p.Institute,
-              departmentName: p.Department,
-              grant: {
-                  totalAmount: Number(p.grant_amount) || 0,
-                  sanctionNumber: p.sanction_number,
-                  status: 'Completed',
-                  phases: []
-              }
-          };
-          await projectsRef.add(newProject);
-          successfulCount++;
-      } catch (error: any) {
-          failures.push({ projectTitle: p.project_title, piName: p.Name_of_staff, error: error.message });
-      }
+    try {
+      const newProject: Partial<Project> = {
+        title: p.project_title,
+        pi: p.Name_of_staff,
+        pi_email: p.pi_email.toLowerCase(),
+        status: p.status,
+        submissionDate: p.sanction_date,
+        isBulkUploaded: true,
+        faculty: p.Faculty,
+        institute: p.Institute,
+        departmentName: p.Department,
+        grant: {
+          totalAmount: Number(p.grant_amount) || 0,
+          sanctionNumber: p.sanction_number,
+          status: 'Completed',
+          phases: []
+        }
+      };
+      await projectsRef.add(newProject);
+      successfulCount++;
+    } catch (error: any) {
+      failures.push({ projectTitle: p.project_title, piName: p.Name_of_staff, error: error.message });
+    }
   }
 
   await logActivity('INFO', 'Bulk IMR project upload completed', { successfulCount, failureCount: failures.length });
   if (failures.length > 0) {
-      await logActivity('WARNING', 'Some IMR projects failed during bulk upload', { failures });
+    await logActivity('WARNING', 'Some IMR projects failed during bulk upload', { failures });
   }
 
   return { success: true, data: { successfulCount, failures } };
 }
 
 export async function deleteBulkProject(projectId: string): Promise<{ success: boolean; error?: string }> {
-    try {
-        const projectRef = adminDb.collection('projects').doc(projectId);
-        const projectSnap = await projectRef.get();
+  try {
+    const projectRef = adminDb.collection('projects').doc(projectId);
+    const projectSnap = await projectRef.get();
 
-        if (!projectSnap.exists) {
-            return { success: false, error: 'Project not found.' };
-        }
-
-        const project = projectSnap.data() as Project;
-        if (!project.isBulkUploaded) {
-            return { success: false, error: 'This action is only for bulk-uploaded projects.' };
-        }
-
-        await projectRef.delete();
-        await logActivity('INFO', 'Bulk-uploaded project deleted', { projectId, title: project.title });
-        return { success: true };
-    } catch (error: any) {
-        console.error('Error deleting bulk project:', error);
-        await logActivity('ERROR', 'Failed to delete bulk project', { projectId, error: error.message });
-        return { success: false, error: 'Could not delete the project.' };
+    if (!projectSnap.exists) {
+      return { success: false, error: 'Project not found.' };
     }
+
+    const project = projectSnap.data() as Project;
+    if (!project.isBulkUploaded) {
+      return { success: false, error: 'This action is only for bulk-uploaded projects.' };
+    }
+
+    await projectRef.delete();
+    await logActivity('INFO', 'Bulk-uploaded project deleted', { projectId, title: project.title });
+    return { success: true };
+  } catch (error: any) {
+    console.error('Error deleting bulk project:', error);
+    await logActivity('ERROR', 'Failed to delete bulk project', { projectId, error: error.message });
+    return { success: false, error: 'Could not delete the project.' };
+  }
 }
 
 export async function scheduleMeeting(
-    projects: { id: string; pi_uid: string; title: string; pi_email?: string; }[],
-    meetingDetails: {
-      date: string
-      time: string
-      venue: string
-      evaluatorUids: string[]
-      mode: 'Online' | 'Offline'
-    },
-    isMidTermReview: boolean = false,
-  ): Promise<{ success: boolean; error?: string }> {
-    const { date, time, venue, mode } = meetingDetails
-  
-    if (!meetingDetails.evaluatorUids || meetingDetails.evaluatorUids.length === 0) {
-      return { success: false, error: "An evaluation committee must be assigned." }
-    }
-  
-    const timeZone = "Asia/Kolkata"
-    const batch = adminDb.batch()
-    const emailPromises = []
-  
-    const meetingDateTimeString = `${date}T${time}:00`
-  
-    for (const project of projects) {
-      const projectRef = adminDb.collection("projects").doc(project.id)
-      const updateData: { status: string; meetingDetails: any, hasHadMidTermReview?: boolean } = {
-        status: "Under Review",
-        meetingDetails: { date, time, venue, assignedEvaluators: meetingDetails.evaluatorUids, mode },
-      };
+  projects: { id: string; pi_uid: string; title: string; pi_email?: string; }[],
+  meetingDetails: {
+    date: string
+    time: string
+    venue: string
+    evaluatorUids: string[]
+    mode: 'Online' | 'Offline'
+  },
+  isMidTermReview: boolean = false,
+): Promise<{ success: boolean; error?: string }> {
+  const { date, time, venue, mode } = meetingDetails
 
-      if (isMidTermReview) {
-          updateData.hasHadMidTermReview = true;
-      }
-  
-      batch.update(projectRef, updateData)
-  
-      const notificationRef = adminDb.collection("notifications").doc()
-      batch.set(notificationRef, {
-        uid: project.pi_uid,
-        projectId: project.id,
-        title: `Your ${isMidTermReview ? 'Mid-term Review' : 'IMR'} Meeting is Scheduled: "${project.title}"`,
-        createdAt: new Date().toISOString(),
-        isRead: false,
-      })
-  
-      const emailHtml = `
+  if (!meetingDetails.evaluatorUids || meetingDetails.evaluatorUids.length === 0) {
+    return { success: false, error: "An evaluation committee must be assigned." }
+  }
+
+  const timeZone = "Asia/Kolkata"
+  const batch = adminDb.batch()
+  const emailPromises = []
+
+  const meetingDateTimeString = `${date}T${time}:00`
+
+  for (const project of projects) {
+    const projectRef = adminDb.collection("projects").doc(project.id)
+    const updateData: { status: string; meetingDetails: any, hasHadMidTermReview?: boolean } = {
+      status: "Under Review",
+      meetingDetails: { date, time, venue, assignedEvaluators: meetingDetails.evaluatorUids, mode },
+    };
+
+    if (isMidTermReview) {
+      updateData.hasHadMidTermReview = true;
+    }
+
+    batch.update(projectRef, updateData)
+
+    const notificationRef = adminDb.collection("notifications").doc()
+    batch.set(notificationRef, {
+      uid: project.pi_uid,
+      projectId: project.id,
+      title: `Your ${isMidTermReview ? 'Mid-term Review' : 'IMR'} Meeting is Scheduled: "${project.title}"`,
+      createdAt: new Date().toISOString(),
+      isRead: false,
+    })
+
+    const emailHtml = `
           <div ${EMAIL_STYLES.background}>
               ${EMAIL_STYLES.logo}
               <p style="color:#ffffff;">Dear ${project.pi},</p>
@@ -1724,41 +1724,41 @@ export async function scheduleMeeting(
               ${EMAIL_STYLES.footer}
           </div>
       `
-  
-      if (project.pi_email) {
-        emailPromises.push(
-          sendEmailUtility({
-            to: project.pi_email,
-            subject: `IMR ${isMidTermReview ? 'Mid-term Review' : 'Evaluation'} Meeting Scheduled: ${project.title}`,
-            html: emailHtml,
-            from: 'default'
-          }),
-        )
-      }
+
+    if (project.pi_email) {
+      emailPromises.push(
+        sendEmailUtility({
+          to: project.pi_email,
+          subject: `IMR ${isMidTermReview ? 'Mid-term Review' : 'Evaluation'} Meeting Scheduled: ${project.title}`,
+          html: emailHtml,
+          from: 'default'
+        }),
+      )
     }
-  
-    // Notify evaluators once
-    if (meetingDetails.evaluatorUids && meetingDetails.evaluatorUids.length > 0) {
-      const evaluatorDocs = await Promise.all(meetingDetails.evaluatorUids.map((uid) => adminDb.collection("users").doc(uid).get()))
-  
-      for (const evaluatorDoc of evaluatorDocs) {
-        if (evaluatorDoc.exists) {
-          const evaluator = evaluatorDoc.data() as User
-  
-          const evaluatorNotificationRef = adminDb.collection("notifications").doc()
-          batch.set(evaluatorNotificationRef, {
-            uid: evaluator.uid,
-            title: `You've been assigned to an IMR ${isMidTermReview ? 'mid-term review' : 'evaluation'} committee`,
-            createdAt: new Date().toISOString(),
-            isRead: false,
-          })
-  
-          if (evaluator.email) {
-            emailPromises.push(
-              sendEmailUtility({
-                to: evaluator.email,
-                subject: `IMR ${isMidTermReview ? 'Mid-term Review' : 'Evaluation'} Assignment`,
-                html: `
+  }
+
+  // Notify evaluators once
+  if (meetingDetails.evaluatorUids && meetingDetails.evaluatorUids.length > 0) {
+    const evaluatorDocs = await Promise.all(meetingDetails.evaluatorUids.map((uid) => adminDb.collection("users").doc(uid).get()))
+
+    for (const evaluatorDoc of evaluatorDocs) {
+      if (evaluatorDoc.exists) {
+        const evaluator = evaluatorDoc.data() as User
+
+        const evaluatorNotificationRef = adminDb.collection("notifications").doc()
+        batch.set(evaluatorNotificationRef, {
+          uid: evaluator.uid,
+          title: `You've been assigned to an IMR ${isMidTermReview ? 'mid-term review' : 'evaluation'} committee`,
+          createdAt: new Date().toISOString(),
+          isRead: false,
+        })
+
+        if (evaluator.email) {
+          emailPromises.push(
+            sendEmailUtility({
+              to: evaluator.email,
+              subject: `IMR ${isMidTermReview ? 'Mid-term Review' : 'Evaluation'} Assignment`,
+              html: `
                   <div ${EMAIL_STYLES.background}>
                       ${EMAIL_STYLES.logo}
                       <p style="color:#ffffff;">Dear Evaluator,</p>
@@ -1770,49 +1770,49 @@ export async function scheduleMeeting(
                       ${EMAIL_STYLES.footer}
                   </div>
                 `,
-                from: 'default'
-              }),
-            )
-          }
+              from: 'default'
+            }),
+          )
         }
       }
     }
-  
-    try {
-      await batch.commit()
-      await Promise.all(emailPromises)
-      await logActivity("INFO", `IMR ${isMidTermReview ? 'mid-term' : ''} meeting scheduled`, { projectIds: projects.map(p => p.id), meetingDate: date, evaluatorCount: meetingDetails.evaluatorUids.length });
-      return { success: true }
-    } catch (error: any) {
-      console.error("Error committing batch or sending emails:", error)
-      await logActivity("ERROR", `Failed to schedule IMR ${isMidTermReview ? 'mid-term' : ''} meeting`, { error: error.message });
-      return { success: false, error: "Failed to update project statuses or send notifications." }
-    }
+  }
+
+  try {
+    await batch.commit()
+    await Promise.all(emailPromises)
+    await logActivity("INFO", `IMR ${isMidTermReview ? 'mid-term' : ''} meeting scheduled`, { projectIds: projects.map(p => p.id), meetingDate: date, evaluatorCount: meetingDetails.evaluatorUids.length });
+    return { success: true }
+  } catch (error: any) {
+    console.error("Error committing batch or sending emails:", error)
+    await logActivity("ERROR", `Failed to schedule IMR ${isMidTermReview ? 'mid-term' : ''} meeting`, { error: error.message });
+    return { success: false, error: "Failed to update project statuses or send notifications." }
+  }
 }
 export async function sendErrorEmail(
-    data: {
-        error: { name: string; message: string; stack?: string },
-        context?: any,
-        user: { name: string; email: string; phoneNumber: string } | null
-    }
+  data: {
+    error: { name: string; message: string; stack?: string },
+    context?: any,
+    user: { name: string; email: string; phoneNumber: string } | null
+  }
 ): Promise<{ success: boolean }> {
-    const { error, context, user } = data;
-    const to = process.env.HELPDESK_EMAIL || 'helpdesk.rdc@paruluniversity.ac.in';
+  const { error, context, user } = data;
+  const to = process.env.HELPDESK_EMAIL || 'rdc@goa.paruluniversity.ac.in';
 
-    const userHtml = user
-        ? `<h3>User Details:</h3>
+  const userHtml = user
+    ? `<h3>User Details:</h3>
            <ul>
              <li><b>Name:</b> ${user.name}</li>
              <li><b>Email:</b> ${user.email}</li>
              <li><b>Phone:</b> ${user.phoneNumber}</li>
            </ul>`
-        : '<h3>User Details:</h3><p>User was not logged in or could not be identified.</p>';
+    : '<h3>User Details:</h3><p>User was not logged in or could not be identified.</p>';
 
-    const contextHtml = context
-        ? `<h3>Error Context:</h3><pre style="background-color:#333; color: #f0f0f0; padding:10px; border-radius:4px; white-space: pre-wrap; word-wrap: break-word;"><code>${JSON.stringify(context, null, 2)}</code></pre>`
-        : '';
-        
-    const emailHtml = `
+  const contextHtml = context
+    ? `<h3>Error Context:</h3><pre style="background-color:#333; color: #f0f0f0; padding:10px; border-radius:4px; white-space: pre-wrap; word-wrap: break-word;"><code>${JSON.stringify(context, null, 2)}</code></pre>`
+    : '';
+
+  const emailHtml = `
       <html>
         <body style="font-family: sans-serif; background-color: #f4f4f4; padding: 20px;">
           <div style="max-width: 800px; margin: auto; background: white; padding: 20px; border-radius: 8px; border: 1px solid #ddd;">
@@ -1832,49 +1832,49 @@ export async function sendErrorEmail(
           </div>
         </body>
       </html>`;
-      
-    try {
-        await sendEmailUtility({
-            to,
-            subject: `[RDC Portal Error] - ${error.name}: ${error.message}`,
-            html: emailHtml,
-            from: 'default',
-        });
-        console.log(`Error report email sent successfully to ${to}.`);
-        return { success: true };
-    } catch (emailError: any) {
-        console.error('FATAL: Failed to send error report email:', emailError);
-        return { success: false };
-    }
+
+  try {
+    await sendEmailUtility({
+      to,
+      subject: `[RDC Portal Error] - ${error.name}: ${error.message}`,
+      html: emailHtml,
+      from: 'default',
+    });
+    console.log(`Error report email sent successfully to ${to}.`);
+    return { success: true };
+  } catch (emailError: any) {
+    console.error('FATAL: Failed to send error report email:', emailError);
+    return { success: false };
+  }
 }
 
 export async function signInWithGoogleCredential(credentialString: string): Promise<{ success: boolean; user?: any; error?: string }> {
+  try {
+    const credential = JSON.parse(credentialString);
+    // Log received credential shape for debugging (mask sensitive token parts)
     try {
-      const credential = JSON.parse(credentialString);
-      // Log received credential shape for debugging (mask sensitive token parts)
-      try {
-        const hasCredential = !!credential?.credential;
-        const credPreview = hasCredential && typeof credential.credential === 'string'
-          ? `${credential.credential.slice(0, 10)}...${credential.credential.slice(-10)}`
-          : null;
-        console.info('[Auth] signInWithGoogleCredential received payload', {
-          hasCredential,
-          keys: Object.keys(credential || {}),
-          credPreview,
-        });
-      } catch (logErr) {
-        console.warn('[Auth] could not log credential preview', logErr);
-      }
-
-      console.log('Google credential received, verifying...');
-      const user = await adminAuth.verifyIdToken(credential.credential);
-        const { uid, email, name, picture } = user;
-        return {
-            success: true,
-            user: { uid, email, displayName: name, photoURL: picture },
-        };
-    } catch (error: any) {
-     console.error('Google credential verification error:', error.message);
-        return { success: false, error: error.message || "Failed to verify Google credential." };
+      const hasCredential = !!credential?.credential;
+      const credPreview = hasCredential && typeof credential.credential === 'string'
+        ? `${credential.credential.slice(0, 10)}...${credential.credential.slice(-10)}`
+        : null;
+      console.info('[Auth] signInWithGoogleCredential received payload', {
+        hasCredential,
+        keys: Object.keys(credential || {}),
+        credPreview,
+      });
+    } catch (logErr) {
+      console.warn('[Auth] could not log credential preview', logErr);
     }
+
+    console.log('Google credential received, verifying...');
+    const user = await adminAuth.verifyIdToken(credential.credential);
+    const { uid, email, name, picture } = user;
+    return {
+      success: true,
+      user: { uid, email, displayName: name, photoURL: picture },
+    };
+  } catch (error: any) {
+    console.error('Google credential verification error:', error.message);
+    return { success: false, error: error.message || "Failed to verify Google credential." };
+  }
 }

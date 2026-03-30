@@ -29,7 +29,7 @@ async function logActivity(level: 'INFO' | 'WARNING' | 'ERROR', message: string,
 const EMAIL_STYLES = {
   background:
     'style="background: linear-gradient(135deg, #0f2027, #203a43, #2c5364); color:#ffffff; font-family:Arial, sans-serif; padding:20px; border-radius:8px;"',
-  logo: '<div style="text-align:center; margin-bottom:20px;"><img src="https://lhdlkrfbkon55i6u.public.blob.vercel-storage.com/Pu%20Goa%20White.png" alt="RDC Logo" style="max-width:300px; height:auto;" /></div>',
+  logo: '<div style="text-align:center; margin-bottom:20px;"><img src="https://lhdlkrfbkon55i6u.public.blob.vercel-storage.com/Pu%20Goa%20White.png" alt="RDC Logo" style="max-width:250px; height:auto;" /></div>',
   footer: ` 
     <p style="color:#b0bec5; margin-top: 30px;">Best Regards,</p>
     <p style="color:#b0bec5;">Research & Development Cell Team,</p>
@@ -49,9 +49,9 @@ export async function markPaymentsCompleted(claimIds: string[]): Promise<{ succe
   try {
     const claimsRef = adminDb.collection('incentiveClaims');
     const batch = adminDb.batch();
-    
+
     const claimsQuery = await claimsRef.where(FieldPath.documentId(), 'in', claimIds).get();
-    
+
     let processedCount = 0;
     let skippedCount = 0;
 
@@ -62,16 +62,16 @@ export async function markPaymentsCompleted(claimIds: string[]): Promise<{ succe
         skippedCount++;
         continue;
       }
-      
-      if(claim.status !== 'Submitted to Accounts') {
-          console.warn(`Skipping claim ${claim.id} for payment completion as its status is not 'Submitted to Accounts'.`);
-          skippedCount++;
-          continue;
+
+      if (claim.status !== 'Submitted to Accounts') {
+        console.warn(`Skipping claim ${claim.id} for payment completion as its status is not 'Submitted to Accounts'.`);
+        skippedCount++;
+        continue;
       }
-      
+
       // Update status in the batch
       batch.update(doc.ref, { status: 'Payment Completed' });
-      
+
       // Prepare notification and email
       const claimTitle = claim.paperTitle || claim.publicationTitle || claim.patentTitle || 'your recent incentive claim';
 
@@ -99,12 +99,12 @@ export async function markPaymentsCompleted(claimIds: string[]): Promise<{ succe
                 ${EMAIL_STYLES.footer}
             </div>
         `;
-        
+
         await sendEmailUtility({
-            to: claim.userEmail,
-            subject: `Payment Processed for Your Incentive Claim`,
-            html: emailHtml,
-            from: 'default'
+          to: claim.userEmail,
+          subject: `Payment Processed for Your Incentive Claim`,
+          html: emailHtml,
+          from: 'default'
         });
       }
 
@@ -126,33 +126,33 @@ export async function submitToAccounts(claimIds: string[]): Promise<{ success: b
   if (!claimIds || claimIds.length === 0) {
     return { success: false, error: 'No claim IDs provided.' };
   }
-  
+
   try {
     const claimsRef = adminDb.collection('incentiveClaims');
     const batch = adminDb.batch();
-    
+
     const claimsQuery = await claimsRef.where(FieldPath.documentId(), 'in', claimIds).get();
-    
+
     let processedCount = 0;
     let skippedCount = 0;
 
     for (const doc of claimsQuery.docs) {
-        const claim = doc.data() as IncentiveClaim;
+      const claim = doc.data() as IncentiveClaim;
       if (!isEligibleForFinancialDisbursement(claim)) {
         skippedCount++;
         continue;
       }
-        if(claim.status !== 'Accepted') {
-            console.warn(`Skipping claim ${doc.id} for submission to accounts as its status is not 'Accepted'.`);
+      if (claim.status !== 'Accepted') {
+        console.warn(`Skipping claim ${doc.id} for submission to accounts as its status is not 'Accepted'.`);
         skippedCount++;
-            continue;
-        }
-        if (!claim.paymentSheetRef) {
-            console.warn(`Skipping claim ${doc.id} for submission to accounts as payment sheet has not been generated.`);
-            skippedCount++;
-            continue;
-        }
-        batch.update(doc.ref, { status: 'Submitted to Accounts' });
+        continue;
+      }
+      if (!claim.paymentSheetRef) {
+        console.warn(`Skipping claim ${doc.id} for submission to accounts as payment sheet has not been generated.`);
+        skippedCount++;
+        continue;
+      }
+      batch.update(doc.ref, { status: 'Submitted to Accounts' });
       processedCount++;
     }
 
@@ -169,28 +169,28 @@ export async function submitToAccounts(claimIds: string[]): Promise<{ success: b
 
 
 function getInstituteAcronym(name?: string): string {
-    if (!name) return '';
+  if (!name) return '';
 
-    const acronymMap: { [key: string]: string } = {
-        'Parul Institute of Ayurved and Research': 'PIAR (Ayu.)',
-        'Parul Institute of Architecture & Research': 'PIAR (Arc.)',
-        'Parul Institute of Ayurved': 'PIA (Ayu.)',
-        'Parul Institute of Arts': 'PIA (Art.)',
-        'Parul Institute of Pharmacy': 'PIP (Pharma)',
-        'Parul Institute of Physiotherapy': 'PIP (Physio)',
-    };
+  const acronymMap: { [key: string]: string } = {
+    'Parul Institute of Ayurved and Research': 'PIAR (Ayu.)',
+    'Parul Institute of Architecture & Research': 'PIAR (Arc.)',
+    'Parul Institute of Ayurved': 'PIA (Ayu.)',
+    'Parul Institute of Arts': 'PIA (Art.)',
+    'Parul Institute of Pharmacy': 'PIP (Pharma)',
+    'Parul Institute of Physiotherapy': 'PIP (Physio)',
+  };
 
-    if (acronymMap[name]) {
-        return acronymMap[name];
-    }
+  if (acronymMap[name]) {
+    return acronymMap[name];
+  }
 
-    const ignoreWords = ['of', 'and', '&', 'the', 'in'];
-    return name
-        .split(' ')
-        .filter(word => !ignoreWords.includes(word.toLowerCase()))
-        .map(word => word.charAt(0))
-        .join('')
-        .toUpperCase();
+  const ignoreWords = ['of', 'and', '&', 'the', 'in'];
+  return name
+    .split(' ')
+    .filter(word => !ignoreWords.includes(word.toLowerCase()))
+    .map(word => word.charAt(0))
+    .join('')
+    .toUpperCase();
 }
 
 
@@ -201,7 +201,7 @@ export async function generateIncentivePaymentSheet(
 ): Promise<{ success: boolean; fileData?: string; error?: string; includedCount?: number; skippedCount?: number }> {
   try {
     const { toWords } = await import('number-to-words');
-    
+
     const claimsRef = adminDb.collection('incentiveClaims');
     const q = claimsRef.where(FieldPath.documentId(), 'in', claimIds);
     const claimsSnapshot = await q.get();
@@ -210,7 +210,7 @@ export async function generateIncentivePaymentSheet(
     const skippedCount = claims.length - payableClaims.length;
 
     if (payableClaims.length === 0) {
-        return { success: false, error: "No valid claims found for the provided IDs." };
+      return { success: false, error: "No valid claims found for the provided IDs." };
     }
 
     const userIds = [...new Set(payableClaims.map(c => c.uid))];
@@ -225,13 +225,13 @@ export async function generateIncentivePaymentSheet(
     if (!templateUrl) {
       return { success: false, error: 'Incentive Payment Sheet template URL is not configured.' };
     }
-    
+
     const { getTemplateContentFromUrl } = await import('@/lib/template-manager');
     const templateContent = await getTemplateContentFromUrl(templateUrl);
     if (!templateContent) {
       return { success: false, error: 'Payment sheet template not found or could not be loaded.' };
     }
-    
+
     const workbook = new ExcelJS.Workbook();
     await workbook.xlsx.load(templateContent);
     const worksheet = workbook.worksheets[0]; // Get the first worksheet by index
@@ -239,7 +239,7 @@ export async function generateIncentivePaymentSheet(
     if (!worksheet) {
       return { success: false, error: 'Could not find a worksheet in the template file.' };
     }
-    
+
     const batch = adminDb.batch();
     let totalAmount = 0;
 
@@ -247,10 +247,10 @@ export async function generateIncentivePaymentSheet(
       const user = usersMap.get(claim.uid);
       const amount = claim.finalApprovedAmount || 0;
       totalAmount += amount;
-      
+
       const claimRef = adminDb.collection('incentiveClaims').doc(claim.id);
       batch.update(claimRef, { paymentSheetRef: referenceNumber, paymentSheetRemarks: remarks[claim.id] || '' });
-      
+
       return {
         [`beneficiary_${index + 1}`]: user?.bankDetails?.beneficiaryName || user?.name || '',
         [`account_${index + 1}`]: user?.bankDetails?.accountNumber || '',
@@ -264,30 +264,30 @@ export async function generateIncentivePaymentSheet(
     });
 
     const flatData: { [key: string]: any } = paymentData.reduce((acc, item) => ({ ...acc, ...item }), {});
-    
+
     flatData.date = format(new Date(), 'dd/MM/yyyy');
     flatData.reference_number = referenceNumber;
     flatData.total_amount = totalAmount;
     flatData.amount_in_words = toWords(totalAmount).replace(/\b\w/g, (l: string) => l.toUpperCase()) + ' Only';
 
     worksheet.eachRow((row) => {
-        row.eachCell((cell) => {
-            if (cell.value && typeof cell.value === 'string') {
-                const templateVarMatch = cell.value.match(/\{(.*?)\}/);
-                if (templateVarMatch && templateVarMatch[1]) {
-                    const key = templateVarMatch[1];
-                    const newValue = flatData[key] !== undefined ? flatData[key] : '';
-                    
-                    cell.value = newValue;
-                }
-            }
-        });
+      row.eachCell((cell) => {
+        if (cell.value && typeof cell.value === 'string') {
+          const templateVarMatch = cell.value.match(/\{(.*?)\}/);
+          if (templateVarMatch && templateVarMatch[1]) {
+            const key = templateVarMatch[1];
+            const newValue = flatData[key] !== undefined ? flatData[key] : '';
+
+            cell.value = newValue;
+          }
+        }
+      });
     });
 
     await batch.commit();
     const buffer = await workbook.xlsx.writeBuffer();
     const base64 = Buffer.from(buffer).toString('base64');
-    
+
     await logActivity('INFO', 'Generated incentive payment sheet', { referenceNumber, claimCount: payableClaims.length, skippedCount });
     return { success: true, fileData: base64, includedCount: payableClaims.length, skippedCount };
   } catch (error: any) {
@@ -302,7 +302,7 @@ export async function downloadPaymentSheetByRef(
 ): Promise<{ success: boolean; fileData?: string; error?: string }> {
   try {
     const { toWords } = await import('number-to-words');
-    
+
     // Find all claims with this payment sheet reference
     const claimsRef = adminDb.collection('incentiveClaims');
     const q = claimsRef.where('paymentSheetRef', '==', paymentSheetRef);
@@ -325,13 +325,13 @@ export async function downloadPaymentSheetByRef(
     if (!templateUrl) {
       return { success: false, error: 'Incentive Payment Sheet template URL is not configured.' };
     }
-    
+
     const { getTemplateContentFromUrl } = await import('@/lib/template-manager');
     const templateContent = await getTemplateContentFromUrl(templateUrl);
     if (!templateContent) {
       return { success: false, error: 'Payment sheet template not found or could not be loaded.' };
     }
-    
+
     const workbook = new ExcelJS.Workbook();
     await workbook.xlsx.load(templateContent);
     const worksheet = workbook.worksheets[0];
@@ -339,14 +339,14 @@ export async function downloadPaymentSheetByRef(
     if (!worksheet) {
       return { success: false, error: 'Could not find a worksheet in the template file.' };
     }
-    
+
     let totalAmount = 0;
 
     const paymentData = claims.map((claim, index) => {
       const user = usersMap.get(claim.uid);
       const amount = claim.finalApprovedAmount || 0;
       totalAmount += amount;
-      
+
       return {
         [`beneficiary_${index + 1}`]: user?.bankDetails?.beneficiaryName || user?.name || '',
         [`account_${index + 1}`]: user?.bankDetails?.accountNumber || '',
@@ -360,28 +360,28 @@ export async function downloadPaymentSheetByRef(
     });
 
     const flatData: { [key: string]: any } = paymentData.reduce((acc, item) => ({ ...acc, ...item }), {});
-    
+
     flatData.date = format(new Date(), 'dd/MM/yyyy');
     flatData.reference_number = paymentSheetRef;
     flatData.total_amount = totalAmount;
     flatData.amount_in_words = toWords(totalAmount).replace(/\b\w/g, (l: string) => l.toUpperCase()) + ' Only';
 
     worksheet.eachRow((row) => {
-        row.eachCell((cell) => {
-            if (cell.value && typeof cell.value === 'string') {
-                const templateVarMatch = cell.value.match(/\{(.*?)\}/);
-                if (templateVarMatch && templateVarMatch[1]) {
-                    const key = templateVarMatch[1];
-                    const newValue = flatData[key] !== undefined ? flatData[key] : '';
-                    cell.value = newValue;
-                }
-            }
-        });
+      row.eachCell((cell) => {
+        if (cell.value && typeof cell.value === 'string') {
+          const templateVarMatch = cell.value.match(/\{(.*?)\}/);
+          if (templateVarMatch && templateVarMatch[1]) {
+            const key = templateVarMatch[1];
+            const newValue = flatData[key] !== undefined ? flatData[key] : '';
+            cell.value = newValue;
+          }
+        }
+      });
     });
 
     const buffer = await workbook.xlsx.writeBuffer();
     const base64 = Buffer.from(buffer).toString('base64');
-    
+
     await logActivity('INFO', 'Downloaded incentive payment sheet', { paymentSheetRef, claimCount: claims.length });
     return { success: true, fileData: base64 };
   } catch (error: any) {

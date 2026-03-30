@@ -30,14 +30,14 @@ interface ComboboxProps {
   disabled?: boolean;
 }
 
-export function Combobox({ 
-    options, 
-    value, 
-    onChange, 
-    placeholder = "Select an option...",
-    searchPlaceholder = "Search...",
-    emptyPlaceholder = "No results found. If you feel this is a error, please drop a mail to helpdesk.rdc@paruluniversity.ac.in",
-    disabled = false,
+export function Combobox({
+  options,
+  value,
+  onChange,
+  placeholder = "Select an option...",
+  searchPlaceholder = "Search...",
+  emptyPlaceholder = "No results found. If you feel this is a error, please drop a mail to rdc@goa.paruluniversity.ac.in",
+  disabled = false,
 }: ComboboxProps) {
   const [open, setOpen] = React.useState(false)
 
@@ -59,7 +59,7 @@ export function Combobox({
       </PopoverTrigger>
       <PopoverContent className="w-[--radix-popover-trigger-width] p-0">
         <Command>
-          <CommandInput 
+          <CommandInput
             placeholder={searchPlaceholder}
           />
           <CommandList>
@@ -73,7 +73,7 @@ export function Combobox({
                     // Find the option whose label matches the selection, then pass its value.
                     const selectedOption = options.find(o => o.label.toLowerCase() === currentValue.toLowerCase());
                     if (selectedOption) {
-                        onChange(selectedOption.value === value ? "" : selectedOption.value)
+                      onChange(selectedOption.value === value ? "" : selectedOption.value)
                     }
                     setOpen(false)
                   }}

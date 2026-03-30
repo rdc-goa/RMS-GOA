@@ -130,6 +130,7 @@ function EmrLogsTab({ user }: { user: User | null }) {
                 'Institute': user?.institute || 'N/A',
                 'Funding Call': call?.title || 'Unknown',
                 'Agency Name': call?.agency || 'Unknown',
+                'Agency Deadline': call?.applyDeadline ? format(new Date(call.applyDeadline), 'PP') : 'N/A',
                 'Reference No.': log.agencyReferenceNumber || 'N/A',
                 'Logged Date': log.submittedToAgencyAt ? format(new Date(log.submittedToAgencyAt), 'PPp') : 'N/A',
                 'Acknowledgement': log.agencyAcknowledgementUrl || 'Not Provided',
@@ -158,14 +159,18 @@ function EmrLogsTab({ user }: { user: User | null }) {
                                 <TableHeader><TableRow>
                                     <TableHead>PI</TableHead>
                                     <TableHead className="hidden md:table-cell">Funding Call</TableHead>
+                                    <TableHead className="hidden lg:table-cell">Agency Deadline</TableHead>
                                     <TableHead className="hidden sm:table-cell">Reference No.</TableHead>
                                     <TableHead>Logged On</TableHead>
                                     <TableHead>Acknowledgement</TableHead>
                                 </TableRow></TableHeader>
-                                <TableBody>{paginatedLogs.map(log => (
+                                <TableBody>{paginatedLogs.map(log => {
+                                    const call = calls.get(log.callId);
+                                    return (
                                     <TableRow key={log.id}>
                                         <TableCell className="whitespace-nowrap">{users.get(log.userId)?.name || log.userName}</TableCell>
-                                        <TableCell className="hidden md:table-cell">{calls.get(log.callId)?.title || 'Loading...'}</TableCell>
+                                        <TableCell className="hidden md:table-cell">{call?.title || 'Loading...'}</TableCell>
+                                        <TableCell className="hidden lg:table-cell">{call?.applyDeadline ? format(parseISO(call.applyDeadline), 'PP') : 'N/A'}</TableCell>
                                         <TableCell className="hidden sm:table-cell">{log.agencyReferenceNumber || 'N/A'}</TableCell>
                                         <TableCell className="whitespace-nowrap">{log.submittedToAgencyAt ? format(new Date(log.submittedToAgencyAt), 'PP') : 'N/A'}</TableCell>
                                         <TableCell>
@@ -178,7 +183,7 @@ function EmrLogsTab({ user }: { user: User | null }) {
                                             )}
                                         </TableCell>
                                     </TableRow>
-                                ))}</TableBody>
+                                )})}</TableBody>
                             </Table>
                         </div>
                     ) : ( <div className="text-center text-muted-foreground py-8">No submissions have been logged.</div> )}
@@ -358,6 +363,32 @@ export default function EmrManagementOverviewPage() {
 
     const isSuperAdmin = user?.role === 'Super-admin';
 
+    const handleExportCalls = () => {
+        const dataToExport = filteredCalls.map(call => {
+            const isClosed = isAfter(new Date(), parseISO(call.interestDeadline));
+            let status = "Open";
+            if (call.status === 'Meeting Scheduled') {
+                status = "Meeting Scheduled";
+            } else if (isClosed) {
+                status = "Closed";
+            }
+            
+            return {
+                'Call Title': call.title,
+                'Agency': call.agency,
+                'Agency Deadline': call.applyDeadline ? format(parseISO(call.applyDeadline), 'PP') : 'N/A',
+                'Registrations': interestCounts[call.id] || 0,
+                'Date Added': format(parseISO(call.createdAt), 'PP'),
+                'Status': status,
+                'Announced': call.isAnnounced ? 'Yes' : 'No',
+            };
+        });
+        const worksheet = XLSX.utils.json_to_sheet(dataToExport);
+        const workbook = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(workbook, worksheet, 'Funding_Calls');
+        XLSX.writeFile(workbook, `funding_calls_${new Date().toISOString().split('T')[0]}.xlsx`);
+    };
+
     if (!user || loading) {
         return (
             <div className="container mx-auto py-10">
@@ -394,6 +425,14 @@ export default function EmrManagementOverviewPage() {
                                     onChange={(e) => setSearchTerm(e.target.value)} 
                                     className="max-w-sm" 
                                 />
+                                <Button 
+                                    onClick={handleExportCalls} 
+                                    disabled={loading || filteredCalls.length === 0} 
+                                    variant="outline"
+                                >
+                                    <Download className="mr-2 h-4 w-4" /> 
+                                    Export Calls List
+                                </Button>
                             </div>
                             <Card>
                                  <CardHeader>
@@ -412,23 +451,25 @@ export default function EmrManagementOverviewPage() {
                                             <Table>
                                                 <TableHeader><TableRow>
                                                     <TableHead>Call Title</TableHead>
-                                                    <TableHead>Agency</TableHead>
-                                                    <TableHead>Registrations</TableHead>
-                                                    <TableHead>Date Added</TableHead>
+                                                    <TableHead className="hidden lg:table-cell">Agency</TableHead>
+                                                    <TableHead className="hidden md:table-cell">Agency Deadline</TableHead>
+                                                    <TableHead className="hidden sm:table-cell">Registrations</TableHead>
+                                                    <TableHead className="hidden xl:table-cell">Date Added</TableHead>
                                                     <TableHead>Status</TableHead>
-                                                    <TableHead>Announced</TableHead>
+                                                    <TableHead className="hidden md:table-cell">Announced</TableHead>
                                                     <TableHead className="text-right">Actions</TableHead>
                                                 </TableRow></TableHeader>
                                                 <TableBody>{paginatedCalls.map(call => {
                                                     const isClosed = isAfter(new Date(), parseISO(call.interestDeadline));
                                                     return (
                                                     <TableRow key={call.id}>
-                                                        <TableCell className="font-medium whitespace-normal">{call.title}</TableCell>
-                                                        <TableCell className="whitespace-normal">{call.agency}</TableCell>
-                                                        <TableCell>{interestCounts[call.id] || 0}</TableCell>
-                                                        <TableCell>{format(parseISO(call.createdAt), 'PP')}</TableCell>
+                                                        <TableCell className="font-medium whitespace-normal line-clamp-2 md:line-clamp-none">{call.title}</TableCell>
+                                                        <TableCell className="whitespace-normal hidden lg:table-cell">{call.agency}</TableCell>
+                                                        <TableCell className="whitespace-nowrap hidden md:table-cell">{call.applyDeadline ? format(parseISO(call.applyDeadline), 'PP') : 'N/A'}</TableCell>
+                                                        <TableCell className="hidden sm:table-cell">{interestCounts[call.id] || 0}</TableCell>
+                                                        <TableCell className="hidden xl:table-cell">{format(parseISO(call.createdAt), 'PP')}</TableCell>
                                                         <TableCell>{getStatusBadge(call)}</TableCell>
-                                                        <TableCell>
+                                                        <TableCell className="hidden md:table-cell">
                                                             {call.isAnnounced ? (
                                                                 <div className="flex items-center gap-1 text-green-600"><CheckCircle className="h-4 w-4" /> Yes</div>
                                                             ) : (

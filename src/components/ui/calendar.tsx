@@ -6,6 +6,7 @@ import { DayPicker } from "react-day-picker"
 
 import { cn } from "@/lib/utils"
 import { buttonVariants } from "@/components/ui/button"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 
 export type CalendarProps = React.ComponentProps<typeof DayPicker>
 
@@ -18,7 +19,7 @@ function Calendar({
   return (
     <DayPicker
       showOutsideDays={showOutsideDays}
-      captionLayout="dropdown"
+      captionLayout="dropdown-buttons"
       className={cn("p-3", className)}
       numberOfMonths={1}
       classNames={{
@@ -60,6 +61,36 @@ function Calendar({
       components={{
         IconLeft: () => <ChevronLeft className="h-4 w-4" />,
         IconRight: () => <ChevronRight className="h-4 w-4" />,
+        Dropdown: ({ children, ...props }: any) => {
+          const options = React.Children.toArray(children) as React.ReactElement<React.HTMLProps<HTMLOptionElement>>[]
+          const selected = options.find((child) => child.props.value === props.value)
+          const handleChange = (value: string) => {
+            const changeEvent = {
+              target: { value },
+            } as React.ChangeEvent<HTMLSelectElement>
+            props.onChange?.(changeEvent)
+          }
+          return (
+            <Select
+              value={props.value?.toString()}
+              onValueChange={(value) => handleChange(value)}
+            >
+              <SelectTrigger className="h-8 w-fit gap-1 border-none bg-transparent px-2 py-1 font-medium focus:ring-0 [&>span]:line-clamp-none">
+                <SelectValue placeholder={props.caption}>{selected?.props?.children}</SelectValue>
+              </SelectTrigger>
+              <SelectContent className="max-h-80">
+                {options.map((option) => (
+                  <SelectItem
+                    key={option.props.value?.toString() ?? ""}
+                    value={option.props.value?.toString() ?? ""}
+                  >
+                    {option.props.children}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )
+        },
       }}
       {...props}
     />

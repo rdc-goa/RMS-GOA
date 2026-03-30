@@ -37,7 +37,7 @@ function JobCard({ job }: { job: ProjectRecruitment }) {
                 </div>
             </CardContent>
             <CardFooter className="flex justify-between items-center">
-                 <div className="text-sm text-muted-foreground">
+                <div className="text-sm text-muted-foreground">
                     <Calendar className="inline-block mr-1 h-4 w-4" />
                     Apply by: {format(new Date(job.applicationDeadline), 'PPP')}
                 </div>
@@ -77,7 +77,7 @@ export default function HiringPage() {
 
     return (
         <div className="flex flex-col min-h-screen bg-background dark:bg-transparent">
-             <header className="container mx-auto px-4 lg:px-6 h-20 flex items-center justify-between sticky top-0 z-50 bg-background/80 backdrop-blur-lg border-b">
+            <header className="container mx-auto px-4 lg:px-6 h-20 flex items-center justify-between sticky top-0 z-50 bg-background/80 backdrop-blur-lg border-b">
                 <Logo />
                 <nav>
                     <Link href="/">

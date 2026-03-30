@@ -31,7 +31,7 @@ export type User = {
   email: string
   role: "admin" | "faculty" | "CRO" | "Super-admin" | "Evaluator" | "IQAC"
   designation?: "Principal" | "HOD" | "Super-admin" | "faculty" | string
-  campus?: 'Goa';
+  campus?: 'Vadodara' | 'Ahmedabad' | 'Rajkot' | 'Goa';
   faculties?: string[] // A user can be associated with multiple faculties, especially CROs
   faculty?: string // Primary faculty
   institute?: string
@@ -115,7 +115,7 @@ export type GrantPhase = {
 export type GrantDetails = {
   totalAmount: number
   sanctionNumber?: string
-  status: "Awarded" | "In Progress" | "Completed"
+  status: "Awarded" | "In Progress" | "Completed" | "Pending"
   bankDetails?: BankDetails
   phases: GrantPhase[]
 }
@@ -149,6 +149,8 @@ export type Project = {
     | "Submitted"
     | "Under Review"
     | "Revision Needed"
+    | "Revision Submitted"
+    | "Recommended"
     | "Sanctioned"
     | "Not Recommended"
     | "In Progress"
@@ -157,6 +159,8 @@ export type Project = {
   teamInfo: string
   timelineAndOutcomes: string
   submissionDate: string // Should be ISO string
+  sanctionDate?: string // ISO String - Date when project was sanctioned/approved by RDC
+  seedMoneyReceivedDate?: string // ISO String - Date when seed money was first received/disbursed
   proposalUrl?: string
   ethicsUrl?: string
   grant?: GrantDetails
@@ -205,7 +209,7 @@ export type ApprovalStage = {
   timestamp: string; // ISO string
   comments: string;
   approvedAmount: number;
-  stage: number; // 1, 2, 3, 4 or 5
+  stage: number; // 1, 2, 3 or 4
   verifiedFields?: { [key: string]: boolean };
   suggestions?: { [key: string]: string };
 };
@@ -222,10 +226,9 @@ export type IncentiveClaim = {
   userName: string
   userEmail: string
   claimId?: string; // Standardized, sequential ID like RDC/IC/PAPER/0001
-  status: "Pending" | "Accepted" | "Rejected" | "Draft" | "Pending Principal Approval" | "Pending Stage 2 Approval" | "Pending Stage 3 Approval" | "Pending Stage 4 Approval" | "Pending Stage 5 Approval" | "Submitted to Accounts" | "Payment Completed" | "Pending Stage 1 Approval";
+  status: "Pending" | "Accepted" | "Rejected" | "Draft" | "Pending Stage 1 Approval" | "Pending Stage 2 Approval" | "Pending Stage 3 Approval" | "Pending Stage 4 Approval" | "Submitted to Accounts" | "Payment Completed";
   submissionDate: string // ISO String
   faculty: string
-  institute?: string
   bankDetails?: UserBankDetails
   originalClaimId?: string // Link to the primary author's claim
   misId?: string
@@ -247,6 +250,7 @@ export type IncentiveClaim = {
   authors?: Author[];
   authorUids?: string[];
   authorEmails?: string[];
+  totalPuAuthors?: number;
 
   // Research Paper Fields
   publicationType?: string;
@@ -295,6 +299,7 @@ export type IncentiveClaim = {
   patentCountry?: string;
   patentCoApplicants?: PatentInventor[];
   patentInventors?: PatentInventor[];
+  patentFilingDate?: string;
   patentDomain?: string;
   isCollaboration?: 'Yes' | 'No' | 'NA';
   collaborationDetails?: string;
@@ -312,6 +317,9 @@ export type IncentiveClaim = {
   conferenceName?: string
   conferencePaperTitle?: string
   conferenceType?: "International" | "National" | "Regional/State"
+  conferenceCity?: string;
+  conferenceCountry?: string;
+  conferenceStartDate?: string;
   conferenceVenue?:
     | "India"
     | "Indian Subcontinent"
@@ -364,7 +372,7 @@ export type IncentiveClaim = {
   bookTotalPages?: number
   bookTotalChapters?: number
   chaptersInSameBook?: number
-  publicationYear?: number
+  bookPublicationYear?: number
   authorRole?: "Author" | "Editor"
   totalPuStudents?: number
   publisherName?: string
@@ -466,6 +474,8 @@ export type EmrInterest = {
   registeredAt: string // ISO String
   pptUrl?: string
   pptSubmissionDate?: string // ISO String
+  proposalUrl?: string
+  proposalSubmissionDate?: string // ISO String
   coPiDetails?: CoPiDetails[]
   coPiUids?: string[]
   coPiNames?: string[]
@@ -509,6 +519,7 @@ export type EmrInterest = {
   proofUrl?: string
   sanctionDate?: string // ISO String
   wasAbsent?: boolean
+  campus?: string
 }
 
 export type EmrEvaluation = {
@@ -527,7 +538,7 @@ export type CroAssignment = {
 
 export type ApproverSetting = {
     email: string;
-    stage: 1 | 2 | 3 | 4 | 5;
+    stage: 1 | 2 | 3 | 4;
     signatureUrl?: string;
 };
 
@@ -566,7 +577,7 @@ export type SystemSettings = {
   templateUrls?: TemplateUrls;
   apiIntegrations?: ApiIntegrations;
   driveParentFolderId?: string;
-  principalEmailsByInstitute?: Record<string, string>;
+  authMethods?: any;
 }
 
 export type LoginOtp = {

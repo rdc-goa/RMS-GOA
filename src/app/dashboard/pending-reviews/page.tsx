@@ -49,7 +49,7 @@ export default function PendingReviewsPage() {
         const projectsCol = collection(db, 'projects');
         const q = query(
           projectsCol, 
-          where('status', 'in', ['Under Review', 'Pending Completion Approval']),
+          where('status', 'in', ['Under Review', 'Revision Submitted', 'Pending Completion Approval']),
           orderBy('submissionDate', 'desc')
         );
         const projectSnapshot = await getDocs(q);

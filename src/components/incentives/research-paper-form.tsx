@@ -96,40 +96,40 @@ const researchPaperSchema = z
           }),
       )
       .min(1, "At least one author is required.").refine(data => {
-      const firstAuthors = data.filter(author => author.role === 'First Author' || author.role === 'First & Corresponding Author');
-      return firstAuthors.length <= 1;
-    }, { message: 'Only one author can be designated as the First Author.', path: ["authors"] }),
+        const firstAuthors = data.filter(author => author.role === 'First Author' || author.role === 'First & Corresponding Author');
+        return firstAuthors.length <= 1;
+      }, { message: 'Only one author can be designated as the First Author.', path: ["authors"] }),
     totalPuStudentAuthors: z.coerce.number().nonnegative("Number of students cannot be negative.").optional(),
     puStudentNames: z.string().optional(),
     autoFetchedFields: z.array(z.string()).optional(),
   })
-   .refine(
-    (data) => {
-        if (data.indexType === 'other') {
-            return !!data.relevantLink && data.relevantLink.length > 5 && data.relevantLink.startsWith('https://');
-        }
-        return true;
-    }, {
-        message: 'A valid article link is required for "Other" indexing type.',
-        path: ['relevantLink'],
-    }
-   )
   .refine(
     (data) => {
-        // DOI is not required if the type is WoS and an accession number is provided
-        if (data.indexType === 'wos' && data.wosAccessionNumber) {
-            return true;
-        }
-        // For other scopus/wos/both types, DOI is required
-        if (data.indexType !== 'other') {
-            return !!data.doi && data.doi.length >= 5;
-        }
-        return true;
+      if (data.indexType === 'other') {
+        return !!data.relevantLink && data.relevantLink.length > 5 && data.relevantLink.startsWith('https://');
+      }
+      return true;
     }, {
-        message: 'A valid DOI is required for this indexing type.',
-        path: ['doi'],
-    }
-   )
+    message: 'A valid article link is required for "Other" indexing type.',
+    path: ['relevantLink'],
+  }
+  )
+  .refine(
+    (data) => {
+      // DOI is not required if the type is WoS and an accession number is provided
+      if (data.indexType === 'wos' && data.wosAccessionNumber) {
+        return true;
+      }
+      // For other scopus/wos/both types, DOI is required
+      if (data.indexType !== 'other') {
+        return !!data.doi && data.doi.length >= 5;
+      }
+      return true;
+    }, {
+    message: 'A valid DOI is required for this indexing type.',
+    path: ['doi'],
+  }
+  )
   .refine(
     (data) => {
       if (data.indexType === "wos" || data.indexType === "both") {
@@ -139,7 +139,7 @@ const researchPaperSchema = z
     },
     { message: "For WoS or Both, you must select a WoS Type.", path: ["wosType"] },
   )
-   .refine(
+  .refine(
     (data) => {
       if (data.indexType === 'scopus' || data.indexType === 'both') {
         return !!data.scopusLink && data.scopusLink.length > 0;
@@ -213,15 +213,15 @@ const indexTypeOptions = [
   { value: "scopus", label: "Scopus" },
   { value: "both", label: "Both" },
   { value: "sci", label: "SCI" },
-  { value: 'other', label: 'Other'},
+  { value: 'other', label: 'Other' },
 ]
 const journalClassificationOptions = [
-    { value: 'Nature/Science/Lancet', label: 'Nature/Science/Lancet' },
-    { value: 'Top 1% Journals', label: 'Top 1% Journals' },
-    { value: 'Q1', label: 'Q1' },
-    { value: 'Q2', label: 'Q2' },
-    { value: 'Q3', label: 'Q3' },
-    { value: 'Q4', label: 'Q4' },
+  { value: 'Nature/Science/Lancet', label: 'Nature/Science/Lancet' },
+  { value: 'Top 1% Journals', label: 'Top 1% Journals' },
+  { value: 'Q1', label: 'Q1' },
+  { value: 'Q2', label: 'Q2' },
+  { value: 'Q3', label: 'Q3' },
+  { value: 'Q4', label: 'Q4' },
 ];
 
 
@@ -242,103 +242,103 @@ const months = [
 const years = Array.from({ length: 10 }, (_, i) => (new Date().getFullYear() - i).toString())
 
 const SPECIAL_POLICY_FACULTIES = [
-    "Faculty of Applied Sciences",
-    "Faculty of Medicine",
-    "Faculty of Homoeopathy",
-    "Faculty of Ayurved",
-    "Faculty of Nursing",
-    "Faculty of Pharmacy",
-    "Faculty of Physiotherapy",
-    "Faculty of Public Health",
-    "Faculty of Engineering & Technology"
+  "Faculty of Applied Sciences",
+  "Faculty of Medicine",
+  "Faculty of Homoeopathy",
+  "Faculty of Ayurved",
+  "Faculty of Nursing",
+  "Faculty of Pharmacy",
+  "Faculty of Physiotherapy",
+  "Faculty of Public Health",
+  "Faculty of Engineering & Technology"
 ];
 
 function ReviewDetails({ data, onEdit }: { data: ResearchPaperFormValues; onEdit: () => void }) {
-    const renderDetail = (label: string, value?: string | number | boolean | string[] | Author[]) => {
-        if (!value && value !== 0 && value !== false) return null;
-        
-        let displayValue: React.ReactNode = String(value);
-        if (typeof value === 'boolean') {
-            displayValue = value ? 'Yes' : 'No';
-        }
-        if (Array.isArray(value)) {
-            if (value.length > 0 && typeof value[0] === 'object' && value[0] !== null && 'name' in value[0]) {
-                 displayValue = (
-                    <div className="border rounded-lg overflow-hidden">
-                        <Table>
-                            <TableHeader>
-                                <TableRow>
-                                    <TableHead>Author Name</TableHead>
-                                    <TableHead>Role</TableHead>
-                                    <TableHead>Email</TableHead>
-                                </TableRow>
-                            </TableHeader>
-                            <TableBody>
-                                {(value as Author[]).map((author, idx) => (
-                                    <TableRow key={idx}>
-                                        <TableCell>{author.name}</TableCell>
-                                        <TableCell><Badge variant="secondary">{author.role}</Badge></TableCell>
-                                        <TableCell>{author.email}</TableCell>
-                                    </TableRow>
-                                ))}
-                            </TableBody>
-                        </Table>
-                    </div>
-                );
-            } else {
-                displayValue = (value as string[]).join(', ');
-            }
-        }
+  const renderDetail = (label: string, value?: string | number | boolean | string[] | Author[]) => {
+    if (!value && value !== 0 && value !== false) return null;
 
-        return (
-            <div className="grid grid-cols-3 gap-2 py-1.5 items-start">
-                <dt className="font-semibold text-muted-foreground col-span-1">{label}</dt>
-                <dd className="col-span-2">{displayValue}</dd>
-            </div>
+    let displayValue: React.ReactNode = String(value);
+    if (typeof value === 'boolean') {
+      displayValue = value ? 'Yes' : 'No';
+    }
+    if (Array.isArray(value)) {
+      if (value.length > 0 && typeof value[0] === 'object' && value[0] !== null && 'name' in value[0]) {
+        displayValue = (
+          <div className="border rounded-lg overflow-hidden">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Author Name</TableHead>
+                  <TableHead>Role</TableHead>
+                  <TableHead>Email</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {(value as Author[]).map((author, idx) => (
+                  <TableRow key={idx}>
+                    <TableCell>{author.name}</TableCell>
+                    <TableCell><Badge variant="secondary">{author.role}</Badge></TableCell>
+                    <TableCell>{author.email}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
         );
-    };
-
-    const fileList = data.publicationProof ? Array.from(data.publicationProof as FileList).map(f => f.name).join(', ') : 'No file selected';
+      } else {
+        displayValue = (value as string[]).join(', ');
+      }
+    }
 
     return (
-        <Card>
-            <CardHeader>
-                <div className="flex justify-between items-center">
-                    <div>
-                        <CardTitle>Review Your Application</CardTitle>
-                        <CardDescription>Please review the details below before final submission.</CardDescription>
-                    </div>
-                    <Button variant="outline" onClick={onEdit}><Edit className="h-4 w-4 mr-2" /> Edit</Button>
-                </div>
-            </CardHeader>
-            <CardContent className="space-y-4">
-                {renderDetail("Publication Type", data.publicationType)}
-                {renderDetail("Indexing Status", data.indexType)}
-                {renderDetail("Paper Title", data.paperTitle)}
-                {renderDetail("Authors", data.authors)}
-                {renderDetail("Journal Name", data.journalName)}
-                {renderDetail("Journal Website", data.journalWebsite)}
-                {renderDetail("DOI", data.doi)}
-                {renderDetail("WoS Accession No.", data.wosAccessionNumber)}
-                {renderDetail("Article Link", data.relevantLink)}
-                {renderDetail("Scopus URL", data.scopusLink)}
-                {renderDetail("WoS URL", data.wosLink)}
-                {renderDetail("Journal Classification", data.journalClassification)}
-                {renderDetail("WoS Type", data.wosType)}
-                {renderDetail("Locale", data.locale)}
-                {renderDetail("Print ISSN", data.printIssn)}
-                {renderDetail("Electronic ISSN", data.electronicIssn)}
-                {renderDetail("Publication Month/Year", `${data.publicationMonth}, ${data.publicationYear}`)}
-                {renderDetail("Your Author Position", data.authorPosition)}
-                {renderDetail("PU Name in Publication", data.isPuNameInPublication)}
-                {renderDetail("APC Paid by University", data.wasApcPaidByUniversity)}
-                {renderDetail("Total PU Student Authors", data.totalPuStudentAuthors)}
-                {renderDetail("PU Student Names", data.puStudentNames)}
-                {renderDetail("SDGs", data.sdgGoals)}
-                {renderDetail("Publication Proof", fileList)}
-            </CardContent>
-        </Card>
+      <div className="grid grid-cols-3 gap-2 py-1.5 items-start">
+        <dt className="font-semibold text-muted-foreground col-span-1">{label}</dt>
+        <dd className="col-span-2">{displayValue}</dd>
+      </div>
     );
+  };
+
+  const fileList = data.publicationProof ? Array.from(data.publicationProof as FileList).map(f => f.name).join(', ') : 'No file selected';
+
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex justify-between items-center">
+          <div>
+            <CardTitle>Review Your Application</CardTitle>
+            <CardDescription>Please review the details below before final submission.</CardDescription>
+          </div>
+          <Button variant="outline" onClick={onEdit}><Edit className="h-4 w-4 mr-2" /> Edit</Button>
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {renderDetail("Publication Type", data.publicationType)}
+        {renderDetail("Indexing Status", data.indexType)}
+        {renderDetail("Paper Title", data.paperTitle)}
+        {renderDetail("Authors", data.authors)}
+        {renderDetail("Journal Name", data.journalName)}
+        {renderDetail("Journal Website", data.journalWebsite)}
+        {renderDetail("DOI", data.doi)}
+        {renderDetail("WoS Accession No.", data.wosAccessionNumber)}
+        {renderDetail("Article Link", data.relevantLink)}
+        {renderDetail("Scopus URL", data.scopusLink)}
+        {renderDetail("WoS URL", data.wosLink)}
+        {renderDetail("Journal Classification", data.journalClassification)}
+        {renderDetail("WoS Type", data.wosType)}
+        {renderDetail("Locale", data.locale)}
+        {renderDetail("Print ISSN", data.printIssn)}
+        {renderDetail("Electronic ISSN", data.electronicIssn)}
+        {renderDetail("Publication Month/Year", `${data.publicationMonth}, ${data.publicationYear}`)}
+        {renderDetail("Your Author Position", data.authorPosition)}
+        {renderDetail("PU Name in Publication", data.isPuNameInPublication)}
+        {renderDetail("APC Paid by University", data.wasApcPaidByUniversity)}
+        {renderDetail("Total PU Student Authors", data.totalPuStudentAuthors)}
+        {renderDetail("PU Student Names", data.puStudentNames)}
+        {renderDetail("SDGs", data.sdgGoals)}
+        {renderDetail("Publication Proof", fileList)}
+      </CardContent>
+    </Card>
+  );
 }
 
 export function ResearchPaperForm() {
@@ -395,34 +395,34 @@ export function ResearchPaperForm() {
     control: form.control,
     name: "authors",
   })
-  
+
   const formValues = form.watch();
-  
+
   const isPhdScholar = user?.designation === 'Ph.D. Scholar';
 
   const calculate = useCallback(async () => {
     if (!user || !user.faculty) return;
-    const result = await calculateResearchPaperIncentive({ ...formValues, userEmail: user.email }, user.faculty, user.designation);
+    const result = await calculateResearchPaperIncentive({ ...formValues, userEmail: user!.email } as Partial<IncentiveClaim>, user!.faculty, user!.designation);
     if (result.success) {
-        // Apply eligibility policy check: if co-author beyond 5th position, set to 0
-        let finalAmount = result.amount ?? null;
-        
-        // Build claim object for eligibility check
-        const claimForEligibility: Partial<IncentiveClaim> = {
-          claimType: 'Research Papers',
-          userEmail: user.email,
-          authors: formValues.authors,
-          authorType: formValues.authors.find(a => a.email.toLowerCase() === user.email.toLowerCase())?.role as any,
-          authorPosition: formValues.authorPosition,
-        };
-        
-        if (!isEligibleForFinancialDisbursement(claimForEligibility as IncentiveClaim)) {
-          finalAmount = 0;
-        }
-        setCalculatedIncentive(finalAmount);
+      // Apply eligibility policy check: if co-author beyond 5th position, set to 0
+      let finalAmount = result.amount ?? null;
+
+      // Build claim object for eligibility check
+      const claimForEligibility: Partial<IncentiveClaim> = {
+        claimType: 'Research Papers',
+        userEmail: user.email,
+        authors: formValues.authors,
+        authorType: formValues.authors.find(a => a.email.toLowerCase() === user.email.toLowerCase())?.role as any,
+        authorPosition: formValues.authorPosition,
+      };
+
+      if (!isEligibleForFinancialDisbursement(claimForEligibility as IncentiveClaim)) {
+        finalAmount = 0;
+      }
+      setCalculatedIncentive(finalAmount);
     } else {
-        console.error("Incentive calculation failed:", result.error);
-        setCalculatedIncentive(null);
+      console.error("Incentive calculation failed:", result.error);
+      setCalculatedIncentive(null);
     }
   }, [formValues, user]);
 
@@ -453,34 +453,34 @@ export function ResearchPaperForm() {
     }
     const claimId = searchParams.get('claimId');
     if (!claimId) {
-        setIsLoadingDraft(false);
+      setIsLoadingDraft(false);
     }
   }, [append, form, searchParams])
 
   useEffect(() => {
     const claimId = searchParams.get('claimId');
     if (claimId && user) {
-        const fetchDraft = async () => {
-            setIsLoadingDraft(true);
-            try {
-                const claimRef = doc(db, 'incentiveClaims', claimId);
-                const claimSnap = await getDoc(claimRef);
-                if (claimSnap.exists()) {
-                    const draftData = claimSnap.data() as IncentiveClaim;
-                    form.reset({
-                        ...draftData,
-                        publicationProof: undefined, // Files can't be pre-filled
-                    });
-                } else {
-                    toast({ variant: 'destructive', title: 'Draft Not Found' });
-                }
-            } catch (error) {
-                toast({ variant: 'destructive', title: 'Error Loading Draft' });
-            } finally {
-                setIsLoadingDraft(false);
-            }
-        };
-        fetchDraft();
+      const fetchDraft = async () => {
+        setIsLoadingDraft(true);
+        try {
+          const claimRef = doc(db, 'incentiveClaims', claimId);
+          const claimSnap = await getDoc(claimRef);
+          if (claimSnap.exists()) {
+            const draftData = claimSnap.data() as IncentiveClaim;
+            form.reset({
+              ...draftData,
+              publicationProof: undefined, // Files can't be pre-filled
+            });
+          } else {
+            toast({ variant: 'destructive', title: 'Draft Not Found' });
+          }
+        } catch (error) {
+          toast({ variant: 'destructive', title: 'Error Loading Draft' });
+        } finally {
+          setIsLoadingDraft(false);
+        }
+      };
+      fetchDraft();
     }
   }, [searchParams, user, form, toast]);
 
@@ -495,7 +495,7 @@ export function ResearchPaperForm() {
   const availableIndexTypes = useMemo(() => {
     let types = indexTypeOptions;
     if (isSpecialFaculty) {
-        types = types.filter(o => o.value !== 'esci');
+      types = types.filter(o => o.value !== 'esci');
     }
     return types;
   }, [isSpecialFaculty]);
@@ -503,33 +503,33 @@ export function ResearchPaperForm() {
   const availableClassifications = useMemo(() => {
     let options = journalClassificationOptions;
     if (isPhdScholar) {
-        options = options.filter(o => o.value === 'Q1' || o.value === 'Q2');
+      options = options.filter(o => o.value === 'Q1' || o.value === 'Q2');
     }
     // Only filter for WoS if it's a special faculty, not for 'both'
     if (isSpecialFaculty && indexType === "wos") {
-        options = options.filter((o) => o.value === "Q1" || o.value === "Q2");
+      options = options.filter((o) => o.value === "Q1" || o.value === "Q2");
     }
     return options;
   }, [isSpecialFaculty, indexType, isPhdScholar]);
-  
+
   const watchAuthors = form.watch('authors');
-  const firstAuthorExists = useMemo(() => 
+  const firstAuthorExists = useMemo(() =>
     watchAuthors.some(author => author.role === 'First Author' || author.role === 'First & Corresponding Author'),
     [watchAuthors]
   );
-  
+
   const presentingAuthorExists = useMemo(() =>
     watchAuthors.some(author => author.role === 'Presenting Author' || author.role === 'First & Presenting Author'),
     [watchAuthors]
   );
-  
+
   const getAvailableRoles = (currentAuthor?: Author) => {
     if (publicationType === 'Scopus Indexed Conference Proceedings') {
-        const isCurrentAuthorPresenting = currentAuthor && (currentAuthor.role === 'Presenting Author' || currentAuthor.role === 'First & Presenting Author');
-        if (presentingAuthorExists && !isCurrentAuthorPresenting) {
-            return conferenceAuthorRoles.filter(role => role !== 'Presenting Author' && role !== 'First & Presenting Author');
-        }
-        return conferenceAuthorRoles;
+      const isCurrentAuthorPresenting = currentAuthor && (currentAuthor.role === 'Presenting Author' || currentAuthor.role === 'First & Presenting Author');
+      if (presentingAuthorExists && !isCurrentAuthorPresenting) {
+        return conferenceAuthorRoles.filter(role => role !== 'Presenting Author' && role !== 'First & Presenting Author');
+      }
+      return conferenceAuthorRoles;
     }
     const isCurrentAuthorFirst = currentAuthor && (currentAuthor.role === 'First Author' || currentAuthor.role === 'First & Corresponding Author');
     if (firstAuthorExists && !isCurrentAuthorFirst) {
@@ -541,7 +541,7 @@ export function ResearchPaperForm() {
   useEffect(() => {
     const currentClassification = form.getValues("journalClassification")
     if (currentClassification && !availableClassifications.find((o) => o.value === currentClassification)) {
-      form.setValue("journalClassification", undefined, { shouldValidate: true })
+      form.setValue("journalClassification", undefined as any, { shouldValidate: true })
     }
   }, [availableClassifications, form])
 
@@ -569,56 +569,56 @@ export function ResearchPaperForm() {
 
     setIsFetching(true);
     toast({ title: `Fetching ${source.toUpperCase()} Data`, description: 'Please wait, this may take a moment...' });
-    
+
     try {
-        let result;
-        if (source === 'scopus') {
-            result = await fetchAdvancedScopusData(identifier, user.name);
-        } else if (source === 'wos') {
-            result = await fetchWosDataByUrl(identifier, user.name);
-            if (!result.success) {
-                setShowWosAccession(true); // Show fallback on failure
-            }
-        } else {
-            result = await fetchScienceDirectData(identifier, user.name);
+      let result;
+      if (source === 'scopus') {
+        result = await fetchAdvancedScopusData(identifier, user.name);
+      } else if (source === 'wos') {
+        result = await fetchWosDataByUrl(identifier, user.name);
+        if (!result.success) {
+          setShowWosAccession(true); // Show fallback on failure
+        }
+      } else {
+        result = await fetchScienceDirectData(identifier, user.name);
+      }
+
+      if (result.success && result.data) {
+        const autoFetched: (keyof ResearchPaperFormValues)[] = [];
+
+        Object.entries(result.data).forEach(([key, value]) => {
+          if (value !== undefined && value !== null) {
+            form.setValue(key as keyof ResearchPaperFormValues, value, { shouldValidate: true });
+            autoFetched.push(key as keyof ResearchPaperFormValues);
+          }
+        });
+
+        form.setValue('autoFetchedFields', autoFetched);
+
+        toast({ title: 'Success', description: `Form fields have been pre-filled from ${source.toUpperCase()}.` });
+
+        if ('warning' in result && result.warning) {
+          toast({
+            variant: 'default',
+            title: 'Heads Up',
+            description: result.warning,
+            duration: 7000,
+          });
         }
 
-        if (result.success && result.data) {
-            const autoFetched: (keyof ResearchPaperFormValues)[] = [];
-            
-            Object.entries(result.data).forEach(([key, value]) => {
-                if (value !== undefined && value !== null) {
-                    form.setValue(key as keyof ResearchPaperFormValues, value, { shouldValidate: true });
-                    autoFetched.push(key as keyof ResearchPaperFormValues);
-                }
-            });
-            
-            form.setValue('autoFetchedFields', autoFetched);
-
-            toast({ title: 'Success', description: `Form fields have been pre-filled from ${source.toUpperCase()}.` });
-            
-            if ('warning' in result && result.warning) {
-                toast({
-                    variant: 'default',
-                    title: 'Heads Up',
-                    description: result.warning,
-                    duration: 7000,
-                });
-            }
-
-        } else {
-            toast({ variant: 'destructive', title: 'Error', description: result.error || `Failed to fetch data from ${source.toUpperCase()}.` });
-            if (source === 'wos') {
-                setShowWosAccession(true);
-            }
-        }
-    } catch (error: any) {
-        toast({ variant: 'destructive', title: 'Error', description: error.message || 'An unexpected error occurred.' });
+      } else {
+        toast({ variant: 'destructive', title: 'Error', description: result.error || `Failed to fetch data from ${source.toUpperCase()}.` });
         if (source === 'wos') {
-            setShowWosAccession(true);
+          setShowWosAccession(true);
         }
+      }
+    } catch (error: any) {
+      toast({ variant: 'destructive', title: 'Error', description: error.message || 'An unexpected error occurred.' });
+      if (source === 'wos') {
+        setShowWosAccession(true);
+      }
     } finally {
-        setIsFetching(false);
+      setIsFetching(false);
     }
   };
 
@@ -630,27 +630,27 @@ export function ResearchPaperForm() {
     }
     setIsSearching(true);
     try {
-        // Check if search term looks like a MIS ID (numeric or alphanumeric)
-        const isMisIdSearch = /^[a-zA-Z0-9]+$/.test(searchTerm) && searchTerm.length <= 10;
-        
-        let url = '';
-        if (isMisIdSearch) {
-            url = `/api/find-users-by-name?misId=${encodeURIComponent(searchTerm)}`;
-        } else {
-            url = `/api/find-users-by-name?name=${encodeURIComponent(searchTerm)}`;
-        }
-        
-        const res = await fetch(url);
-        const result = await res.json();
-        if (result.success && result.users) {
-            setFoundCoPis(result.users);
-        } else {
-            setFoundCoPis([]);
-        }
+      // Check if search term looks like a MIS ID (numeric or alphanumeric)
+      const isMisIdSearch = /^[a-zA-Z0-9]+$/.test(searchTerm) && searchTerm.length <= 10;
+
+      let url = '';
+      if (isMisIdSearch) {
+        url = `/api/find-users-by-name?misId=${encodeURIComponent(searchTerm)}`;
+      } else {
+        url = `/api/find-users-by-name?name=${encodeURIComponent(searchTerm)}`;
+      }
+
+      const res = await fetch(url);
+      const result = await res.json();
+      if (result.success && result.users) {
+        setFoundCoPis(result.users);
+      } else {
+        setFoundCoPis([]);
+      }
     } catch (error) {
-        toast({ variant: "destructive", title: "Search Failed", description: "An error occurred while searching." });
+      toast({ variant: "destructive", title: "Search Failed", description: "An error occurred while searching." });
     } finally {
-        setIsSearching(false);
+      setIsSearching(false);
     }
   };
 
@@ -677,12 +677,12 @@ export function ResearchPaperForm() {
     const name = externalAuthorName.trim();
     const email = externalAuthorEmail.trim().toLowerCase();
     if (!name) {
-        toast({ title: 'Name is required for external authors', variant: 'destructive' });
-        return;
+      toast({ title: 'Name is required for external authors', variant: 'destructive' });
+      return;
     }
     if (email && fields.some(a => a.email?.toLowerCase() === email)) {
-        toast({ title: 'Author already added', variant: 'destructive' });
-        return;
+      toast({ title: 'Author already added', variant: 'destructive' });
+      return;
     }
     append({ name, email: email || '', role: externalAuthorRole, isExternal: true, uid: null, status: 'pending' });
     setExternalAuthorName('');
@@ -698,21 +698,21 @@ export function ResearchPaperForm() {
     }
     remove(index);
   };
-  
+
   const updateAuthorRole = (index: number, role: Author['role']) => {
     const currentAuthors = form.getValues('authors');
     const author = currentAuthors[index];
     const isTryingToBeFirst = role === 'First Author' || role === 'First & Corresponding Author';
     const isAnotherFirst = currentAuthors.some((a, i) => i !== index && (a.role === 'First Author' || a.role === 'First & Corresponding Author'));
-    
+
     if (isTryingToBeFirst && isAnotherFirst) {
-        toast({ title: 'Conflict', description: 'Another author is already the First Author.', variant: 'destructive'});
-        return;
+      toast({ title: 'Conflict', description: 'Another author is already the First Author.', variant: 'destructive' });
+      return;
     }
-    
+
     // Auto-fill author position if applicant is made First Author
     if (author.email === user?.email && isTryingToBeFirst) {
-        form.setValue('authorPosition', '1st');
+      form.setValue('authorPosition', '1st');
     }
 
     update(index, { ...author, role });
@@ -721,24 +721,24 @@ export function ResearchPaperForm() {
   async function handleSave(status: "Draft" | "Pending") {
     const claimId = searchParams.get('claimId');
     if (status === 'Draft' && !form.getValues('paperTitle')) {
-        toast({
-            variant: 'destructive',
-            title: 'Title Required',
-            description: 'Please enter a paper title before saving a draft.',
-        });
-        return;
+      toast({
+        variant: 'destructive',
+        title: 'Title Required',
+        description: 'Please enter a paper title before saving a draft.',
+      });
+      return;
     }
 
     if (status === 'Pending') {
-        const isValid = await form.trigger();
-        if (!isValid) {
-            toast({
-                variant: 'destructive',
-                title: 'Validation Error',
-                description: 'Please correct the errors before submitting.',
-            });
-            return;
-        }
+      const isValid = await form.trigger();
+      if (!isValid) {
+        toast({
+          variant: 'destructive',
+          title: 'Validation Error',
+          description: 'Please correct the errors before submitting.',
+        });
+        return;
+      }
     }
 
     if (!user || !user.faculty) {
@@ -757,44 +757,45 @@ export function ResearchPaperForm() {
     setIsSubmitting(true)
     try {
       const data = form.getValues()
-      
+
       const publicationProofFiles = data.publicationProof ? Array.from(data.publicationProof as FileList) : [];
-      
+
       if (status === 'Pending' && publicationProofFiles.length === 0 && !claimId) {
         form.setError('publicationProof', { type: 'manual', message: 'Proof of publication is required for submission.' });
         setIsSubmitting(false);
         return;
       }
-      
-        const publicationProofUrls = await Promise.all(
-          publicationProofFiles.map(async (file, index) => {
-            const path = `incentive-proofs/${user.uid}/publication-proof/${new Date().toISOString()}-${index}-${file.name}`;
-            const result = await uploadFileToApi(file, { path });
-            if (!result.success || !result.url) {
-              throw new Error(result.error || `Failed to upload file ${file.name}`);
-            }
-            return result.url;
-          })
-        );
+
+      const publicationProofUrls = await Promise.all(
+        publicationProofFiles.map(async (file, index) => {
+          const path = `incentive-proofs/${user.uid}/publication-proof/${new Date().toISOString()}-${index}-${file.name}`;
+          const result = await uploadFileToApi(file, { path });
+          if (!result.success || !result.url) {
+            throw new Error(result.error || `Failed to upload file ${file.name}`);
+          }
+          return result.url;
+        })
+      );
 
       const { publicationProof, ...restOfData } = data;
 
       const claimData: Omit<IncentiveClaim, 'id' | 'claimId'> = {
-          ...restOfData,
-          publicationProofUrls,
-          calculatedIncentive,
-          misId: user.misId || null,
-          orcidId: user.orcidId || null,
-          claimType: "Research Papers",
-          benefitMode: "incentives",
-          uid: user.uid,
-          userName: user.name,
-          userEmail: user.email,
-          faculty: user.faculty,
-          status,
-          submissionDate: new Date().toISOString(),
-          bankDetails: user.bankDetails || null,
-          authorType: data.authors.find(a => a.email.toLowerCase() === user.email.toLowerCase())?.role || 'Co-Author',
+        ...restOfData,
+        publicationProofUrls,
+        calculatedIncentive: calculatedIncentive ?? undefined,
+        misId: user.misId || undefined,
+        orcidId: user.orcidId || undefined,
+        claimType: "Research Papers",
+        benefitMode: "incentives",
+        uid: user.uid,
+        userName: user.name,
+        userEmail: user.email,
+        faculty: user.faculty,
+        status,
+        submissionDate: new Date().toISOString(),
+        bankDetails: user.bankDetails || undefined,
+        authorType: data.authors.find(a => a.email.toLowerCase() === user.email.toLowerCase())?.role || 'Co-Author',
+        autoFetchedFields: restOfData.autoFetchedFields as (keyof IncentiveClaim)[] | undefined,
       };
 
       const result = await submitIncentiveClaimViaApi(claimData);
@@ -808,7 +809,7 @@ export function ResearchPaperForm() {
       if (status === "Draft") {
         toast({ title: "Draft Saved!", description: "You can continue editing from the 'Incentive Claim' page." })
         if (!claimId) { // Only redirect if it's a new draft
-            router.push(`/dashboard/incentive-claim/research-paper?claimId=${newClaimId}`);
+          router.push(`/dashboard/incentive-claim/research-paper?claimId=${newClaimId}`);
         }
       } else {
         toast({ title: "Success", description: "Your incentive claim has been submitted." })
@@ -847,19 +848,19 @@ export function ResearchPaperForm() {
 
   if (currentStep === 2) {
     return (
-        <Card>
-            <form onSubmit={form.handleSubmit(onFinalSubmit)}>
-                <CardContent className="pt-6">
-                    <ReviewDetails data={form.getValues()} onEdit={() => setCurrentStep(1)} />
-                </CardContent>
-                <CardFooter>
-                    <Button type="submit" disabled={isSubmitting || bankDetailsMissing || orcidOrMisIdMissing}>
-                        {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                        {isSubmitting ? 'Submitting...' : 'Submit Claim'}
-                    </Button>
-                </CardFooter>
-            </form>
-        </Card>
+      <Card>
+        <form onSubmit={form.handleSubmit(onFinalSubmit)}>
+          <CardContent className="pt-6">
+            <ReviewDetails data={form.getValues()} onEdit={() => setCurrentStep(1)} />
+          </CardContent>
+          <CardFooter>
+            <Button type="submit" disabled={isSubmitting || bankDetailsMissing || orcidOrMisIdMissing}>
+              {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              {isSubmitting ? 'Submitting...' : 'Submit Claim'}
+            </Button>
+          </CardFooter>
+        </form>
+      </Card>
     );
   }
 
@@ -893,7 +894,7 @@ export function ResearchPaperForm() {
               )}
               <div className="space-y-6 animate-in fade-in-0">
                 <h3 className="font-semibold text-sm">RESEARCH PAPER DETAILS</h3>
-                
+
                 <FormField
                   control={form.control}
                   name="indexType"
@@ -921,27 +922,27 @@ export function ResearchPaperForm() {
                     </FormItem>
                   )}
                 />
-                 {indexType !== 'other' && (
-                    <FormField
-                        control={form.control}
-                        name="doi"
-                        render={({ field }) => (
-                            <FormItem>
-                            <FormLabel>DOI (Digital Object Identifier)</FormLabel>
-                            <div className="flex items-center gap-2">
-                                <FormControl>
-                                    <Input placeholder="Enter DOI (e.g., 10.1038/nature12345)" {...field} disabled={isSubmitting} />
-                                </FormControl>
-                                <Button type="button" variant="outline" onClick={() => handleFetchData('scopus')} disabled={isSubmitting || isFetching || !form.getValues('doi')} title="Fetch from Scopus"><Bot className="h-4 w-4" /> Scopus</Button>
-                                <Button type="button" variant="outline" onClick={() => handleFetchData('wos')} disabled={isSubmitting || isFetching || !form.getValues('doi')} title="Fetch from WoS"><Bot className="h-4 w-4" /> WoS</Button>
-                            </div>
-                            <FormDescription>This is the primary way we fetch and verify your publication details.</FormDescription>
-                            <FormMessage />
-                            </FormItem>
-                        )}
-                    />
-                 )}
-                 <FormField
+                {indexType !== 'other' && (
+                  <FormField
+                    control={form.control}
+                    name="doi"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>DOI (Digital Object Identifier)</FormLabel>
+                        <div className="flex items-center gap-2">
+                          <FormControl>
+                            <Input placeholder="Enter DOI (e.g., 10.1038/nature12345)" {...field} disabled={isSubmitting} />
+                          </FormControl>
+                          <Button type="button" variant="outline" onClick={() => handleFetchData('scopus')} disabled={isSubmitting || isFetching || !form.getValues('doi')} title="Fetch from Scopus"><Bot className="h-4 w-4" /> Scopus</Button>
+                          <Button type="button" variant="outline" onClick={() => handleFetchData('wos')} disabled={isSubmitting || isFetching || !form.getValues('doi')} title="Fetch from WoS"><Bot className="h-4 w-4" /> WoS</Button>
+                        </div>
+                        <FormDescription>This is the primary way we fetch and verify your publication details.</FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                )}
+                <FormField
                   control={form.control}
                   name="paperTitle"
                   render={({ field }) => (
@@ -954,47 +955,47 @@ export function ResearchPaperForm() {
                     </FormItem>
                   )}
                 />
-                 {(indexType === 'wos' || indexType === 'both') && showWosAccession && (
-                     <FormField
-                        control={form.control}
-                        name="wosAccessionNumber"
-                        render={({ field }) => (
-                            <FormItem>
-                                <FormLabel>Web of Science Accession Number</FormLabel>
-                                <div className="flex items-center gap-2">
-                                    <FormControl>
-                                        <Input placeholder="e.g., WOS:000581634500008" {...field} disabled={isSubmitting} />
-                                    </FormControl>
-                                    <Button type="button" variant="outline" onClick={() => handleFetchData('wos')} disabled={isSubmitting || isFetching || !form.getValues('wosAccessionNumber')} title="Fetch data from Web of Science"><Bot className="h-4 w-4" /> WoS</Button>
-                                </div>
-                                <FormDescription>
-                                  WOS URl can be found using this:{" "}
-                                  <a href="https://www.webofscience.com/wos/woscc/smart-search" target="_blank" rel="noopener noreferrer" className="underline">
-                                    https://www.webofscience.com/wos/woscc/smart-search
-                                  </a>
-                                </FormDescription>
-                                <FormMessage />
-                            </FormItem>
-                        )}
-                    />
-                 )}
-                 {indexType === 'other' && (
-                     <FormField
-                        control={form.control}
-                        name="relevantLink"
-                        render={({ field }) => (
-                            <FormItem>
-                            <FormLabel>Link for Article</FormLabel>
-                             <FormControl>
-                                <Input placeholder="https://www.journal.com/article/123" {...field} disabled={isSubmitting} />
-                             </FormControl>
-                            <FormDescription>Please provide a direct link to the published article.</FormDescription>
-                            <FormMessage />
-                            </FormItem>
-                        )}
-                    />
-                 )}
-                
+                {(indexType === 'wos' || indexType === 'both') && showWosAccession && (
+                  <FormField
+                    control={form.control}
+                    name="wosAccessionNumber"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Web of Science Accession Number</FormLabel>
+                        <div className="flex items-center gap-2">
+                          <FormControl>
+                            <Input placeholder="e.g., WOS:000581634500008" {...field} disabled={isSubmitting} />
+                          </FormControl>
+                          <Button type="button" variant="outline" onClick={() => handleFetchData('wos')} disabled={isSubmitting || isFetching || !form.getValues('wosAccessionNumber')} title="Fetch data from Web of Science"><Bot className="h-4 w-4" /> WoS</Button>
+                        </div>
+                        <FormDescription>
+                          WOS URl can be found using this:{" "}
+                          <a href="https://www.webofscience.com/wos/woscc/smart-search" target="_blank" rel="noopener noreferrer" className="underline">
+                            https://www.webofscience.com/wos/woscc/smart-search
+                          </a>
+                        </FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                )}
+                {indexType === 'other' && (
+                  <FormField
+                    control={form.control}
+                    name="relevantLink"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Link for Article</FormLabel>
+                        <FormControl>
+                          <Input placeholder="https://www.journal.com/article/123" {...field} disabled={isSubmitting} />
+                        </FormControl>
+                        <FormDescription>Please provide a direct link to the published article.</FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                )}
+
                 {(indexType === 'scopus' || indexType === 'both') && (
                   <FormField
                     control={form.control}
@@ -1003,24 +1004,24 @@ export function ResearchPaperForm() {
                       <FormItem>
                         <FormLabel>Scopus URL</FormLabel>
                         <FormControl>
-                            <Input placeholder="https://www.scopus.com/pages/publications/" {...field} disabled={isSubmitting} />
+                          <Input placeholder="https://www.scopus.com/pages/publications/" {...field} disabled={isSubmitting} />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
                     )}
                   />
                 )}
-                
+
                 {(indexType === 'wos' || indexType === 'both') && (
-                   <FormField
+                  <FormField
                     control={form.control}
                     name="wosLink"
                     render={({ field }) => (
                       <FormItem>
                         <FormLabel>WoS URL</FormLabel>
-                         <FormControl>
-                            <Input placeholder="https://www.webofscience.com/wos/woscc/full-record/WOS:" {...field} disabled={isSubmitting} />
-                         </FormControl>
+                        <FormControl>
+                          <Input placeholder="https://www.webofscience.com/wos/woscc/full-record/WOS:" {...field} disabled={isSubmitting} />
+                        </FormControl>
                         <FormDescription>
                           WOS URL can be found using this:{" "}
                           <a href="https://www.webofscience.com/wos/woscc/smart-search?embedded=0" target="_blank" rel="noopener noreferrer" className="underline">
@@ -1034,21 +1035,21 @@ export function ResearchPaperForm() {
                 )}
 
                 {(indexType === 'scopus' || indexType === 'wos' || indexType === 'both' || indexType === 'sci') && (
-                    <FormField
-                        control={form.control}
-                        name="journalClassification"
-                        render={({ field }) => (
-                            <FormItem className="space-y-3">
-                            <FormLabel>Journal Classification (Q-rating)</FormLabel>
-                            <FormControl>
-                                <RadioGroup onValueChange={field.onChange} value={field.value} className="flex flex-wrap items-center gap-x-6 gap-y-2" disabled={isSubmitting}>
-                                {availableClassifications.map((option) => (<FormItem key={option.value} className="flex items-center space-x-2 space-y-0"><FormControl><RadioGroupItem value={option.value} /></FormControl><FormLabel className="font-normal">{option.label}</FormLabel></FormItem>))}
-                                </RadioGroup>
-                            </FormControl>
-                            <FormMessage />
-                            </FormItem>
-                        )}
-                    />
+                  <FormField
+                    control={form.control}
+                    name="journalClassification"
+                    render={({ field }) => (
+                      <FormItem className="space-y-3">
+                        <FormLabel>Journal Classification (Q-rating)</FormLabel>
+                        <FormControl>
+                          <RadioGroup onValueChange={field.onChange} value={field.value} className="flex flex-wrap items-center gap-x-6 gap-y-2" disabled={isSubmitting}>
+                            {availableClassifications.map((option) => (<FormItem key={option.value} className="flex items-center space-x-2 space-y-0"><FormControl><RadioGroupItem value={option.value} /></FormControl><FormLabel className="font-normal">{option.label}</FormLabel></FormItem>))}
+                          </RadioGroup>
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
                 )}
 
 
@@ -1090,7 +1091,7 @@ export function ResearchPaperForm() {
                     )}
                   />
                 )}
-                
+
                 <FormField
                   control={form.control}
                   name="publicationType"
@@ -1253,16 +1254,16 @@ export function ResearchPaperForm() {
                     )}
                   />
                 </div>
-                
+
                 <div className="space-y-4 pt-4">
                   <FormLabel>Author(s) & Roles</FormLabel>
                   {publicationType === 'Scopus Indexed Conference Proceedings' && (
                     <Alert variant="default">
-                        <Info className="h-4 w-4" />
-                        <AlertTitle>Conference Proceedings Policy</AlertTitle>
-                        <AlertDescription>
-                            Only authors with the role of 'Presenting Author' or 'First & Presenting Author' are eligible for an incentive for this publication type. Other co-authors can be added for record-keeping.
-                        </AlertDescription>
+                      <Info className="h-4 w-4" />
+                      <AlertTitle>Conference Proceedings Policy</AlertTitle>
+                      <AlertDescription>
+                        Only authors with the role of 'Presenting Author' or 'First & Presenting Author' are eligible for an incentive for this publication type. Other co-authors can be added for record-keeping.
+                      </AlertDescription>
                     </Alert>
                   )}
                   {fields.map((field, index) => (
@@ -1278,8 +1279,8 @@ export function ResearchPaperForm() {
                       </div>
                       <div className="flex items-center gap-2 w-full md:w-auto">
                         <Select onValueChange={(value) => updateAuthorRole(index, value as Author['role'])} value={field.role}>
-                            <SelectTrigger className="w-full md:w-[180px] h-9 text-xs"><SelectValue placeholder="Select role" /></SelectTrigger>
-                            <SelectContent>{getAvailableRoles(form.getValues(`authors.${index}`)).map(role => (<SelectItem key={role} value={role}>{role}</SelectItem>))}</SelectContent>
+                          <SelectTrigger className="w-full md:w-[180px] h-9 text-xs"><SelectValue placeholder="Select role" /></SelectTrigger>
+                          <SelectContent>{getAvailableRoles(form.getValues(`authors.${index}`)).map(role => (<SelectItem key={role} value={role}>{role}</SelectItem>))}</SelectContent>
                         </Select>
                         {field.email.toLowerCase() !== user?.email.toLowerCase() && (
                           <Button type="button" variant="ghost" size="icon" className="h-9 w-9" onClick={() => removeAuthor(index)}><Trash2 className="h-4 w-4" /></Button>
@@ -1289,72 +1290,72 @@ export function ResearchPaperForm() {
                   ))}
                   <div className="space-y-4">
                     <div className="space-y-2 p-3">
-                        <FormLabel className="text-sm">Add Internal Co-Author</FormLabel>
-                         <div className="relative">
-                            <Input
-                                placeholder="Search by Co-Author's Name or MIS ID"
-                                value={coPiSearchTerm}
-                                onChange={(e) => {
-                                    setCoPiSearchTerm(e.target.value);
-                                    handleSearchCoPi(e.target.value);
-                                }}
-                            />
-                            {isSearching && <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 animate-spin" />}
+                      <FormLabel className="text-sm">Add Internal Co-Author</FormLabel>
+                      <div className="relative">
+                        <Input
+                          placeholder="Search by Co-Author's Name or MIS ID"
+                          value={coPiSearchTerm}
+                          onChange={(e) => {
+                            setCoPiSearchTerm(e.target.value);
+                            handleSearchCoPi(e.target.value);
+                          }}
+                        />
+                        {isSearching && <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 animate-spin" />}
+                      </div>
+                      {foundCoPis.length > 0 && (
+                        <div className="relative">
+                          <div className="absolute w-full bg-background border rounded-md shadow-lg z-10 max-h-48 overflow-y-auto">
+                            {foundCoPis.map(coPi => (
+                              <div key={coPi.uid} className="p-2 hover:bg-muted cursor-pointer" onClick={() => handleAddCoPi(coPi)}>
+                                {coPi.name} ({coPi.misId})
+                              </div>
+                            ))}
+                          </div>
                         </div>
-                        {foundCoPis.length > 0 && (
-                            <div className="relative">
-                                <div className="absolute w-full bg-background border rounded-md shadow-lg z-10 max-h-48 overflow-y-auto">
-                                    {foundCoPis.map(coPi => (
-                                        <div key={coPi.uid} className="p-2 hover:bg-muted cursor-pointer" onClick={() => handleAddCoPi(coPi)}>
-                                            {coPi.name} ({coPi.misId})
-                                        </div>
-                                    ))}
-                                </div>
-                            </div>
-                        )}
+                      )}
                     </div>
-                     <div className="space-y-2 p-3">
-                        <FormLabel className="text-sm">Add External Co-Author</FormLabel>
-                         <div className="flex flex-col md:flex-row gap-2 mt-1">
-                            <Input value={externalAuthorName} onChange={(e) => setExternalAuthorName(e.target.value)} placeholder="External author's name"/>
-                            <Input value={externalAuthorEmail} onChange={(e) => setExternalAuthorEmail(e.target.value)} placeholder="External author's email (optional)"/>
-                            <Select value={externalAuthorRole} onValueChange={(value) => setExternalAuthorRole(value as Author['role'])}>
-                                <SelectTrigger><SelectValue/></SelectTrigger>
-                                <SelectContent>{getAvailableRoles(undefined).map(role => (<SelectItem key={role} value={role}>{role}</SelectItem>))}</SelectContent>
-                            </Select>
-                            <Button type="button" onClick={addExternalAuthor} variant="outline" size="icon" disabled={!externalAuthorName.trim()}><UserPlus className="h-4 w-4"/></Button>
-                        </div>
+                    <div className="space-y-2 p-3">
+                      <FormLabel className="text-sm">Add External Co-Author</FormLabel>
+                      <div className="flex flex-col md:flex-row gap-2 mt-1">
+                        <Input value={externalAuthorName} onChange={(e) => setExternalAuthorName(e.target.value)} placeholder="External author's name" />
+                        <Input value={externalAuthorEmail} onChange={(e) => setExternalAuthorEmail(e.target.value)} placeholder="External author's email (optional)" />
+                        <Select value={externalAuthorRole} onValueChange={(value) => setExternalAuthorRole(value as Author['role'])}>
+                          <SelectTrigger><SelectValue /></SelectTrigger>
+                          <SelectContent>{getAvailableRoles(undefined).map(role => (<SelectItem key={role} value={role}>{role}</SelectItem>))}</SelectContent>
+                        </Select>
+                        <Button type="button" onClick={addExternalAuthor} variant="outline" size="icon" disabled={!externalAuthorName.trim()}><UserPlus className="h-4 w-4" /></Button>
+                      </div>
                     </div>
                   </div>
                   <FormMessage>
                     {form.formState.errors.authors?.message || form.formState.errors.authors?.root?.message}
                   </FormMessage>
                 </div>
-                
+
                 <FormField
-                    control={form.control}
-                    name="authorPosition"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Your Author Position</FormLabel>
-                        <Select onValueChange={field.onChange} value={field.value}>
-                          <FormControl>
-                            <SelectTrigger>
-                              <SelectValue placeholder="Select your position" />
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent>
-                            {authorPositions.map((pos) => (
-                              <SelectItem key={pos} value={pos}>
-                                {pos}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
+                  control={form.control}
+                  name="authorPosition"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Your Author Position</FormLabel>
+                      <Select onValueChange={field.onChange} value={field.value}>
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select your position" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {authorPositions.map((pos) => (
+                            <SelectItem key={pos} value={pos}>
+                              {pos}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <FormField
                     control={form.control}
@@ -1383,7 +1384,7 @@ export function ResearchPaperForm() {
                     )}
                   />
                 </div>
-                
+
                 <FormField
                   control={form.control}
                   name="isPuNameInPublication"
@@ -1393,7 +1394,7 @@ export function ResearchPaperForm() {
                         <FormLabel className="text-base">
                           Is "Parul University Goa" name present in the publication?
                         </FormLabel>
-                         <FormDescription>If not, the final incentive amount will be reduced by 50%.</FormDescription>
+                        <FormDescription>If not, the final incentive amount will be reduced by 50%.</FormDescription>
                       </div>
                       <FormControl>
                         <Checkbox checked={field.value} onCheckedChange={field.onChange} />
@@ -1412,7 +1413,7 @@ export function ResearchPaperForm() {
                         <FormLabel className="text-base">
                           Was the Article Processing Charge (APC) paid by the University?
                         </FormLabel>
-                         <FormDescription>If yes, the final incentive amount will be reduced by 50%.</FormDescription>
+                        <FormDescription>If yes, the final incentive amount will be reduced by 50%.</FormDescription>
                       </div>
                       <FormControl>
                         <Checkbox checked={field.value} onCheckedChange={field.onChange} />
@@ -1423,23 +1424,23 @@ export function ResearchPaperForm() {
                 />
 
                 {calculatedIncentive !== null && (
-                    <div className={`p-4 rounded-md ${calculatedIncentive === 0 ? 'bg-yellow-100 dark:bg-yellow-900/30' : 'bg-secondary'}`}>
-                        <p className="text-sm font-medium">Tentative Eligible Incentive Amount: <span className="font-bold text-lg text-primary">₹{calculatedIncentive.toLocaleString('en-IN')}</span></p>
-                        {calculatedIncentive === 0 && formValues.authorPosition && ['6th', '7th', '8th', '9th', '10th'].includes(formValues.authorPosition) && (
-                            (() => {
-                              const userRole = formValues.authors.find(a => a.email.toLowerCase() === user?.email.toLowerCase())?.role;
-                              if (userRole === 'Co-Author') {
-                                return <p className="text-xs text-yellow-700 dark:text-yellow-300 mt-2">As a co-author beyond the 5th position, this claim qualifies for ARPS score but not monetary incentive.</p>;
-                              }
-                              return null;
-                            })()
-                        )}
-                        {!(calculatedIncentive === 0 && formValues.authorPosition && ['6th', '7th', '8th', '9th', '10th'].includes(formValues.authorPosition) && formValues.authors.find(a => a.email.toLowerCase() === user?.email.toLowerCase())?.role === 'Co-Author') && (
-                            <p className="text-xs text-muted-foreground">This is your individual share based on the policy, publication type, and author roles.</p>
-                        )}
-                    </div>
+                  <div className={`p-4 rounded-md ${calculatedIncentive === 0 ? 'bg-yellow-100 dark:bg-yellow-900/30' : 'bg-secondary'}`}>
+                    <p className="text-sm font-medium">Tentative Eligible Incentive Amount: <span className="font-bold text-lg text-primary">₹{calculatedIncentive.toLocaleString('en-IN')}</span></p>
+                    {calculatedIncentive === 0 && formValues.authorPosition && ['6th', '7th', '8th', '9th', '10th'].includes(formValues.authorPosition) && (
+                      (() => {
+                        const userRole = formValues.authors.find(a => a.email.toLowerCase() === user?.email.toLowerCase())?.role;
+                        if (userRole === 'Co-Author') {
+                          return <p className="text-xs text-yellow-700 dark:text-yellow-300 mt-2">As a co-author beyond the 5th position, this claim qualifies for ARPS score but not monetary incentive.</p>;
+                        }
+                        return null;
+                      })()
+                    )}
+                    {!(calculatedIncentive === 0 && formValues.authorPosition && ['6th', '7th', '8th', '9th', '10th'].includes(formValues.authorPosition) && formValues.authors.find(a => a.email.toLowerCase() === user?.email.toLowerCase())?.role === 'Co-Author') && (
+                      <p className="text-xs text-muted-foreground">This is your individual share based on the policy, publication type, and author roles.</p>
+                    )}
+                  </div>
                 )}
-                
+
                 <FormField
                   control={form.control}
                   name="sdgGoals"
@@ -1472,7 +1473,7 @@ export function ResearchPaperForm() {
                           ))}
                         </DropdownMenuContent>
                       </DropdownMenu>
-                       <FormMessage />
+                      <FormMessage />
                     </FormItem>
                   )}
                 />
@@ -1509,9 +1510,9 @@ export function ResearchPaperForm() {
                 {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
                 Save as Draft
               </Button>
-               <Button type="button" onClick={handleProceedToReview} disabled={isSubmitting || bankDetailsMissing || orcidOrMisIdMissing}>
+              <Button type="button" onClick={handleProceedToReview} disabled={isSubmitting || bankDetailsMissing || orcidOrMisIdMissing}>
                 Proceed to Review
-            </Button>
+              </Button>
             </CardFooter>
           </form>
         </Form>

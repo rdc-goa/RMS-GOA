@@ -56,7 +56,13 @@ interface EmailOptions {
   };
 }
 
-export async function sendEmail({ to, cc, bcc, subject, html, attachments, from = 'default', icalEvent }: EmailOptions) {
+type MailSendResult = {
+  success: boolean;
+  error?: string;
+  message?: string;
+};
+
+export async function sendEmail({ to, cc, bcc, subject, html, attachments, from = 'default', icalEvent }: EmailOptions): Promise<MailSendResult> {
   // DND Check
   try {
     const settings = await getSystemSettings();
@@ -73,14 +79,23 @@ export async function sendEmail({ to, cc, bcc, subject, html, attachments, from 
   
   let transporter;
   let fromAddress: string;
+  let selectedSender: 'default' | 'rdc';
 
   if (from === 'rdc') {
     if (!isRdcConfigured) {
-        console.error(`RDC email not sent to ${to}: RDC email service is not configured.`);
-        return { success: false, error: 'RDC email service not configured on the server.' };
+        if (!isDefaultConfigured) {
+          console.error(`RDC email not sent to ${to}: no RDC or default email service is configured.`);
+          return { success: false, error: 'No email service is configured on the server.' };
+        }
+        console.warn(`RDC email service is not configured. Falling back to default email account for ${to}.`);
+        transporter = defaultTransporter;
+        fromAddress = `"Research & Development Cell - PU" <${GMAIL_USER}>`;
+        selectedSender = 'default';
+    } else {
+      transporter = rdcTransporter;
+      fromAddress = `"Research & Development Cell - PU" <${RDC_EMAIL}>`;
+      selectedSender = 'rdc';
     }
-    transporter = rdcTransporter;
-    fromAddress = `"Research & Development Cell - PU" <${RDC_EMAIL}>`;
   } else {
      if (!isDefaultConfigured) {
         console.error(`Default email not sent to ${to}: Default email service is not configured.`);
@@ -88,6 +103,7 @@ export async function sendEmail({ to, cc, bcc, subject, html, attachments, from 
     }
     transporter = defaultTransporter;
     fromAddress = `"Research & Development Cell - PU" <${GMAIL_USER}>`;
+    selectedSender = 'default';
   }
   
   const mailOptions = {
@@ -103,10 +119,40 @@ export async function sendEmail({ to, cc, bcc, subject, html, attachments, from 
 
   try {
     await transporter.sendMail(mailOptions);
-    console.log(`Email sent successfully to ${to} from ${from} account.`);
+    console.log(`Email sent successfully to ${to} from ${selectedSender} account.`);
     return { success: true };
   } catch (error: any) {
-    console.error(`Failed to send email to ${to} from ${from} account:`, error);
+    const canRetryWithDefault =
+      selectedSender === 'rdc' &&
+      isDefaultConfigured &&
+      GMAIL_USER &&
+      GMAIL_USER !== RDC_EMAIL;
+
+    if (canRetryWithDefault) {
+      const fallbackFromAddress = `"Research & Development Cell - PU" <${GMAIL_USER}>`;
+      try {
+        await defaultTransporter.sendMail({
+          ...mailOptions,
+          from: fallbackFromAddress,
+        });
+        console.warn(`RDC email failed for ${to}. Sent successfully using default account instead.`);
+        return {
+          success: true,
+          message: 'Sent using default email account after RDC account failed.',
+        };
+      } catch (fallbackError: any) {
+        console.error(`Fallback email attempt also failed for ${to}.`, fallbackError);
+      }
+    }
+
+    console.error(`--- EMAIL SENDING ERROR ---`);
+    console.error(`Timestamp: ${new Date().toISOString()}`);
+    console.error(`Recipient: ${to}`);
+    console.error(`Subject: ${subject}`);
+    console.error(`From: ${fromAddress}`);
+    console.error(`Error Message: ${error.message}`);
+    console.error(`Full Error Object:`, error);
+    console.error(`---------------------------`);
     return { success: false, error: error.message };
   }
 }

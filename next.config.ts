@@ -6,6 +6,7 @@ const nextConfig: NextConfig = {
   typescript: {
     ignoreBuildErrors: true,
   },
+  // @ts-ignore
   eslint: {
     ignoreDuringBuilds: true,
   },
@@ -61,9 +62,6 @@ const nextConfig: NextConfig = {
     ],
   },
   experimental: {
-    serverFiles: {
-      dirs: ['./src/templates'],
-    },
     serverActions: {
       bodySizeLimit: '10mb',
     },

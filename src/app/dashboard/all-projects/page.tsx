@@ -5,7 +5,7 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useRouter, usePathname, useSearchParams } from 'next/navigation';
 import * as XLSX from 'xlsx';
-import { format, isAfter, isBefore, startOfToday, parseISO } from 'date-fns';
+import { format, isAfter, isBefore, startOfToday, parseISO, differenceInMonths, addDays } from 'date-fns';
 import type { DateRange } from 'react-day-picker';
 import { PageHeader } from '@/components/page-header';
 import { ProjectList } from '@/components/projects/project-list';
@@ -37,28 +37,32 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { updateEmrFinalStatus, updateEmrInterestCoPis, updateEmrInterestDetails, addSanctionedEmrProject } from '@/app/emr-actions';
 import { findUserByMisId } from '@/app/userfinding';
+import { reportSystemError } from '@/lib/error-reporting';
 import { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 
 
-const STATUSES: Project['status'][] = ['Submitted', 'Under Review', 'Recommended', 'Not Recommended', 'In Progress', 'Completed', 'Pending Completion Approval', 'Sanctioned'];
+const STATUSES: Project['status'][] = ['Submitted', 'Under Review', 'Revision Submitted', 'Recommended', 'Not Recommended', 'In Progress', 'Completed', 'Pending Completion Approval', 'Sanctioned'];
 const CAMPUSES = ['Vadodara', 'Goa', 'Ahmedabad', 'Rajkot'];
 
 const IMR_EXPORT_COLUMNS = [
-  { id: 'title', label: 'Project Title' },
-  { id: 'type', label: 'Category' },
-  { id: 'submissionDate', label: 'Submission Date' },
-  { id: 'abstract', label: 'Abstract' },
-  { id: 'pi', label: 'Principal Investigator' },
-  { id: 'pi_email', label: 'PI Email' },
-  { id: 'pi_phoneNumber', label: 'PI Phone' },
-  { id: 'misId', label: 'MIS ID' },
-  { id: 'designation', label: 'Designation' },
-  { id: 'faculty', label: 'Faculty' },
-  { id: 'institute', label: 'Institute' },
-  { id: 'departmentName', label: 'Department' },
-  { id: 'campus', label: 'Campus' },
-  { id: 'status', label: 'Status' },
-  { id: 'coPiNames', label: 'Co-PI Names' },
+  { id: 'title', label: 'Title of the Project' },
+  { id: 'type', label: 'Domain of the Project' },
+  { id: 'sdgRelated', label: 'Is project related to Sustainable Development Goals?' },
+  { id: 'sdgGoals', label: 'Select Sustainable Development Goal, if applicable' },
+  { id: 'interdisciplinary', label: 'Is project related to Interdisciplinary / Multidisciplinary / Transdisciplinary?' },
+  { id: 'interdisciplinaryType', label: 'Select Interdisciplinary / Multidisciplinary / Transdisciplinary, if applicable' },
+  { id: 'pi', label: 'Name of the Principal Investigator working in the project receiving seed money' },
+  { id: 'misId', label: 'MIS ID of Principal Investigator' },
+  { id: 'institute', label: 'Institute of Principal Investigator' },
+  { id: 'faculty', label: 'Faculty of Principal Investigator' },
+  { id: 'teamMembers', label: 'Name(s) of the teacher(s) / Student(s) working in the project receiving seed money other than Principal Investigator' },
+  { id: 'submissionDate', label: 'Date of Application for Seed Money to RDC' },
+  { id: 'sanctionDate', label: 'Date of Receiving approval of seed money grant from RDC' },
+  { id: 'projectDuration', label: 'Duration of the project in Months' },
+  { id: 'seedMoney', label: 'The amount of seed money (INR in lakhs)' },
+  { id: 'seedMoneyMonth', label: 'Month of Receiving Seed Money Grant' },
+  { id: 'seedMoneyYear', label: 'Year of Receiving Seed Money Grant' },
+  { id: 'remarks', label: 'Remarks' },
 ];
 
 const EMR_EXPORT_COLUMNS = [
@@ -521,6 +525,7 @@ export default function AllProjectsPage() {
 
     } catch (error) {
         console.error("Error fetching projects: ", error);
+        reportSystemError(error, user);
         toast({ variant: 'destructive', title: 'Error', description: 'Could not fetch project data.' });
     } finally {
         setLoading(false);
@@ -658,10 +663,93 @@ export default function AllProjectsPage() {
     const dataToExport = projectsToExport.map(p => {
       const userDetails = usersMap.get(p.pi_uid);
       const coPiNames = (p.coPiDetails || []).map(c => c.name).join(', ');
+      
+      // Extract team members (Co-PIs and other team info)
+      const teamMembers = coPiNames || (p.teamInfo ? p.teamInfo.split(',').filter(t => t.trim()).join(', ') : 'NA');
+      
+      // Determine SDG related status
+      const sdgRelated = (p.sdgGoals && p.sdgGoals.length > 0) ? 'Yes' : 'NA';
+      const sdgGoalsDisplay = (p.sdgGoals && p.sdgGoals.length > 0) ? p.sdgGoals.join(', ') : 'NA';
+      
+      // Interdisciplinary fields - mapped from project type (Unidisciplinary, Multi-Disciplinary, Inter-Disciplinary)
+      const interdisciplinary = (p.type === 'Multi-Disciplinary' || p.type === 'Inter-Disciplinary') ? 'Yes' : (p.type === 'Unidisciplinary' ? 'No' : 'NA');
+      const interdisciplinaryType = (p.type === 'Multi-Disciplinary' || p.type === 'Inter-Disciplinary') ? p.type : 'NA';
+      
+      // Seed money fields
+      const seedMoney = p.grant?.totalAmount ? (p.grant.totalAmount / 100000).toFixed(2) : 'NA'; // Convert to lakhs
+      
+      // Get seed money received date from explicit field or first phase disbursement date
+      let seedMoneyReceivedDate = null;
+      if (p.seedMoneyReceivedDate) {
+        seedMoneyReceivedDate = parseISO(p.seedMoneyReceivedDate);
+      } else if (p.grant?.phases?.[0]?.disbursementDate) {
+        seedMoneyReceivedDate = parseISO(p.grant.phases[0].disbursementDate);
+      }
+      
+      const seedMoneyMonth = seedMoneyReceivedDate ? format(seedMoneyReceivedDate, 'MMMM') : 'NA';
+      const seedMoneyYear = seedMoneyReceivedDate ? format(seedMoneyReceivedDate, 'yyyy') : 'NA';
+      
+      // Sanction date - use explicit sanctionDate field or first phase disbursement
+      let sanctionDateFormatted = 'NA';
+      if (p.sanctionDate) {
+        sanctionDateFormatted = format(parseISO(p.sanctionDate), 'dd-MMM-yyyy');
+      } else if (seedMoneyReceivedDate) {
+        sanctionDateFormatted = format(seedMoneyReceivedDate, 'dd-MMM-yyyy');
+      }
+      
+      // Submission date - format submission date properly
+      let submissionDateFormatted = 'NA';
+      if (p.submissionDate) {
+        try {
+          submissionDateFormatted = format(parseISO(p.submissionDate), 'dd-MMM-yyyy');
+        } catch (e) {
+          submissionDateFormatted = 'NA';
+        }
+      }
+      
+      // Remarks - show current project status
+      const remarks = p.status || 'NA';
+      
+      // Calculate project duration in months if dates are available
+      let durationInMonths = p.projectDuration || 'NA';
+      if (p.projectStartDate && p.projectEndDate) {
+        try {
+          const startDate = parseISO(p.projectStartDate);
+          const endDate = parseISO(p.projectEndDate);
+          // Add 1 day to end date to make the calculation inclusive (e.g., 10th to 9th is a full month)
+          const months = differenceInMonths(addDays(endDate, 1), startDate);
+          durationInMonths = months.toString();
+        } catch (e) {
+          console.error("Error calculating duration:", e);
+        }
+      }
+
       const row: { [key: string]: any } = {};
       selectedExportColumns.forEach(colId => {
         const column = IMR_EXPORT_COLUMNS.find(c => c.id === colId);
-        if (column) row[column.label] = { title: p.title, type: p.type, submissionDate: new Date(p.submissionDate).toLocaleDateString(), abstract: p.abstract, pi: p.pi, pi_email: p.pi_email, pi_phoneNumber: p.pi_phoneNumber, misId: userDetails?.misId, designation: userDetails?.designation, faculty: p.faculty, institute: p.institute, departmentName: p.departmentName, campus: p.campus || userDetails?.campus || 'Vadodara', status: p.status, coPiNames: coPiNames || 'N/A' }[colId];
+        if (column) {
+          const dataMap: { [key: string]: any } = {
+            title: p.title,
+            type: p.type,
+            sdgRelated: sdgRelated,
+            sdgGoals: sdgGoalsDisplay,
+            interdisciplinary: interdisciplinary,
+            interdisciplinaryType: interdisciplinaryType,
+            pi: p.pi,
+            misId: userDetails?.misId || 'NA',
+            institute: p.institute,
+            faculty: p.faculty,
+            teamMembers: teamMembers,
+            submissionDate: submissionDateFormatted,
+            sanctionDate: sanctionDateFormatted,
+            projectDuration: durationInMonths,
+            seedMoney: seedMoney,
+            seedMoneyMonth: seedMoneyMonth,
+            seedMoneyYear: seedMoneyYear,
+            remarks: remarks,
+          };
+          row[column.label] = dataMap[colId];
+        }
       });
       return row;
     });

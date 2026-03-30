@@ -1,8 +1,8 @@
 
-
 'use client';
 
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import * as XLSX from 'xlsx';
 import { PageHeader } from '@/components/page-header';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Bar, BarChart, CartesianGrid, XAxis, Line, LineChart, ResponsiveContainer, YAxis, Tooltip, Pie, PieChart, Cell, Legend, LabelList } from 'recharts';
@@ -14,13 +14,15 @@ import { db } from '@/lib/config';
 import { collection, query, where, getDocs, onSnapshot, or, orderBy, Timestamp } from 'firebase/firestore';
 import { format, subMonths, startOfMonth, endOfMonth, parseISO, getYear, subDays, startOfDay } from 'date-fns';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Award, Download, Users, Loader2, FileArchive } from 'lucide-react';
+import { Award, Download, Users, Loader2, FileArchive, Banknote, FileText, Calendar, Info } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
 import { toPng } from 'html-to-image';
 import { useRouter } from 'next/navigation';
 import { getStorageUsage } from '@/app/actions';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 
 
 const COLORS = ["#64B5F6", "#81C784", "#FFB74D", "#E57373", "#BA68C8", "#7986CB", "#4DD0E1", "#FFF176", "#FF8A65", "#A1887F", "#90A4AE"];
@@ -62,18 +64,25 @@ export default function AnalyticsPage() {
   const [availableYears, setAvailableYears] = useState<string[]>([]);
   const [submissionsByYearType, setSubmissionsByYearType] = useState<'submissions' | 'sanctions'>('submissions');
   const [projectsByGroupType, setProjectsByGroupType] = useState<'imr' | 'emr'>('imr');
+  const [grantDateRange, setGrantDateRange] = useState<{start: string | null, end: string | null}>({start: null, end: null});
   const { toast } = useToast();
   const router = useRouter();
+  const [isGeneratingReport, setIsGeneratingReport] = useState(false);
   
   const statusChartRef = useRef<HTMLDivElement>(null);
   const submissionsTimeChartRef = useRef<HTMLDivElement>(null);
   const submissionsYearChartRef = useRef<HTMLDivElement>(null);
   const projectsByGroupChartRef = useRef<HTMLDivElement>(null);
   const incentiveAmountChartRef = useRef<HTMLDivElement>(null);
+  const imrGrantByInstituteChartRef = useRef<HTMLDivElement>(null);
   const activeUsersChartRef = useRef<HTMLDivElement>(null);
   const fundingByAgencyChartRef = useRef<HTMLDivElement>(null);
   const fieldOfStudyChartRef = useRef<HTMLDivElement>(null);
   const fieldOfStudySubdomainChartRef = useRef<HTMLDivElement>(null);
+  const projectTypeChartRef = useRef<HTMLDivElement>(null);
+  const publicationChartRef = useRef<HTMLDivElement>(null);
+  const monthlyPublicationChartRef = useRef<HTMLDivElement>(null);
+
 
   const handleExport = useCallback(async (ref: React.RefObject<HTMLDivElement>, fileName: string) => {
     if (!ref.current) {
@@ -96,6 +105,189 @@ export default function AnalyticsPage() {
         toast({ variant: 'destructive', title: 'Export Failed', description: err.message });
     }
   }, [toast]);
+
+  const imrGrantByInstituteData = useMemo(() => {
+    if (!projects) return [];
+    
+    let filteredProjects = projects.filter(p => p.grant && p.grant.totalAmount > 0 && p.institute);
+    
+    if (grantDateRange.start && grantDateRange.end) {
+      const startDate = startOfMonth(parseISO(grantDateRange.start));
+      const endDate = endOfMonth(parseISO(grantDateRange.end));
+      filteredProjects = filteredProjects.filter(p => {
+        const submissionDate = parseISO(p.submissionDate);
+        return submissionDate >= startDate && submissionDate <= endDate;
+      });
+    }
+    
+    return Object.entries(
+      filteredProjects.reduce((acc, project) => {
+        const groupKey = project.institute!;
+        acc[groupKey] = (acc[groupKey] || 0) + project.grant!.totalAmount;
+        return acc;
+      }, {} as Record<string, number>)
+    ).map(([institute, amount]) => ({ institute, amount }))
+    .sort((a, b) => b.amount - a.amount);
+  }, [projects, grantDateRange]);
+
+  const handleExportImrGrants = useCallback(() => {
+    if (imrGrantByInstituteData.length === 0) {
+      toast({
+        variant: 'destructive',
+        title: 'No Data',
+        description: 'There is no IMR grant data to export.',
+      });
+      return;
+    }
+    const dataToExport = imrGrantByInstituteData.map(item => ({
+      'Institute': item.institute,
+      'Total Sanctioned Amount (INR)': item.amount,
+    }));
+
+    const worksheet = XLSX.utils.json_to_sheet(dataToExport);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'IMR Grants by Institute');
+    const rangeSuffix = grantDateRange.start && grantDateRange.end 
+        ? `_${grantDateRange.start}_to_${grantDateRange.end}` 
+        : '';
+    XLSX.writeFile(workbook, `IMR_Grants_By_Institute${rangeSuffix}_${new Date().toISOString().split('T')[0]}.xlsx`);
+    const rangeDesc = grantDateRange.start && grantDateRange.end 
+        ? ` (${format(parseISO(grantDateRange.start), 'MMM yyyy')} - ${format(parseISO(grantDateRange.end), 'MMM yyyy')})`
+        : '';
+    toast({ title: 'Export Started', description: `Downloading grant data for ${imrGrantByInstituteData.length} institutes${rangeDesc}.` });
+  }, [imrGrantByInstituteData, toast, grantDateRange]);
+
+    const handleGenerateReport = async () => {
+        setIsGeneratingReport(true);
+        toast({ title: "Generating Report", description: "This may take a moment..." });
+
+        try {
+            const doc = new jsPDF('p', 'mm', 'a4');
+            let yPos = 20;
+            const pageWidth = doc.internal.pageSize.getWidth();
+            const pageHeight = doc.internal.pageSize.getHeight();
+            const margin = 15;
+            const contentWidth = pageWidth - margin * 2;
+            const isDarkMode = document.documentElement.classList.contains('dark');
+            const imageBgColor = isDarkMode ? '#0f172a' : '#ffffff';
+
+            const addImageToPdf = async (ref: React.RefObject<HTMLDivElement>, title: string) => {
+                if (!ref.current) return;
+                
+                const imgHeight = (ref.current.clientHeight * contentWidth) / ref.current.clientWidth;
+
+                if (yPos + imgHeight + 20 > (pageHeight - margin * 2)) {
+                    doc.addPage();
+                    yPos = 20;
+                }
+
+                doc.setFontSize(14);
+                doc.text(title, margin, yPos);
+                yPos += 8;
+
+                const dataUrl = await toPng(ref.current, { backgroundColor: imageBgColor, pixelRatio: 2 });
+                doc.addImage(dataUrl, 'PNG', margin, yPos, contentWidth, imgHeight);
+                yPos += imgHeight + 15;
+            };
+
+            // --- PDF Header ---
+            doc.setFontSize(22);
+            doc.text('R&D Portal Analytics Report', pageWidth / 2, yPos, { align: 'center' });
+            yPos += 8;
+            doc.setFontSize(10);
+            doc.text(`Generated on: ${format(new Date(), 'PPP p')}`, pageWidth / 2, yPos, { align: 'center' });
+            yPos += 15;
+
+            // --- Stat Cards ---
+            doc.setFontSize(16);
+            doc.text('Key Metrics', margin, yPos);
+            yPos += 8;
+            autoTable(doc, {
+                startY: yPos,
+                head: [['Metric', 'Value', 'Description']],
+                body: statCards.map(card => [card.title, card.value, card.description]),
+                theme: 'grid'
+            });
+            yPos = (doc as any).lastAutoTable.finalY + 15;
+            
+            // --- IMR & EMR Section ---
+            doc.setFontSize(18);
+            doc.text('IMR & EMR Project Analytics', margin, yPos);
+            yPos += 10;
+            await addImageToPdf(statusChartRef, 'IMR Project Status Distribution');
+            await addImageToPdf(projectTypeChartRef, 'IMR Projects by Type');
+
+            doc.addPage(); yPos = 20;
+            await addImageToPdf(submissionsTimeChartRef, 'IMR Submissions Over Time');
+            await addImageToPdf(submissionsYearChartRef, 'Yearly IMR Submissions & Sanctions');
+
+            doc.addPage(); yPos = 20;
+            await addImageToPdf(projectsByGroupChartRef, `Projects by ${aggregationLabel}`);
+            await addImageToPdf(fundingByAgencyChartRef, 'Top 5 EMR Funding Agencies');
+            
+            doc.addPage(); yPos = 20;
+            await addImageToPdf(imrGrantByInstituteChartRef, 'IMR Grant Amount by Institute');
+
+            // --- Publication & Incentive Section ---
+            doc.addPage(); yPos = 20;
+            doc.setFontSize(18);
+            doc.text('Publication & Incentive Analytics', margin, yPos);
+            yPos += 10;
+            await addImageToPdf(incentiveAmountChartRef, 'Incentive Amounts by Category');
+            await addImageToPdf(publicationChartRef, 'Publications by Journal Quartile');
+
+            doc.addPage(); yPos = 20;
+            await addImageToPdf(monthlyPublicationChartRef, 'Monthly Publication Distribution');
+            
+            // --- System & AI Section (if applicable) ---
+            if (user?.role === 'Super-admin') {
+                doc.addPage(); yPos = 20;
+                doc.setFontSize(18);
+                doc.text('System & AI Analytics', margin, yPos);
+                yPos += 10;
+                
+                await addImageToPdf(fieldOfStudyChartRef, 'Field of Studies by Domain');
+                await addImageToPdf(fieldOfStudySubdomainChartRef, 'Top Subdomains');
+                
+                doc.addPage(); yPos = 20;
+                await addImageToPdf(activeUsersChartRef, 'Daily Active Users');
+
+                if (fieldOfStudyDrilldown.length > 0) {
+                     if (yPos > 240) { doc.addPage(); yPos = 20; }
+                    doc.setFontSize(14);
+                    doc.text('Claim-Level Domain Drilldown', margin, yPos);
+                    yPos += 8;
+                    autoTable(doc, {
+                        startY: yPos,
+                        head: [['Claim ID', 'Title', 'Domain', 'Subdomain', 'Confidence']],
+                        body: fieldOfStudyDrilldown.map(row => [row.claimId, row.title, row.domain, row.subdomain, `${row.confidence}%`]),
+                        theme: 'grid',
+                        styles: { fontSize: 8, cellPadding: 1 },
+                        columnStyles: { 1: { cellWidth: 80 } },
+                    });
+                    yPos = (doc as any).lastAutoTable.finalY + 15;
+                }
+            }
+
+            // --- Add page numbers ---
+            const pageCount = doc.internal.pages.length -1;
+            for (let i = 1; i <= pageCount; i++) {
+                doc.setPage(i);
+                doc.setFontSize(8);
+                doc.setTextColor(150);
+                doc.text(`Page ${i} of ${pageCount}`, pageWidth - margin, pageHeight - 10, { align: 'right' });
+            }
+
+            doc.save(`RDC_Analytics_Report_${format(new Date(), 'yyyy-MM-dd')}.pdf`);
+            toast({ title: "Report Generated", description: "Your PDF report is downloading." });
+        } catch (err: any) {
+            console.error("PDF generation failed:", err);
+            toast({ variant: 'destructive', title: 'PDF Generation Failed', description: err.message });
+        } finally {
+            setIsGeneratingReport(false);
+        }
+    };
+
 
   useEffect(() => {
     const storedUser = localStorage.getItem('user');
@@ -247,6 +439,37 @@ export default function AnalyticsPage() {
     }
   }, [filteredProjects]);
 
+  const grantYearOptions = useMemo(() => {
+    const years = ['all', '25-26'];
+    if (availableYears.length > 0) {
+      years.push(...availableYears);
+    }
+    return [...new Set(years)]; // Remove duplicates
+  }, [availableYears]);
+
+  const monthYearOptions = useMemo(() => {
+    if (filteredProjects.length === 0) return [];
+    
+    const dates = filteredProjects
+      .map(p => parseISO(p.submissionDate))
+      .sort((a, b) => a.getTime() - b.getTime());
+    
+    const startDate = dates[0];
+    const endDate = new Date();
+    
+    const options = [];
+    let current = new Date(startDate.getFullYear(), startDate.getMonth(), 1);
+    
+    while (current <= endDate) {
+      const value = format(current, 'yyyy-MM');
+      const label = format(current, 'MMM yyyy');
+      options.push({ value, label });
+      current = new Date(current.getFullYear(), current.getMonth() + 1, 1);
+    }
+    
+    return options.reverse(); // Most recent first
+  }, [filteredProjects]);
+
   const submissionsData = useMemo(() => {
     if (timeRange === 'last6months') {
         const last6Months = Array.from({ length: 6 }, (_, i) => {
@@ -348,6 +571,10 @@ export default function AnalyticsPage() {
 
   const projectsByGroupConfig = {
     projects: { label: 'Projects', color: 'hsl(var(--accent))' },
+  } satisfies ChartConfig;
+
+  const imrGrantByInstituteConfig = {
+    amount: { label: 'Amount (₹)', color: 'hsl(var(--primary))' },
   } satisfies ChartConfig;
 
   const fundingByAgencyData = useMemo(() => {
@@ -526,9 +753,6 @@ export default function AnalyticsPage() {
     };
     return config;
   }, []);
-
-  const publicationChartRef = useRef<HTMLDivElement>(null);
-  const monthlyPublicationChartRef = useRef<HTMLDivElement>(null);
 
   const {
     fieldOfStudyData,
@@ -769,6 +993,38 @@ export default function AnalyticsPage() {
     };
   }, [incentiveClaims]);
 
+  const { totalImrGrantAmount, totalImrGrantsAwarded, totalEmrProjects } = useMemo(() => {
+    const awardedProjects = projects.filter(p => p.grant && p.grant.totalAmount > 0 && p.status !== 'Draft' && p.status !== 'Not Recommended');
+    const totalAmount = awardedProjects.reduce((sum, p) => sum + p.grant!.totalAmount, 0);
+    const emrSanctionedCount = emrProjects.length;
+    return {
+        totalImrGrantAmount: totalAmount,
+        totalImrGrantsAwarded: awardedProjects.length,
+        totalEmrProjects: emrSanctionedCount
+    };
+  }, [projects, emrProjects]);
+
+    const { projectTypeDistributionData, projectTypeDistributionConfig } = useMemo(() => {
+        if (filteredProjects.length === 0) return { projectTypeDistributionData: [], projectTypeDistributionConfig: {} };
+        const typeCounts = filteredProjects.reduce((acc, project) => {
+            const type = project.type || 'Unidisciplinary';
+            acc[type] = (acc[type] || 0) + 1;
+            return acc;
+        }, {} as Record<string, number>);
+
+        const data = Object.entries(typeCounts).map(([name, value]) => ({ name, value }));
+
+        const config: ChartConfig = {};
+        data.forEach((item, index) => {
+            config[item.name] = {
+                label: item.name,
+                color: COLORS[index % COLORS.length],
+            };
+        });
+
+        return { projectTypeDistributionData: data, projectTypeDistributionConfig: config };
+    }, [filteredProjects]);
+
 
   const isCro = user?.role === 'CRO';
   const isGoaHead = user?.designation === 'Head of Goa Campus';
@@ -790,6 +1046,22 @@ export default function AnalyticsPage() {
     if (user?.role === 'CRO' || user?.designation === 'Principal' || user?.designation === 'HOD' || isGoaHead) return 'Visualize project data and submission trends for your scope.';
     return 'Visualize project data and submission trends across the university.';
   }
+  
+    const statCards = [
+        { title: 'Total IMR Grant Amount', value: `₹${totalImrGrantAmount.toLocaleString('en-IN')}`, icon: Banknote, description: `For ${totalImrGrantsAwarded} sanctioned IMR projects.`, loading: loading },
+        { title: 'Total Sanctioned Incentives', value: `₹${totalIncentiveAmount.toLocaleString('en-IN')}`, icon: Award, description: `Across ${incentiveClaims.filter(c => c.finalApprovedAmount).length} claims`, loading: loading },
+        { title: 'Total EMR Projects', value: totalEmrProjects.toString(), icon: Calendar, description: 'Sanctioned extramural projects.', loading: loading },
+    ];
+
+    if (user?.role === 'Super-admin') {
+        statCards.push({
+            title: 'Total Storage Used',
+            value: storageUsage !== null ? `${storageUsage.toFixed(2)} MB` : '...',
+            icon: FileArchive,
+            description: 'Used by all uploaded files.',
+            loading: storageUsage === null
+        });
+    }
 
   if (loading || !user) {
     return (
@@ -808,576 +1080,246 @@ export default function AnalyticsPage() {
   }
 
   return (
-    <div className="container mx-auto py-10">
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
       <PageHeader title={getPageTitle()} description={getPageDescription()}>
-          {isCro && user.faculties && user.faculties.length > 1 && (
-            <Select value={facultyFilter} onValueChange={(value) => { setFacultyFilter(value); }}>
-                <SelectTrigger className="w-full sm:w-[280px]">
-                    <SelectValue placeholder="Filter by faculty" />
-                </SelectTrigger>
-                <SelectContent>
-                    <SelectItem value="all">All Assigned Faculties</SelectItem>
-                    {user.faculties.map(faculty => (
-                        <SelectItem key={faculty} value={faculty}>{faculty}</SelectItem>
-                    ))}
-                </SelectContent>
-            </Select>
-        )}
+          <div className="flex items-center gap-2">
+            <Button onClick={handleGenerateReport} disabled={isGeneratingReport}>
+                {isGeneratingReport ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4" />}
+                Download PDF Report
+            </Button>
+            {isCro && user.faculties && user.faculties.length > 1 && (
+                <Select value={facultyFilter} onValueChange={(value) => { setFacultyFilter(value); }}>
+                    <SelectTrigger className="w-full sm:w-[280px]">
+                        <SelectValue placeholder="Filter by faculty" />
+                    </SelectTrigger>
+                    <SelectContent>
+                        <SelectItem value="all">All Assigned Faculties</SelectItem>
+                        {user.faculties.map(faculty => (
+                            <SelectItem key={faculty} value={faculty}>{faculty}</SelectItem>
+                        ))}
+                    </SelectContent>
+                </Select>
+            )}
+          </div>
       </PageHeader>
       <div className="mt-8 grid gap-6 md:grid-cols-2 lg:grid-cols-4">
-        <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Total Sanctioned Incentives</CardTitle>
-                <Award className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-                <div className="text-2xl font-bold">₹{totalIncentiveAmount.toLocaleString('en-IN')}</div>
-                <p className="text-xs text-muted-foreground">Across {incentiveClaims.filter(c => c.finalApprovedAmount).length} claims</p>
-            </CardContent>
-        </Card>
-        {user.role === 'Super-admin' && (
-            <Card>
+        {statCards.map((card, index) => (
+            <Card key={card.title}>
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                    <CardTitle className="text-sm font-medium">Total Storage Used</CardTitle>
-                    <FileArchive className="h-4 w-4 text-muted-foreground" />
+                    <CardTitle className="text-sm font-medium">{card.title}</CardTitle>
+                    <card.icon className="h-4 w-4 text-muted-foreground" />
                 </CardHeader>
                 <CardContent>
-                    {storageUsage !== null ? (
+                    {card.loading ? <Skeleton className="h-8 w-1/2" /> : (
                         <>
-                            <div className="text-2xl font-bold">{storageUsage} MB</div>
-                            <p className="text-xs text-muted-foreground">Used by all uploaded files.</p>
+                            <div className="text-2xl font-bold">{card.value}</div>
+                            <p className="text-xs text-muted-foreground">{card.description}</p>
                         </>
-                    ) : (
-                        <Skeleton className="h-8 w-24" />
                     )}
                 </CardContent>
             </Card>
-        )}
-        <Card className="lg:col-span-2">
-          <CardHeader className="flex flex-row items-center justify-between">
-            <div>
-              <CardTitle>Project Status Distribution</CardTitle>
-              <CardDescription>A summary of all projects by their current status.</CardDescription>
-            </div>
-            <Button variant="outline" size="sm" onClick={() => handleExport(statusChartRef, 'project_status_distribution')}>
-              <Download className="mr-2 h-4 w-4" /> Export PNG
-            </Button>
-          </CardHeader>
-          <CardContent>
-            <div ref={statusChartRef} className="p-4 bg-card">
-              <ChartContainer config={statusDistributionConfig} className="h-[250px] w-full">
-                  <ResponsiveContainer width="100%" height="100%">
-                      <PieChart>
-                          <ChartTooltip content={<ChartTooltipContent nameKey="value" formatter={(value) => value.toLocaleString()} />} />
-                          <Pie data={statusDistributionData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={80} label={({ name, percent }) => `${name} (${(percent * 100).toFixed(0)}%)`} isAnimationActive={false}>
-                              {statusDistributionData.map((entry, index) => (
-                              <Cell key={`cell-${index}`} fill={statusDistributionConfig[entry.name]?.color || '#8884d8'} />
-                              ))}
-                          </Pie>
-                      </PieChart>
-                  </ResponsiveContainer>
-              </ChartContainer>
-            </div>
-          </CardContent>
-        </Card>
+        ))}
       </div>
-       <div className="mt-8 grid gap-6 md:grid-cols-1 lg:grid-cols-3">
-        <Card className="lg:col-span-2">
-          <CardHeader>
-            <div className="flex flex-col sm:flex-row justify-between items-start gap-2">
-              <div>
-                <CardTitle>Submissions Over Time</CardTitle>
-                <CardDescription>
-                  {timeRange === 'last6months'
-                    ? 'Monthly project submissions for the last 6 months.'
-                    : `Monthly project submissions for ${timeRange}.`}
-                </CardDescription>
-              </div>
-              <div className="flex items-center gap-2">
-                <Select value={timeRange} onValueChange={setTimeRange}>
-                  <SelectTrigger className="w-full sm:w-[180px]">
-                    <SelectValue placeholder="Select time range" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="last6months">Last 6 Months</SelectItem>
-                    {availableYears.map(year => (
-                      <SelectItem key={year} value={year}>{year}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                 <Button variant="outline" size="icon" onClick={() => handleExport(submissionsTimeChartRef, 'submissions_over_time')}><Download className="h-4 w-4" /></Button>
-              </div>
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div ref={submissionsTimeChartRef} className="p-4 bg-card">
-              <ChartContainer config={submissionsConfig} className="h-[300px] w-full">
-                <LineChart accessibilityLayer data={submissionsData}>
-                  <CartesianGrid vertical={false} />
-                  <XAxis dataKey="month" tickLine={false} axisLine={false} tickMargin={8} />
-                  <YAxis tickLine={false} axisLine={false} tickMargin={8} allowDecimals={false} />
-                  <ChartTooltip cursor={false} content={<ChartTooltipContent />} />
-                  <Line dataKey="submissions" type="monotone" stroke="var(--color-submissions)" strokeWidth={2} dot={true} isAnimationActive={false} />
-                </LineChart>
-              </ChartContainer>
-            </div>
-          </CardContent>
-        </Card>
-         <Card>
-          <CardHeader className="flex flex-row items-center justify-between">
-            <div>
-              <CardTitle>Incentive Amounts by Category</CardTitle>
-              <CardDescription>Total sanctioned amount per claim type.</CardDescription>
-            </div>
-             <Button variant="outline" size="icon" onClick={() => handleExport(incentiveAmountChartRef, 'incentive_amounts')}><Download className="h-4 w-4" /></Button>
-          </CardHeader>
-          <CardContent>
-            <div ref={incentiveAmountChartRef} className="p-4 bg-card">
-              <ChartContainer config={incentiveAmountConfig} className="h-[300px] w-full">
-                <ResponsiveContainer width="100%" height="100%">
-                    <PieChart>
-                        <ChartTooltip
-                            cursor={false}
-                            content={<ChartTooltipContent 
-                                hideLabel 
-                                formatter={(value) => `₹${Number(value).toLocaleString('en-IN')}`}
-                            />}
-                        />
-                        <Pie
-                            data={incentiveAmountData}
-                            dataKey="value"
-                            nameKey="name"
-                            cx="50%"
-                            cy="50%"
-                            outerRadius={100}
-                            labelLine={false}
-                            label={({ cx, cy, midAngle, innerRadius, outerRadius, percent, index }) => {
-                                const RADIAN = Math.PI / 180;
-                                const radius = innerRadius + (outerRadius - innerRadius) * 0.5;
-                                const x = cx + radius * Math.cos(-midAngle * RADIAN);
-                                const y = cy + radius * Math.sin(-midAngle * RADIAN);
-                                return ( <text x={x} y={y} fill="white" textAnchor={x > cx ? 'start' : 'end'} dominantBaseline="central"> {`${(percent * 100).toFixed(0)}%`} </text> );
-                            }}
-                        >
-                            {incentiveAmountData.map((entry, index) => (
-                                <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                            ))}
-                        </Pie>
-                        <Legend content={<ChartLegendContent nameKey="name" />} />
-                    </PieChart>
-                </ResponsiveContainer>
-              </ChartContainer>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Publication Analytics Section */}
-      <div className="mt-8 grid gap-6 md:grid-cols-4">
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">Total Publications</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{quartileSummary.totalArticles}</div>
-            <p className="text-xs text-muted-foreground">Indexed journal articles</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">Q1 Journals</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{quartileSummary.q1Count}</div>
-            <p className="text-xs text-muted-foreground">{quartileSummary.totalArticles > 0 ? `${((quartileSummary.q1Count / quartileSummary.totalArticles) * 100).toFixed(1)}%` : '0%'} of total</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">Q2 Journals</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{quartileSummary.q2Count}</div>
-            <p className="text-xs text-muted-foreground">{quartileSummary.totalArticles > 0 ? `${((quartileSummary.q2Count / quartileSummary.totalArticles) * 100).toFixed(1)}%` : '0%'} of total</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">Q3 & Q4 Journals</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{quartileSummary.q3Count + quartileSummary.q4Count}</div>
-            <p className="text-xs text-muted-foreground">{quartileSummary.totalArticles > 0 ? `${(((quartileSummary.q3Count + quartileSummary.q4Count) / quartileSummary.totalArticles) * 100).toFixed(1)}%` : '0%'} of total</p>
-          </CardContent>
-        </Card>
-      </div>
-
-      <div className="mt-8 grid gap-6 md:grid-cols-1 lg:grid-cols-2">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between">
-            <div>
-              <CardTitle>Publications by Journal Quartile</CardTitle>
-              <CardDescription>Distribution of articles across Q1, Q2, Q3, Q4 journals.</CardDescription>
-            </div>
-            <Button variant="outline" size="icon" onClick={() => handleExport(publicationChartRef, 'publication_quartile_distribution')}>
-              <Download className="h-4 w-4" />
-            </Button>
-          </CardHeader>
-          <CardContent>
-            <div ref={publicationChartRef} className="p-4 bg-card">
-              <ChartContainer config={quartileChartConfig} className="h-[300px] w-full">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={quarterlyDistributionData}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="quartile" />
-                    <YAxis allowDecimals={false} />
-                    <ChartTooltip content={<ChartTooltipContent />} />
-                    <Bar dataKey="count" fill="hsl(var(--primary))" radius={4}>
-                      <LabelList dataKey="count" position="top" offset={8} className="fill-foreground" fontSize={12} />
-                    </Bar>
-                  </BarChart>
-                </ResponsiveContainer>
-              </ChartContainer>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between">
-            <div>
-              <CardTitle>Monthly Publication Distribution</CardTitle>
-              <CardDescription>Number of articles published by month and year.</CardDescription>
-            </div>
-            <Button variant="outline" size="icon" onClick={() => handleExport(monthlyPublicationChartRef, 'publication_monthly_distribution')}>
-              <Download className="h-4 w-4" />
-            </Button>
-          </CardHeader>
-          <CardContent>
-            <div ref={monthlyPublicationChartRef} className="p-4 bg-card">
-              <ChartContainer config={monthlyChartConfig} className="h-[300px] w-full">
-                <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={monthlyDistributionData} margin={{ bottom: 20 }}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis 
-                      dataKey="month" 
-                      angle={-45}
-                      textAnchor="end"
-                      height={80}
-                      tick={{ fontSize: 12 }}
-                    />
-                    <YAxis allowDecimals={false} />
-                    <ChartTooltip content={<ChartTooltipContent />} />
-                    <Line 
-                      type="monotone" 
-                      dataKey="count" 
-                      stroke="hsl(var(--primary))" 
-                      strokeWidth={2} 
-                      dot={{ fill: 'hsl(var(--primary))', r: 4 }}
-                      isAnimationActive={false}
-                    />
-                  </LineChart>
-                </ResponsiveContainer>
-              </ChartContainer>
-            </div>
-          </CardContent>
-        </Card>
-
-      </div>
-       <div className="mt-8 grid gap-6 md:grid-cols-1 lg:grid-cols-2">
-        <Card>
-          <CardHeader>
-            <div className="flex flex-col sm:flex-row justify-between items-start gap-2">
-                <div>
-                  <CardTitle>Yearly Submissions & Sanctions</CardTitle>
-                  <CardDescription>Total IMR submissions vs. sanctions over the last 6 years.</CardDescription>
-                </div>
-                 <div className="flex items-center gap-2">
-                    <Select value={submissionsByYearType} onValueChange={(value) => setSubmissionsByYearType(value as 'submissions' | 'sanctions')}>
-                      <SelectTrigger className="w-[180px]">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="submissions">Submissions</SelectItem>
-                        <SelectItem value="sanctions">Sanctions</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    <Button variant="outline" size="icon" onClick={() => handleExport(submissionsYearChartRef, 'yearly_submissions_sanctions')}><Download className="h-4 w-4" /></Button>
-                 </div>
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div ref={submissionsYearChartRef} className="p-4 bg-card">
-              <ChartContainer config={submissionsByYearType === 'submissions' ? submissionsConfig : sanctionsConfig} className="h-[300px] w-full">
-                <BarChart data={submissionsByYearData}>
-                  <CartesianGrid vertical={false} />
-                  <XAxis dataKey="year" tickLine={false} axisLine={false} tickMargin={8} />
-                  <YAxis allowDecimals={false} />
-                  <ChartTooltip cursor={false} content={<ChartTooltipContent />} />
-                  <Bar dataKey="count" fill={submissionsByYearType === 'submissions' ? 'var(--color-submissions)' : 'var(--color-sanctions)'} radius={4} />
-                </BarChart>
-              </ChartContainer>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-            <CardHeader>
-                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-                    <div>
-                        <CardTitle>Projects by {aggregationLabel}</CardTitle>
-                        <CardDescription>Total projects submitted by each {aggregationLabel.toLowerCase()}.</CardDescription>
+      
+       {/* --- IMR & EMR Section --- */}
+      <div className="mt-12 space-y-8">
+        <h2 className="text-2xl font-bold tracking-tight">IMR & EMR Project Analytics</h2>
+        <div className="grid gap-6 md:grid-cols-1 lg:grid-cols-2">
+            <Card>
+                <CardHeader className="flex flex-row items-center justify-between">
+                    <div><CardTitle>IMR Project Status Distribution</CardTitle><CardDescription>Summary of all IMR projects by status.</CardDescription></div>
+                    <Button variant="outline" size="sm" onClick={() => handleExport(statusChartRef, 'project_status_distribution')}><Download className="mr-2 h-4 w-4" /> Export</Button>
+                </CardHeader>
+                <CardContent><div ref={statusChartRef} className="p-4 bg-card"><ChartContainer config={statusDistributionConfig} className="h-[250px] w-full"><ResponsiveContainer width="100%" height="100%"><PieChart><ChartTooltip content={<ChartTooltipContent nameKey="value" formatter={(value) => value.toLocaleString()} />} /><Pie data={statusDistributionData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={80} label={({ name, percent }) => `${name} (${(percent * 100).toFixed(0)}%)`} isAnimationActive={false}>{statusDistributionData.map((entry, index) => (<Cell key={`cell-${index}`} fill={statusDistributionConfig[entry.name]?.color || '#8884d8'} />))}</Pie></PieChart></ResponsiveContainer></ChartContainer></div></CardContent>
+            </Card>
+            <Card>
+                <CardHeader className="flex flex-row items-center justify-between">
+                    <div><CardTitle>IMR Projects by Type</CardTitle><CardDescription>Distribution by disciplinary category.</CardDescription></div>
+                    <Button variant="outline" size="sm" onClick={() => handleExport(projectTypeChartRef, 'project_type_distribution')}><Download className="mr-2 h-4 w-4" /> Export</Button>
+                </CardHeader>
+                <CardContent><div ref={projectTypeChartRef} className="p-4 bg-card"><ChartContainer config={projectTypeDistributionConfig} className="h-[250px] w-full"><ResponsiveContainer width="100%" height="100%"><PieChart><ChartTooltip content={<ChartTooltipContent nameKey="value" formatter={(value) => value.toLocaleString()} />} /><Pie data={projectTypeDistributionData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={80} label={({ name, percent }) => `${name} (${(percent * 100).toFixed(0)}%)`} isAnimationActive={false}>{projectTypeDistributionData.map((entry, index) => (<Cell key={`cell-${index}`} fill={projectTypeDistributionConfig[entry.name]?.color || '#8884d8'} />))}</Pie></PieChart></ResponsiveContainer></ChartContainer></div></CardContent>
+            </Card>
+        </div>
+        <div className="grid gap-6 md:grid-cols-1 lg:grid-cols-2">
+            <Card>
+                <CardHeader>
+                    <div className="flex flex-col sm:flex-row justify-between items-start gap-2">
+                      <div><CardTitle>IMR Submissions Over Time</CardTitle><CardDescription>{timeRange === 'last6months' ? 'Monthly project submissions for the last 6 months.' : `Monthly project submissions for ${timeRange}.`}</CardDescription></div>
+                      <div className="flex items-center gap-2"><Select value={timeRange} onValueChange={setTimeRange}><SelectTrigger className="w-full sm:w-[180px]"><SelectValue placeholder="Select time range" /></SelectTrigger><SelectContent><SelectItem value="last6months">Last 6 Months</SelectItem>{availableYears.map(year => (<SelectItem key={year} value={year}>{year}</SelectItem>))}</SelectContent></Select><Button variant="outline" size="icon" onClick={() => handleExport(submissionsTimeChartRef, 'submissions_over_time')}><Download className="h-4 w-4" /></Button></div>
                     </div>
-                    <div className="flex items-center gap-2">
-                        <Select value={projectsByGroupType} onValueChange={(value) => setProjectsByGroupType(value as 'imr' | 'emr')}>
-                            <SelectTrigger className="w-[180px]">
-                                <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value="imr">IMR Submissions</SelectItem>
-                                <SelectItem value="emr">EMR Sanctions</SelectItem>
-                            </SelectContent>
-                        </Select>
-                        <Button variant="outline" size="icon" onClick={() => handleExport(projectsByGroupChartRef, 'projects_by_group')}><Download className="h-4 w-4" /></Button>
+                </CardHeader>
+                <CardContent><div ref={submissionsTimeChartRef} className="p-4 bg-card"><ChartContainer config={submissionsConfig} className="h-[300px] w-full"><LineChart accessibilityLayer data={submissionsData}><CartesianGrid vertical={false} /><XAxis dataKey="month" tickLine={false} axisLine={false} tickMargin={8} /><YAxis tickLine={false} axisLine={false} tickMargin={8} allowDecimals={false} /><ChartTooltip cursor={false} content={<ChartTooltipContent />} /><Line dataKey="submissions" type="monotone" stroke="var(--color-submissions)" strokeWidth={2} dot={true} isAnimationActive={false} /></LineChart></ChartContainer></div></CardContent>
+            </Card>
+            <Card>
+                <CardHeader>
+                    <div className="flex flex-col sm:flex-row justify-between items-start gap-2">
+                        <div><CardTitle>Yearly IMR Submissions & Sanctions</CardTitle><CardDescription>Total IMR submissions vs. sanctions over the last 6 years.</CardDescription></div>
+                        <div className="flex items-center gap-2"><Select value={submissionsByYearType} onValueChange={(value) => setSubmissionsByYearType(value as 'submissions' | 'sanctions')}><SelectTrigger className="w-[180px]"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="submissions">Submissions</SelectItem><SelectItem value="sanctions">Sanctions</SelectItem></SelectContent></Select><Button variant="outline" size="icon" onClick={() => handleExport(submissionsYearChartRef, 'yearly_submissions_sanctions')}><Download className="h-4 w-4" /></Button></div>
                     </div>
-                </div>
-            </CardHeader>
-          <CardContent>
-            <div ref={projectsByGroupChartRef} className="p-4 bg-card">
-              <ChartContainer config={projectsByGroupConfig} className="h-[400px] w-full">
-              <BarChart accessibilityLayer data={projectsByGroupData} layout="vertical" margin={{left: 30}} isAnimationActive={false}>
-                <CartesianGrid horizontal={false} />
-                <YAxis
-                  dataKey="group"
-                  type="category"
-                  tickLine={false}
-                  tickMargin={10}
-                  axisLine={false}
-                  width={250}
-                  tick={{ fontSize: 12, width: 240, whiteSpace: 'normal', textAnchor: 'end' }}
-                  interval={0}
-                />
-                 <XAxis dataKey="projects" type="number" hide allowDecimals={false} />
-                 <Tooltip cursor={{ fill: 'hsl(var(--muted))' }} content={<ChartTooltipContent />} />
-                <Bar dataKey="projects" layout="vertical" fill="var(--color-projects)" radius={4}>
-                   <LabelList dataKey="projects" position="right" offset={8} className="fill-foreground" fontSize={12} />
-                </Bar>
-              </BarChart>
-            </ChartContainer>
-            </div>
-          </CardContent>
-        </Card>
+                </CardHeader>
+                <CardContent><div ref={submissionsYearChartRef} className="p-4 bg-card"><ChartContainer config={submissionsByYearType === 'submissions' ? submissionsConfig : sanctionsConfig} className="h-[300px] w-full"><BarChart data={submissionsByYearData}><CartesianGrid vertical={false} /><XAxis dataKey="year" tickLine={false} axisLine={false} tickMargin={8} /><YAxis allowDecimals={false} /><ChartTooltip cursor={false} content={<ChartTooltipContent />} /><Bar dataKey="count" fill={submissionsByYearType === 'submissions' ? 'var(--color-submissions)' : 'var(--color-sanctions)'} radius={4} /></BarChart></ChartContainer></div></CardContent>
+            </Card>
+        </div>
+        <div className="grid gap-6 md:grid-cols-1 lg:grid-cols-2">
+            <Card>
+                <CardHeader>
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                        <div><CardTitle>Projects by {aggregationLabel}</CardTitle><CardDescription>Total projects submitted by each {aggregationLabel.toLowerCase()}.</CardDescription></div>
+                        <div className="flex items-center gap-2"><Select value={projectsByGroupType} onValueChange={(value) => setProjectsByGroupType(value as 'imr' | 'emr')}><SelectTrigger className="w-[180px]"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="imr">IMR Submissions</SelectItem><SelectItem value="emr">EMR Sanctions</SelectItem></SelectContent></Select><Button variant="outline" size="icon" onClick={() => handleExport(projectsByGroupChartRef, 'projects_by_group')}><Download className="h-4 w-4" /></Button></div>
+                    </div>
+                </CardHeader>
+                <CardContent><div ref={projectsByGroupChartRef} className="p-4 bg-card"><ChartContainer config={projectsByGroupConfig} className="h-[400px] w-full"><BarChart accessibilityLayer data={projectsByGroupData} layout="vertical" margin={{left: 30}} isAnimationActive={false}><CartesianGrid horizontal={false} /><YAxis dataKey="group" type="category" tickLine={false} tickMargin={10} axisLine={false} width={250} tick={{ fontSize: 12, width: 240, whiteSpace: 'normal', textAnchor: 'end' }} interval={0} /><XAxis dataKey="projects" type="number" hide allowDecimals={false} /><Tooltip cursor={{ fill: 'hsl(var(--muted))' }} content={<ChartTooltipContent />} /><Bar dataKey="projects" layout="vertical" fill="var(--color-projects)" radius={4}><LabelList dataKey="projects" position="right" offset={8} className="fill-foreground" fontSize={12} /></Bar></BarChart></ChartContainer></div></CardContent>
+            </Card>
+            <Card>
+                <CardHeader>
+                    <div className="flex items-center justify-between"><CardTitle>Top 5 EMR Funding Agencies</CardTitle><Button variant="outline" size="icon" onClick={() => handleExport(fundingByAgencyChartRef, 'top_funding_agencies')}><Download className="h-4 w-4" /></Button></div>
+                    <CardDescription>Total sanctioned amount from the top 5 external funding agencies.</CardDescription>
+                </CardHeader>
+                <CardContent><div ref={fundingByAgencyChartRef} className="p-4 bg-card"><ChartContainer config={fundingByAgencyConfig} className="h-[400px] w-full"><BarChart data={fundingByAgencyData} layout="vertical" margin={{ left: 100 }}><CartesianGrid horizontal={false} /><YAxis dataKey="agency" type="category" tickLine={false} tickMargin={10} axisLine={false} tick={{ fontSize: 12, fill: 'hsl(var(--muted-foreground))' }} /><XAxis dataKey="amount" type="number" hide /><ChartTooltip cursor={{ fill: 'hsl(var(--muted))' }} content={<ChartTooltipContent formatter={(value) => `₹${Number(value).toLocaleString('en-IN')}`} />} /><Bar dataKey="amount" layout="vertical" fill="var(--color-amount)" radius={4}><LabelList dataKey="amount" position="right" offset={8} className="fill-foreground" fontSize={12} formatter={(value: number) => `₹${value.toLocaleString('en-IN')}`} /></Bar></BarChart></ChartContainer></div></CardContent>
+            </Card>
+        </div>
+        <div>
+            <Card>
+                <CardHeader>
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                        <div>
+                            <CardTitle className="flex items-center gap-2">
+                                <Banknote className="h-5 w-5" />IMR Grant Amount by Institute
+                            </CardTitle>
+                            <CardDescription>Total sanctioned Intra-Mural Research grant amounts per institute.</CardDescription>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-1">
+                                <span className="text-sm text-muted-foreground">From:</span>
+                                <Select 
+                                    value={grantDateRange.start || ''} 
+                                    onValueChange={(value) => {
+                                        // Keep stored value in yyyy-MM to match the option list.
+                                        setGrantDateRange(prev => ({ 
+                                            ...prev, 
+                                            start: value,
+                                            end: prev.end && prev.end < value ? null : prev.end
+                                        }));
+                                    }}
+                                >
+                                    <SelectTrigger className="w-[120px]">
+                                        <SelectValue placeholder="Start" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {monthYearOptions.map(option => (
+                                            <SelectItem key={option.value} value={option.value}>
+                                                {option.label}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                            <div className="flex items-center gap-1">
+                                <span className="text-sm text-muted-foreground">To:</span>
+                                <Select 
+                                    value={grantDateRange.end || ''} 
+                                    onValueChange={(value) => {
+                                        // Keep stored value in yyyy-MM to match the option list.
+                                        setGrantDateRange(prev => ({
+                                            ...prev,
+                                            end: value,
+                                            start: prev.start && prev.start > value ? null : prev.start,
+                                        }));
+                                    }}
+                                >
+                                    <SelectTrigger className="w-[120px]">
+                                        <SelectValue placeholder="End" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {monthYearOptions.map(option => (
+                                            <SelectItem key={option.value} value={option.value}>
+                                                {option.label}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                            <Button 
+                                variant="outline" 
+                                size="sm" 
+                                onClick={() => setGrantDateRange({start: null, end: null})}
+                                disabled={!grantDateRange.start && !grantDateRange.end}
+                            >
+                                Clear
+                            </Button>
+                            <Button variant="outline" size="sm" onClick={handleExportImrGrants} disabled={loading || imrGrantByInstituteData.length === 0}>
+                                <Download className="mr-2 h-4 w-4" />
+                                Export
+                            </Button>
+                        </div>
+                    </div>
+                </CardHeader>
+                <CardContent>
+                    <div ref={imrGrantByInstituteChartRef} className="p-4 bg-card">
+                        <ChartContainer config={imrGrantByInstituteConfig} className="h-[800px] w-full">
+                            <BarChart data={imrGrantByInstituteData} layout="vertical" margin={{ left: 180 }}>
+                                <CartesianGrid horizontal={false} />
+                                <YAxis dataKey="institute" type="category" tickLine={false} axisLine={false} tick={{ fontSize: 12, fill: 'hsl(var(--muted-foreground))' }} width={180} interval={0} />
+                                <XAxis dataKey="amount" type="number" hide />
+                                <ChartTooltip cursor={{ fill: 'hsl(var(--muted))' }} content={<ChartTooltipContent formatter={(value) => `₹${Number(value).toLocaleString('en-IN')}`} />} />
+                                <Bar dataKey="amount" layout="vertical" fill="var(--color-amount)" radius={4}>
+                                    <LabelList dataKey="amount" position="right" offset={8} className="fill-foreground" fontSize={12} formatter={(value: number) => `₹${(value / 100000).toFixed(1)}L`} />
+                                </Bar>
+                            </BarChart>
+                        </ChartContainer>
+                    </div>
+                </CardContent>
+            </Card>
+        </div>
       </div>
-      <div className="mt-8">
-        <Card>
-            <CardHeader>
-                <div className="flex items-center justify-between">
-                    <CardTitle>Top 5 EMR Funding Agencies</CardTitle>
-                    <Button variant="outline" size="icon" onClick={() => handleExport(fundingByAgencyChartRef, 'top_funding_agencies')}>
-                        <Download className="h-4 w-4" />
-                    </Button>
-                </div>
-                <CardDescription>Total sanctioned amount from the top 5 external funding agencies.</CardDescription>
-            </CardHeader>
-            <CardContent>
-                <div ref={fundingByAgencyChartRef} className="p-4 bg-card">
-                    <ChartContainer config={fundingByAgencyConfig} className="h-[400px] w-full">
-                        <BarChart
-                            data={fundingByAgencyData}
-                            layout="vertical"
-                            margin={{ left: 100 }}
-                        >
-                            <CartesianGrid horizontal={false} />
-                            <YAxis
-                                dataKey="agency"
-                                type="category"
-                                tickLine={false}
-                                tickMargin={10}
-                                axisLine={false}
-                                tick={{ fontSize: 12, fill: 'hsl(var(--muted-foreground))' }}
-                            />
-                            <XAxis dataKey="amount" type="number" hide />
-                            <ChartTooltip
-                                cursor={{ fill: 'hsl(var(--muted))' }}
-                                content={<ChartTooltipContent formatter={(value) => `₹${Number(value).toLocaleString('en-IN')}`} />}
-                            />
-                            <Bar dataKey="amount" layout="vertical" fill="var(--color-amount)" radius={4}>
-                                <LabelList
-                                    dataKey="amount"
-                                    position="right"
-                                    offset={8}
-                                    className="fill-foreground"
-                                    fontSize={12}
-                                    formatter={(value: number) => `₹${value.toLocaleString('en-IN')}`}
-                                />
-                            </Bar>
-                        </BarChart>
-                    </ChartContainer>
-                </div>
-            </CardContent>
-        </Card>
+
+       {/* --- Publication & Incentive Section --- */}
+      <div className="mt-12 space-y-8">
+        <h2 className="text-2xl font-bold tracking-tight">Publication & Incentive Analytics</h2>
+        <div className="grid gap-6 md:grid-cols-1 lg:grid-cols-2">
+            <Card>
+                <CardHeader className="flex flex-row items-center justify-between"><div><CardTitle>Incentive Amounts by Category</CardTitle><CardDescription>Total sanctioned amount per claim type.</CardDescription></div><Button variant="outline" size="icon" onClick={() => handleExport(incentiveAmountChartRef, 'incentive_amounts')}><Download className="h-4 w-4" /></Button></CardHeader>
+                <CardContent><div ref={incentiveAmountChartRef} className="p-4 bg-card"><ChartContainer config={incentiveAmountConfig} className="h-[300px] w-full"><ResponsiveContainer width="100%" height="100%"><PieChart><ChartTooltip cursor={false} content={<ChartTooltipContent hideLabel formatter={(value) => `₹${Number(value).toLocaleString('en-IN')}`} />} /><Pie data={incentiveAmountData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={100} labelLine={false} label={({ cx, cy, midAngle, innerRadius, outerRadius, percent, index }) => { const RADIAN = Math.PI / 180; const radius = innerRadius + (outerRadius - innerRadius) * 0.5; const x = cx + radius * Math.cos(-midAngle * RADIAN); const y = cy + radius * Math.sin(-midAngle * RADIAN); return ( <text x={x} y={y} fill="white" textAnchor={x > cx ? 'start' : 'end'} dominantBaseline="central"> {`${(percent * 100).toFixed(0)}%`} </text> ); }}>{incentiveAmountData.map((entry, index) => (<Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />))}</Pie><Legend content={<ChartLegendContent nameKey="name" />} /></PieChart></ResponsiveContainer></ChartContainer></div></CardContent>
+            </Card>
+            <Card>
+                <CardHeader className="flex flex-row items-center justify-between"><div><CardTitle>Publications by Journal Quartile</CardTitle><CardDescription>Distribution of articles across Q1-Q4 journals.</CardDescription></div><Button variant="outline" size="icon" onClick={() => handleExport(publicationChartRef, 'publication_quartile_distribution')}><Download className="h-4 w-4" /></Button></CardHeader>
+                <CardContent><div ref={publicationChartRef} className="p-4 bg-card"><ChartContainer config={quartileChartConfig} className="h-[300px] w-full"><ResponsiveContainer width="100%" height="100%"><BarChart data={quarterlyDistributionData}><CartesianGrid strokeDasharray="3 3" /><XAxis dataKey="quartile" /><YAxis allowDecimals={false} /><ChartTooltip content={<ChartTooltipContent />} /><Bar dataKey="count" fill="hsl(var(--primary))" radius={4}><LabelList dataKey="count" position="top" offset={8} className="fill-foreground" fontSize={12} /></Bar></BarChart></ResponsiveContainer></ChartContainer></div></CardContent>
+            </Card>
+        </div>
+        <div><Card><CardHeader className="flex flex-row items-center justify-between"><div><CardTitle>Monthly Publication Distribution</CardTitle><CardDescription>Number of articles published by month and year.</CardDescription></div><Button variant="outline" size="icon" onClick={() => handleExport(monthlyPublicationChartRef, 'publication_monthly_distribution')}><Download className="h-4 w-4" /></Button></CardHeader><CardContent><div ref={monthlyPublicationChartRef} className="p-4 bg-card"><ChartContainer config={monthlyChartConfig} className="h-[300px] w-full"><ResponsiveContainer width="100%" height="100%"><LineChart data={monthlyDistributionData} margin={{ bottom: 20 }}><CartesianGrid strokeDasharray="3 3" /><XAxis dataKey="month" angle={-45} textAnchor="end" height={80} tick={{ fontSize: 12 }} /><YAxis allowDecimals={false} /><ChartTooltip content={<ChartTooltipContent />} /><Line type="monotone" dataKey="count" stroke="hsl(var(--primary))" strokeWidth={2} dot={{ fill: 'hsl(var(--primary))', r: 4 }} isAnimationActive={false} /></LineChart></ResponsiveContainer></ChartContainer></div></CardContent></Card></div>
       </div>
+
+       {/* --- System & AI Analytics Section --- */}
       {user.role === 'Super-admin' && (
-        <div className="mt-8">
-          <div className="grid gap-6 lg:grid-cols-4">
+        <div className="mt-12 space-y-8">
+            <h2 className="text-2xl font-bold tracking-tight">System & AI Analytics</h2>
+            <div className="grid gap-6 lg:grid-cols-4">
+                <Card>
+                    <CardHeader className="pb-2"><CardTitle className="text-sm font-medium">Classified Claims</CardTitle></CardHeader>
+                    <CardContent><div className="text-2xl font-bold">{fieldOfStudySummary.classifiedClaims}</div><p className="text-xs text-muted-foreground">Claims with identifiable title text</p></CardContent>
+                </Card>
+                <Card>
+                    <CardHeader className="pb-2"><CardTitle className="text-sm font-medium">Unique Domains</CardTitle></CardHeader>
+                    <CardContent><div className="text-2xl font-bold">{fieldOfStudySummary.uniqueDomains}</div><p className="text-xs text-muted-foreground">Primary field clusters</p></CardContent>
+                </Card>
+                <Card>
+                    <CardHeader className="pb-2"><CardTitle className="text-sm font-medium">Unique Subdomains</CardTitle></CardHeader>
+                    <CardContent><div className="text-2xl font-bold">{fieldOfStudySummary.uniqueSubdomains}</div><p className="text-xs text-muted-foreground">Granular research segments</p></CardContent>
+                </Card>
+                <Card>
+                    <CardHeader className="pb-2"><CardTitle className="text-sm font-medium">Avg Confidence</CardTitle></CardHeader>
+                    <CardContent><div className="text-2xl font-bold">{fieldOfStudySummary.avgConfidence}%</div><p className="text-xs text-muted-foreground">Title-based classification score</p></CardContent>
+                </Card>
+            </div>
+            <div className="grid gap-6 lg:grid-cols-2">
+                <Card><CardHeader><div className="flex items-center justify-between"><div><CardTitle>Field of Studies by Domain</CardTitle><CardDescription>Primary domain distribution inferred from claim titles.</CardDescription></div><Button variant="outline" size="icon" onClick={() => handleExport(fieldOfStudyChartRef, 'field_of_studies_domain_distribution')}><Download className="h-4 w-4" /></Button></div></CardHeader><CardContent><div ref={fieldOfStudyChartRef} className="p-4 bg-card"><ChartContainer config={fieldOfStudyConfig} className="h-[420px] w-full"><BarChart data={fieldOfStudyData} layout="vertical" margin={{ left: 140 }}><CartesianGrid horizontal={false} /><YAxis dataKey="field" type="category" tickLine={false} tickMargin={10} axisLine={false} width={240} tick={{ fontSize: 12, whiteSpace: 'normal', textAnchor: 'end' }} interval={0} /><XAxis dataKey="count" type="number" allowDecimals={false} /><ChartTooltip cursor={{ fill: 'hsl(var(--muted))' }} content={<ChartTooltipContent />} /><Bar dataKey="count" fill="hsl(var(--primary))" radius={4}><LabelList dataKey="count" position="right" offset={8} className="fill-foreground" fontSize={12} /></Bar></BarChart></ChartContainer></div></CardContent></Card>
+                <Card><CardHeader><div className="flex items-center justify-between"><div><CardTitle>Top Subdomains</CardTitle><CardDescription>Most frequent granular research areas (top 12).</CardDescription></div><Button variant="outline" size="icon" onClick={() => handleExport(fieldOfStudySubdomainChartRef, 'field_of_studies_subdomain_distribution')}><Download className="h-4 w-4" /></Button></div></CardHeader><CardContent><div ref={fieldOfStudySubdomainChartRef} className="p-4 bg-card"><ChartContainer config={fieldOfStudySubdomainConfig} className="h-[420px] w-full"><BarChart data={fieldOfStudySubdomainData} layout="vertical" margin={{ left: 160 }}><CartesianGrid horizontal={false} /><YAxis dataKey="subdomain" type="category" tickLine={false} tickMargin={10} axisLine={false} width={280} tick={{ fontSize: 12, whiteSpace: 'normal', textAnchor: 'end' }} interval={0} /><XAxis dataKey="count" type="number" allowDecimals={false} /><ChartTooltip cursor={{ fill: 'hsl(var(--muted))' }} content={<ChartTooltipContent />} /><Bar dataKey="count" fill="hsl(var(--accent))" radius={4}><LabelList dataKey="count" position="right" offset={8} className="fill-foreground" fontSize={12} /></Bar></BarChart></ChartContainer></div></CardContent></Card>
+            </div>
+            <Card className="mt-6"><CardHeader><CardTitle>Claim-Level Domain Drilldown</CardTitle><CardDescription>Recent claims with inferred domain, subdomain, confidence, and matched title signals.</CardDescription></CardHeader><CardContent><div className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>Claim ID</TableHead><TableHead>Claim Type</TableHead><TableHead>Title</TableHead><TableHead>Domain</TableHead><TableHead>Subdomain</TableHead><TableHead>Confidence</TableHead><TableHead>Matched Signals</TableHead></TableRow></TableHeader><TableBody>{fieldOfStudyDrilldown.map((row) => (<TableRow key={row.id}><TableCell className="font-medium">{row.claimId}</TableCell><TableCell>{row.claimType}</TableCell><TableCell className="max-w-[320px] truncate" title={row.title}>{row.title}</TableCell><TableCell>{row.domain}</TableCell><TableCell>{row.subdomain}</TableCell><TableCell><Badge variant={row.confidence >= 75 ? 'default' : row.confidence >= 55 ? 'secondary' : 'outline'}>{row.confidence}%</Badge></TableCell><TableCell className="max-w-[240px] truncate" title={row.matchedKeywords.join(', ')}>{row.matchedKeywords.length > 0 ? row.matchedKeywords.join(', ') : 'No explicit signal'}</TableCell></TableRow>))}</TableBody></Table></div></CardContent></Card>
             <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium">Classified Claims</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{fieldOfStudySummary.classifiedClaims}</div>
-                <p className="text-xs text-muted-foreground">Claims with identifiable title text</p>
-              </CardContent>
+                <CardHeader className="flex flex-row items-center justify-between"><div><CardTitle>Daily Active Users</CardTitle><CardDescription>Unique user logins over the past 7 days.</CardDescription></div><Button variant="outline" size="icon" onClick={() => handleExport(activeUsersChartRef, 'daily_active_users')}><Download className="h-4 w-4" /></Button></CardHeader>
+                <CardContent><div ref={activeUsersChartRef} className="p-4 bg-card"><ChartContainer config={dailyActiveUsersConfig} className="h-[300px] w-full"><BarChart accessibilityLayer data={dailyActiveUsersData}><CartesianGrid vertical={false} /><XAxis dataKey="date" tickLine={false} axisLine={false} tickMargin={8} /><YAxis /><ChartTooltip cursor={false} content={<ChartTooltipContent hideLabel />} /><Bar dataKey="users" fill="var(--color-users)" radius={8} /></BarChart></ChartContainer></div></CardContent>
             </Card>
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium">Unique Domains</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{fieldOfStudySummary.uniqueDomains}</div>
-                <p className="text-xs text-muted-foreground">Primary field clusters</p>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium">Unique Subdomains</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{fieldOfStudySummary.uniqueSubdomains}</div>
-                <p className="text-xs text-muted-foreground">Granular research segments</p>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium">Avg Confidence</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{fieldOfStudySummary.avgConfidence}%</div>
-                <p className="text-xs text-muted-foreground">Title-based classification score</p>
-              </CardContent>
-            </Card>
-          </div>
-
-          <div className="mt-6 grid gap-6 lg:grid-cols-2">
-            <Card>
-              <CardHeader>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <CardTitle>Field of Studies by Domain</CardTitle>
-                    <CardDescription>Primary domain distribution inferred from claim titles.</CardDescription>
-                  </div>
-                  <Button variant="outline" size="icon" onClick={() => handleExport(fieldOfStudyChartRef, 'field_of_studies_domain_distribution')}>
-                    <Download className="h-4 w-4" />
-                  </Button>
-                </div>
-              </CardHeader>
-              <CardContent>
-                <div ref={fieldOfStudyChartRef} className="p-4 bg-card">
-                  <ChartContainer config={fieldOfStudyConfig} className="h-[420px] w-full">
-                    <BarChart data={fieldOfStudyData} layout="vertical" margin={{ left: 140 }}>
-                      <CartesianGrid horizontal={false} />
-                      <YAxis
-                        dataKey="field"
-                        type="category"
-                        tickLine={false}
-                        tickMargin={10}
-                        axisLine={false}
-                        width={240}
-                        tick={{ fontSize: 12, whiteSpace: 'normal', textAnchor: 'end' }}
-                        interval={0}
-                      />
-                      <XAxis dataKey="count" type="number" allowDecimals={false} />
-                      <ChartTooltip cursor={{ fill: 'hsl(var(--muted))' }} content={<ChartTooltipContent />} />
-                      <Bar dataKey="count" fill="hsl(var(--primary))" radius={4}>
-                        <LabelList dataKey="count" position="right" offset={8} className="fill-foreground" fontSize={12} />
-                      </Bar>
-                    </BarChart>
-                  </ChartContainer>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <CardTitle>Top Subdomains</CardTitle>
-                    <CardDescription>Most frequent granular research areas (top 12).</CardDescription>
-                  </div>
-                  <Button variant="outline" size="icon" onClick={() => handleExport(fieldOfStudySubdomainChartRef, 'field_of_studies_subdomain_distribution')}>
-                    <Download className="h-4 w-4" />
-                  </Button>
-                </div>
-              </CardHeader>
-              <CardContent>
-                <div ref={fieldOfStudySubdomainChartRef} className="p-4 bg-card">
-                  <ChartContainer config={fieldOfStudySubdomainConfig} className="h-[420px] w-full">
-                    <BarChart data={fieldOfStudySubdomainData} layout="vertical" margin={{ left: 160 }}>
-                      <CartesianGrid horizontal={false} />
-                      <YAxis
-                        dataKey="subdomain"
-                        type="category"
-                        tickLine={false}
-                        tickMargin={10}
-                        axisLine={false}
-                        width={280}
-                        tick={{ fontSize: 12, whiteSpace: 'normal', textAnchor: 'end' }}
-                        interval={0}
-                      />
-                      <XAxis dataKey="count" type="number" allowDecimals={false} />
-                      <ChartTooltip cursor={{ fill: 'hsl(var(--muted))' }} content={<ChartTooltipContent />} />
-                      <Bar dataKey="count" fill="hsl(var(--accent))" radius={4}>
-                        <LabelList dataKey="count" position="right" offset={8} className="fill-foreground" fontSize={12} />
-                      </Bar>
-                    </BarChart>
-                  </ChartContainer>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-
-          <Card className="mt-6">
-            <CardHeader>
-              <CardTitle>Claim-Level Domain Drilldown</CardTitle>
-              <CardDescription>
-                Recent claims with inferred domain, subdomain, confidence, and matched title signals.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="overflow-x-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Claim ID</TableHead>
-                      <TableHead>Claim Type</TableHead>
-                      <TableHead>Title</TableHead>
-                      <TableHead>Domain</TableHead>
-                      <TableHead>Subdomain</TableHead>
-                      <TableHead>Confidence</TableHead>
-                      <TableHead>Matched Signals</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {fieldOfStudyDrilldown.map((row) => (
-                      <TableRow key={row.id}>
-                        <TableCell className="font-medium">{row.claimId}</TableCell>
-                        <TableCell>{row.claimType}</TableCell>
-                        <TableCell className="max-w-[320px] truncate" title={row.title}>{row.title}</TableCell>
-                        <TableCell>{row.domain}</TableCell>
-                        <TableCell>{row.subdomain}</TableCell>
-                        <TableCell>
-                          <Badge variant={row.confidence >= 75 ? 'default' : row.confidence >= 55 ? 'secondary' : 'outline'}>
-                            {row.confidence}%
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="max-w-[240px] truncate" title={row.matchedKeywords.join(', ')}>
-                          {row.matchedKeywords.length > 0 ? row.matchedKeywords.join(', ') : 'No explicit signal'}
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
-            </CardContent>
-          </Card>
         </div>
       )}
     </div>

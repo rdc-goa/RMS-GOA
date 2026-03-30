@@ -48,7 +48,7 @@ export function Logo({ variant = 'public' }: LogoProps) {
       <Image
         src="https://lhdlkrfbkon55i6u.public.blob.vercel-storage.com/Pu%20Goa%20White.png"
         alt="RDC Logo"
-        width={350}
+        width={250}
         height={100}
         className="hidden dark:block"
         priority

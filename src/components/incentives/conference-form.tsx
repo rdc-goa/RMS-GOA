@@ -352,7 +352,7 @@ function ConferenceFormContent({ onEventTypeChange }: ConferenceFormContentProps
             .map((docItem) => docItem.data() as IncentiveClaim)
             .find(
               (claim) =>
-                claim.organizerName?.toLowerCase().includes('parul university') ||
+                claim.organizerName?.toLowerCase().includes('parul university Goa') ||
                 claim.conferenceName?.toLowerCase().includes('picet')
             );
 
@@ -528,7 +528,7 @@ function ConferenceFormContent({ onEventTypeChange }: ConferenceFormContentProps
   const onFinalSubmit = () => handleSave('Pending');
 
   const { conferenceMode, conferenceType, wonPrize, organizerName, conferenceName, conferenceVenue } = form.watch();
-  const isPuConference = organizerName?.toLowerCase().includes('parul university') || conferenceName?.toLowerCase().includes('picet');
+  const isPuConference = organizerName?.toLowerCase().includes('parul university Goa') || conferenceName?.toLowerCase().includes('picet');
   const isFormDisabled = (!eligibility.eligible && isPuConference) || isSubmitting;
 
   if (isLoadingDraft) {
@@ -591,7 +591,7 @@ function ConferenceFormContent({ onEventTypeChange }: ConferenceFormContentProps
               <AlertTitle>Conference Reimbursement Policy</AlertTitle>
               <AlertDescription>
                 <ul className="list-disc list-inside space-y-1 mt-2 text-xs">
-                  <li>For conferences organized by Parul University, 75% of the registration fee is reimbursed. This can be claimed once a year.</li>
+                  <li>For conferences organized by Parul University Goa, 75% of the registration fee is reimbursed. This can be claimed once a year.</li>
                   <li>Only the presenting author is entitled for reimbursement for other conferences.</li>
                   <li>For <strong>offline conferences outside India</strong>, proof of application for government travel grants is mandatory.</li>
                   <li>A faculty member is eligible for assistance for <strong>offline</strong> conferences ONCE in TWO years. There is no limit for online presentations.</li>

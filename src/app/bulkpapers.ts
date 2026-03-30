@@ -1,39 +1,25 @@
 
-
 'use server';
 
 import { adminDb } from '@/lib/admin';
 import type { ResearchPaper, Author, User, Notification, IncentiveClaim } from '@/types';
 import { FieldValue } from 'firebase-admin/firestore';
 import admin from 'firebase-admin';
-import { sendEmail } from '@/app/server-actions';
+import { sendEmail } from '@/app/actions';
 
 type PaperUploadData = {
-    PublicationTitle: string;
-    PublicationURL: string;
-    PublicationYear?: number;
-    PublicationMonthName?: string;
-    ImpactFactor?: number;
-    JournalName?: string;
-    JournalWebsite?: string;
-    QRating?: string;
+  PublicationTitle: string;
+  PublicationURL: string;
+  PublicationYear?: number;
+  PublicationMonthName?: string;
+  ImpactFactor?: number;
+  JournalName?: string;
+  JournalWebsite?: string;
+  QRating?: string;
 };
 
 const EMAIL_STYLES = {
-  background: `
-    style="
-      background-color:#0f2027;
-      background-image:
-        radial-gradient(at 5% 95%, hsla(0,70%,40%,0.25) 0px, transparent 50%),
-        radial-gradient(at 95% 95%, hsla(3, 80%, 56%, 0.25) 0px, transparent 50%),
-        linear-gradient(135deg, #0f2027,rgb(67, 32, 32));
-      background-attachment:fixed;
-      color:#ffffff;
-      font-family:Arial, sans-serif;
-      padding:20px;
-      border-radius:8px;
-    "
-  `,
+  background: 'style="background: linear-gradient(135deg, #0f2027, #203a43, #2c5364); color:#ffffff; font-family:Arial, sans-serif; padding:20px; border-radius:8px;"',
   logo: '<div style="text-align:center; margin-bottom:20px;"><img src="https://lhdlkrfbkon55i6u.public.blob.vercel-storage.com/Pu%20Goa%20White.png" alt="RDC Logo" style="max-width:300px; height:auto;" /></div>',
   footer: ` 
     <p style="color:#b0bec5; margin-top: 30px;">Best Regards,</p>
@@ -44,7 +30,6 @@ const EMAIL_STYLES = {
         This is a system generated automatic email. If you feel this is an error, please report at the earliest.
     </p>`
 };
-
 
 export async function checkUserOrStaff(email: string): Promise<{ success: boolean; name: string | null; uid: string | null }> {
   try {
@@ -62,10 +47,10 @@ export async function checkUserOrStaff(email: string): Promise<{ success: boolea
     }
 
     // 2. Check staffdata via API route
-    const baseUrl = process.env.BASE_URL || 'http://localhost:9002';
+    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:9002';
     const response = await fetch(`${baseUrl}/api/get-staff-data?email=${encodeURIComponent(lowercasedEmail)}`);
     const staffResult = await response.json();
-    
+
     if (staffResult.success && staffResult.data) {
       return { success: true, name: staffResult.data.name, uid: null }; // No UID because they haven't signed up
     }
@@ -85,19 +70,15 @@ export async function addResearchPaper(
   try {
     const paperRef = adminDb.collection('papers').doc();
     const now = new Date().toISOString();
-    
+
     const { authors, title } = paperData;
 
     // Determine the main author based on the "First Author" role
     const firstAuthor = authors.find(a => a.role === 'First Author' || a.role === 'First & Corresponding Author');
-    
-    // The owner of the record should be the user adding it, but we can also use a registered first author if available.
-    // Fallback to the user who initiated the action.
     const mainAuthorUid = firstAuthor?.uid || paperData.mainAuthorUid;
 
-
     if (!mainAuthorUid) {
-        return { success: false, error: "A main author (either the creator or a designated First Author) is required." };
+      return { success: false, error: "A main author (either the creator or a designated First Author) is required." };
     }
 
     const authorUids = authors.map((a) => a.uid).filter(Boolean) as string[];
@@ -111,30 +92,7 @@ export async function addResearchPaper(
       createdAt: now,
       updatedAt: now,
     };
-    
-    // AI Domain Suggestion
-    try {
-      if (authorUids.length > 0) {
-        const allPapersQuery = await adminDb.collection('papers').where('authorUids', 'array-contains-any', authorUids).get();
-        const existingTitles = allPapersQuery.docs.map(doc => doc.data().title);
-        const allTitles = [...new Set([title, ...existingTitles])];
 
-        if (allTitles.length > 0) {
-          const domainResult = await getResearchDomainSuggestion({ paperTitles: allTitles });
-          newPaperData.domain = domainResult.domain;
-
-          const batch = adminDb.batch();
-          const userDocs = await adminDb.collection('users').where(admin.firestore.FieldPath.documentId(), 'in', authorUids).get();
-            
-          userDocs.forEach(doc => {
-            batch.update(doc.ref, { researchDomain: domainResult.domain });
-          });
-          await batch.commit();
-        }
-      }
-    } catch (aiError: any) {
-      console.warn("AI domain suggestion failed, but proceeding to save paper. Error:", aiError.message);
-    }
 
     await paperRef.set(newPaperData);
 
@@ -143,7 +101,7 @@ export async function addResearchPaper(
     const mainAuthorName = mainAuthorData?.name || 'A colleague';
     const mainAuthorMisId = mainAuthorData?.misId;
     const mainAuthorCampus = mainAuthorData?.campus;
-    
+
     const profileLink = mainAuthorCampus === 'Goa' ? `/goa/${mainAuthorMisId}` : `/profile/${mainAuthorMisId}`;
 
     const notificationBatch = adminDb.batch();
@@ -171,7 +129,7 @@ export async function addResearchPaper(
 
 export async function updateResearchPaper(
   paperId: string,
-  userId: string, 
+  userId: string,
   data: Partial<ResearchPaper>
 ): Promise<{ success: boolean; paper?: ResearchPaper; error?: string }> {
   try {
@@ -188,11 +146,11 @@ export async function updateResearchPaper(
     if (paperData.mainAuthorUid !== userId) {
       return { success: false, error: "You do not have permission to edit this paper." };
     }
-    
+
     // Determine the new main author if a "First Author" is set
     const firstAuthor = data.authors?.find(a => a.role === 'First Author' || a.role === 'First & Corresponding Author');
     const mainAuthorUid = firstAuthor?.uid || paperData.mainAuthorUid;
-    
+
     const authorUids = data.authors?.map((a) => a.uid).filter(Boolean) as string[] || paperData.authorUids;
     const authorEmails = data.authors?.map((a) => a.email.toLowerCase()) || paperData.authorEmails;
 
@@ -230,7 +188,7 @@ export async function updateResearchPaper(
       }
     });
     await notificationBatch.commit();
-    
+
     return { success: true, paper: { ...paperData, ...updatedData, id: paperId } };
 
   } catch (error: any) {
@@ -260,7 +218,7 @@ export async function deleteResearchPaper(paperId: string, userId: string): Prom
     const claimsSnapshot = await claimsQuery.get();
 
     if (!claimsSnapshot.empty) {
-        return { success: false, error: "This paper cannot be deleted because it is linked to an incentive claim." };
+      return { success: false, error: "This paper cannot be deleted because it is linked to an incentive claim." };
     }
 
     await paperRef.delete();
@@ -274,104 +232,104 @@ export async function deleteResearchPaper(paperId: string, userId: string): Prom
 
 
 async function findExistingPaper(title: string, url: string): Promise<ResearchPaper | null> {
-    const papersRef = adminDb.collection('papers');
-    const titleQuery = papersRef.where('title', '==', title);
-    const urlQuery = papersRef.where('url', '==', url);
+  const papersRef = adminDb.collection('papers');
+  const titleQuery = papersRef.where('title', '==', title);
+  const urlQuery = papersRef.where('url', '==', url);
 
-    const [titleSnapshot, urlSnapshot] = await Promise.all([
-        titleQuery.get(),
-        urlQuery.get()
-    ]);
+  const [titleSnapshot, urlSnapshot] = await Promise.all([
+    titleQuery.get(),
+    urlQuery.get()
+  ]);
 
-    if (!titleSnapshot.empty) {
-        return { id: titleSnapshot.docs[0].id, ...titleSnapshot.docs[0].data() } as ResearchPaper;
-    }
-    if (!urlSnapshot.empty) {
-        return { id: urlSnapshot.docs[0].id, ...urlSnapshot.docs[0].data() } as ResearchPaper;
-    }
+  if (!titleSnapshot.empty) {
+    return { id: titleSnapshot.docs[0].id, ...titleSnapshot.docs[0].data() } as ResearchPaper;
+  }
+  if (!urlSnapshot.empty) {
+    return { id: urlSnapshot.docs[0].id, ...urlSnapshot.docs[0].data() } as ResearchPaper;
+  }
 
-    return null;
+  return null;
 }
 
 export async function sendCoAuthorRequest(
-    existingPaper: ResearchPaper, 
-    requestingUser: User, 
-    requesterRole: Author['role']
+  existingPaper: ResearchPaper,
+  requestingUser: User,
+  requesterRole: Author['role']
 ): Promise<{ success: boolean; error?: string }> {
-    try {
-        const paperRef = adminDb.collection('papers').doc(existingPaper.id);
-        
-        const isAlreadyAuthor = existingPaper.authors?.some(a => a.uid === requestingUser.uid && a.status === 'approved');
-        const isAlreadyRequested = existingPaper.coAuthorRequests?.some(a => a.uid === requestingUser.uid);
+  try {
+    const paperRef = adminDb.collection('papers').doc(existingPaper.id);
 
-        if (isAlreadyAuthor || isAlreadyRequested) {
-            return { success: false, error: 'You are already an author or have a pending request for this paper.' };
-        }
+    const isAlreadyAuthor = existingPaper.authors?.some(a => a.uid === requestingUser.uid && a.status === 'approved');
+    const isAlreadyRequested = existingPaper.coAuthorRequests?.some(a => a.uid === requestingUser.uid);
 
-        const newAuthorRequest: Author = {
-            uid: requestingUser.uid,
-            email: requestingUser.email,
-            name: requestingUser.name,
-            role: requesterRole, 
-            isExternal: false,
-            status: 'pending',
-        };
-        
-        await paperRef.update({
-            coAuthorRequests: FieldValue.arrayUnion(newAuthorRequest),
-        });
-
-        if (existingPaper.mainAuthorUid) {
-            const mainAuthorDoc = await adminDb.collection('users').doc(existingPaper.mainAuthorUid).get();
-            const mainAuthorData = mainAuthorDoc.exists ? mainAuthorDoc.data() as User : null;
-            const profileLink = `/dashboard/notifications`;
-            
-            const notification: Omit<Notification, 'id'> = {
-                uid: existingPaper.mainAuthorUid,
-                title: `${requestingUser.name} has requested to be added as a ${requesterRole} on your paper: "${existingPaper.title}"`,
-                createdAt: new Date().toISOString(),
-                isRead: false,
-                type: 'coAuthorRequest',
-                paperId: existingPaper.id,
-                requester: newAuthorRequest,
-                projectId: profileLink,
-            };
-            await adminDb.collection('notifications').add(notification);
-        }
-        return { success: true };
-    } catch (error: any) {
-        console.error('Error sending co-author request:', error);
-        return { success: false, error: error.message || 'Server error while sending request.' };
+    if (isAlreadyAuthor || isAlreadyRequested) {
+      return { success: false, error: 'You are already an author or have a pending request for this paper.' };
     }
+
+    const newAuthorRequest: Author = {
+      uid: requestingUser.uid,
+      email: requestingUser.email,
+      name: requestingUser.name,
+      role: requesterRole,
+      isExternal: false,
+      status: 'pending',
+    };
+
+    await paperRef.update({
+      coAuthorRequests: FieldValue.arrayUnion(newAuthorRequest),
+    });
+
+    if (existingPaper.mainAuthorUid) {
+      const mainAuthorDoc = await adminDb.collection('users').doc(existingPaper.mainAuthorUid).get();
+      const mainAuthorData = mainAuthorDoc.exists ? mainAuthorDoc.data() as User : null;
+      const profileLink = `/dashboard/notifications`;
+
+      const notification: Omit<Notification, 'id'> = {
+        uid: existingPaper.mainAuthorUid,
+        title: `${requestingUser.name} has requested to be added as a ${requesterRole} on your paper: "${existingPaper.title}"`,
+        createdAt: new Date().toISOString(),
+        isRead: false,
+        type: 'coAuthorRequest',
+        paperId: existingPaper.id,
+        requester: newAuthorRequest,
+        projectId: profileLink,
+      };
+      await adminDb.collection('notifications').add(notification);
+    }
+    return { success: true };
+  } catch (error: any) {
+    console.error('Error sending co-author request:', error);
+    return { success: false, error: error.message || 'Server error while sending request.' };
+  }
 }
 
 
 async function createNewPaper(paperData: PaperUploadData, user: User, role: Author['role']): Promise<ResearchPaper> {
-    const mainAuthor: Author = {
-        uid: user.uid,
-        email: user.email,
-        name: user.name,
-        role: role,
-        isExternal: false,
-        status: 'approved',
-    };
+  const mainAuthor: Author = {
+    uid: user.uid,
+    email: user.email,
+    name: user.name,
+    role: role,
+    isExternal: false,
+    status: 'approved',
+  };
 
-    const result = await addResearchPaper({
-        title: paperData.PublicationTitle,
-        url: paperData.PublicationURL,
-        mainAuthorUid: user.uid,
-        authors: [mainAuthor],
-        journalName: paperData.JournalName ?? null,
-        journalWebsite: paperData.JournalWebsite ?? null,
-        qRating: paperData.QRating ?? null,
-        impactFactor: paperData.ImpactFactor ?? null,
-    });
-    
-    if (!result.success || !result.paper) {
-        throw new Error(result.error || "Failed to create new paper.");
-    }
-    
-    return result.paper;
+  const result = await addResearchPaper({
+    title: paperData.PublicationTitle,
+    url: paperData.PublicationURL,
+    mainAuthorUid: user.uid,
+    authors: [mainAuthor],
+    journalName: paperData.JournalName ?? null,
+    journalWebsite: paperData.JournalWebsite ?? null,
+    qRating: paperData.QRating ?? null,
+    impactFactor: paperData.ImpactFactor ?? null,
+  });
+
+  if (!result.success || !result.paper) {
+    throw new Error(result.error || "Failed to create new paper.");
+  }
+
+  return result.paper;
 }
 
 
@@ -379,14 +337,14 @@ export async function bulkUploadPapers(
   papersData: PaperUploadData[],
   user: User,
   roles: Author['role'][]
-): Promise<{ 
-    success: boolean; 
-    data: {
-        newPapers: { title: string }[];
-        linkedPapers: { paper: ResearchPaper, role: Author['role'] }[];
-        errors: { title: string; reason: string }[];
-    };
-    error?: string 
+): Promise<{
+  success: boolean;
+  data: {
+    newPapers: { title: string }[];
+    linkedPapers: { paper: ResearchPaper, role: Author['role'] }[];
+    errors: { title: string; reason: string }[];
+  };
+  error?: string
 }> {
   const newPapers: { title: string }[] = [];
   const linkedPapers: { paper: ResearchPaper, role: Author['role'] }[] = [];
@@ -425,87 +383,87 @@ export async function bulkUploadPapers(
 }
 
 export async function manageCoAuthorRequest(
-    paperId: string,
-    requestingAuthor: Author,
-    action: 'accept' | 'reject',
-    assignedRole?: Author['role'],
-    mainAuthorNewRole?: Author['role']
+  paperId: string,
+  requestingAuthor: Author,
+  action: 'accept' | 'reject',
+  assignedRole?: Author['role'],
+  mainAuthorNewRole?: Author['role']
 ): Promise<{ success: boolean; error?: string }> {
-    try {
-        const paperRef = adminDb.collection('papers').doc(paperId);
-        
-        const result = await adminDb.runTransaction(async (transaction) => {
-            const paperSnap = await transaction.get(paperRef);
-            if (!paperSnap.exists) {
-                throw new Error('Paper not found.');
-            }
-            const paperData = paperSnap.data() as ResearchPaper;
-            const mainAuthorUid = paperData.mainAuthorUid;
-            const mainAuthor = paperData.authors.find(a => a.uid === mainAuthorUid);
-            if (!mainAuthor) {
-                throw new Error('Main author not found on paper.');
-            }
+  try {
+    const paperRef = adminDb.collection('papers').doc(paperId);
 
-            const requestToRemove = (paperData.coAuthorRequests || []).find(req => req.uid === requestingAuthor.uid && req.email === requestingAuthor.email);
-            if (!requestToRemove) {
-                throw new Error('This co-author request was not found. It may have been withdrawn or already processed.');
-            }
+    const result = await adminDb.runTransaction(async (transaction) => {
+      const paperSnap = await transaction.get(paperRef);
+      if (!paperSnap.exists) {
+        throw new Error('Paper not found.');
+      }
+      const paperData = paperSnap.data() as ResearchPaper;
+      const mainAuthorUid = paperData.mainAuthorUid;
+      const mainAuthor = paperData.authors.find(a => a.uid === mainAuthorUid);
+      if (!mainAuthor) {
+        throw new Error('Main author not found on paper.');
+      }
 
-            // Always remove the request from the array
-            transaction.update(paperRef, { coAuthorRequests: FieldValue.arrayRemove(requestToRemove) });
+      const requestToRemove = (paperData.coAuthorRequests || []).find(req => req.uid === requestingAuthor.uid && req.email === requestingAuthor.email);
+      if (!requestToRemove) {
+        throw new Error('This co-author request was not found. It may have been withdrawn or already processed.');
+      }
 
-            if (action === 'accept' && assignedRole) {
-                let currentAuthors = paperData.authors || [];
-                let newMainAuthorUid = paperData.mainAuthorUid;
+      // Always remove the request from the array
+      transaction.update(paperRef, { coAuthorRequests: FieldValue.arrayRemove(requestToRemove) });
 
-                if (mainAuthorNewRole && mainAuthorUid) {
-                    const mainAuthorIndex = currentAuthors.findIndex(author => author.uid === mainAuthorUid);
-                    if (mainAuthorIndex !== -1) {
-                        currentAuthors[mainAuthorIndex].role = mainAuthorNewRole;
-                    }
-                }
-                
-                const newAuthor: Author = { ...requestingAuthor, role: assignedRole, status: 'approved' };
-                const updatedAuthors = [...currentAuthors, newAuthor];
-                
-                const firstAuthor = updatedAuthors.find(a => a.role === 'First Author' || a.role === 'First & Corresponding Author');
-                if (firstAuthor && firstAuthor.uid) {
-                    newMainAuthorUid = firstAuthor.uid;
-                }
-                
-                const updatedAuthorUids = [...new Set([...(paperData.authorUids || []), newAuthor.uid])].filter(Boolean) as string[];
-                const updatedAuthorEmails = [...new Set([...(paperData.authorEmails || []), newAuthor.email.toLowerCase()])];
+      if (action === 'accept' && assignedRole) {
+        let currentAuthors = paperData.authors || [];
+        let newMainAuthorUid = paperData.mainAuthorUid;
 
-                transaction.update(paperRef, {
-                    authors: updatedAuthors,
-                    authorUids: updatedAuthorUids,
-                    authorEmails: updatedAuthorEmails,
-                    mainAuthorUid: newMainAuthorUid, // Update main author if a first author is set
-                });
-            }
-            
-            return { paper: paperData, mainAuthor };
+        if (mainAuthorNewRole && mainAuthorUid) {
+          const mainAuthorIndex = currentAuthors.findIndex(author => author.uid === mainAuthorUid);
+          if (mainAuthorIndex !== -1) {
+            currentAuthors[mainAuthorIndex].role = mainAuthorNewRole;
+          }
+        }
+
+        const newAuthor: Author = { ...requestingAuthor, role: assignedRole, status: 'approved' };
+        const updatedAuthors = [...currentAuthors, newAuthor];
+
+        const firstAuthor = updatedAuthors.find(a => a.role === 'First Author' || a.role === 'First & Corresponding Author');
+        if (firstAuthor && firstAuthor.uid) {
+          newMainAuthorUid = firstAuthor.uid;
+        }
+
+        const updatedAuthorUids = [...new Set([...(paperData.authorUids || []), newAuthor.uid])].filter(Boolean) as string[];
+        const updatedAuthorEmails = [...new Set([...(paperData.authorEmails || []), newAuthor.email.toLowerCase()])];
+
+        transaction.update(paperRef, {
+          authors: updatedAuthors,
+          authorUids: updatedAuthorUids,
+          authorEmails: updatedAuthorEmails,
+          mainAuthorUid: newMainAuthorUid, // Update main author if a first author is set
         });
+      }
 
-        const { paper, mainAuthor } = result;
-        const mainAuthorName = mainAuthor.name;
+      return { paper: paperData, mainAuthor };
+    });
 
-        // --- Send Notifications Outside Transaction ---
-        if (requestingAuthor.uid) {
-            const notificationTitle = action === 'accept'
-                ? `${mainAuthorName} accepted your request to be a ${assignedRole} on "${paper.title}"`
-                : `${mainAuthorName} rejected your co-author request for "${paper.title}"`;
-            
-            const notification: Omit<Notification, 'id'> = {
-                uid: requestingAuthor.uid,
-                title: notificationTitle,
-                createdAt: new Date().toISOString(),
-                isRead: false,
-                type: 'default',
-            };
-            await adminDb.collection('notifications').add(notification);
-            
-            const acceptedHtml = `
+    const { paper, mainAuthor } = result;
+    const mainAuthorName = mainAuthor.name;
+
+    // --- Send Notifications Outside Transaction ---
+    if (requestingAuthor.uid) {
+      const notificationTitle = action === 'accept'
+        ? `${mainAuthorName} accepted your request to be a ${assignedRole} on "${paper.title}"`
+        : `${mainAuthorName} rejected your co-author request for "${paper.title}"`;
+
+      const notification: Omit<Notification, 'id'> = {
+        uid: requestingAuthor.uid,
+        title: notificationTitle,
+        createdAt: new Date().toISOString(),
+        isRead: false,
+        type: 'default',
+      };
+      await adminDb.collection('notifications').add(notification);
+
+      const acceptedHtml = `
                 <div ${EMAIL_STYLES.background}>
                     ${EMAIL_STYLES.logo}
                     <p style="color:#ffffff;">Dear ${requestingAuthor.name},</p>
@@ -518,15 +476,15 @@ export async function manageCoAuthorRequest(
                     <p style="color:#e0e0e0;">You have been successfully added to the list of authors.</p>
                     <p style="color:#e0e0e0;">
                         You can view your updated publication list on the 
-                        <a href="${process.env.BASE_URL}/dashboard/my-projects" style="color:#64b5f6; text-decoration:underline;">
-                          PU Goa Research Projects Portal
+                        <a href="${process.env.NEXT_PUBLIC_BASE_URL}/dashboard/my-projects" style="color:#64b5f6; text-decoration:underline;">
+                          PU Research Projects Portal
                         </a>.
                     </p>
                     ${EMAIL_STYLES.footer}
                 </div>
             `;
-            
-            const rejectedHtml = `
+
+      const rejectedHtml = `
                  <div ${EMAIL_STYLES.background}>
                     ${EMAIL_STYLES.logo}
                     <p style="color:#ffffff;">Dear ${requestingAuthor.name},</p>
@@ -543,22 +501,21 @@ export async function manageCoAuthorRequest(
                 </div>
             `;
 
-            
-            await sendEmail({
-                to: requestingAuthor.email,
-                subject: `Update on your co-author request for "${paper.title}"`,
-                html: action === 'accept' ? acceptedHtml : rejectedHtml,
-                from: 'default'
-            });
-        }
 
-        return { success: true };
-
-    } catch (error: any) {
-        console.error("Error managing co-author request:", error);
-        return { success: false, error: error.message || 'Server error.' };
+      await sendEmail({
+        to: requestingAuthor.email,
+        subject: `Update on your co-author request for "${paper.title}"`,
+        html: action === 'accept' ? acceptedHtml : rejectedHtml,
+        from: 'default'
+      });
     }
+
+    return { success: true };
+
+  } catch (error: any) {
+    console.error("Error managing co-author request:", error);
+    return { success: false, error: error.message || 'Server error.' };
+  }
 }
 
-    
 

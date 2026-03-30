@@ -62,7 +62,7 @@ export function OtpDialog({ isOpen, onOpenChange, email, onVerify, isVerifying }
         <DialogHeader>
           <DialogTitle>Two-Factor Authentication</DialogTitle>
           <DialogDescription>
-            A 6-digit code has been sent to your email address: <strong>{email}</strong>. Please enter it below to continue.
+            A 6-digit code has been sent to your email address: <strong>{email}</strong>. Please enter it below to continue. Please check your spam folder if you don't see it in your inbox.
           </DialogDescription>
         </DialogHeader>
         <Form {...form}>

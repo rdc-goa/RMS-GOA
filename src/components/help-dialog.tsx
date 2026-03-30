@@ -22,23 +22,23 @@ export function HelpDialog() {
       </DialogTrigger>
       <DialogContent className="sm:max-w-md">
         <DialogHeader className="text-center items-center">
-            <Mail className="mx-auto h-12 w-12 text-primary" />
+          <Mail className="mx-auto h-12 w-12 text-primary" />
           <DialogTitle className="mt-4">Need Assistance?</DialogTitle>
           <DialogDescription>
             For any queries or technical issues, please contact our support team.
           </DialogDescription>
         </DialogHeader>
         <div className="text-center py-4">
-            <a
-                href="mailto:helpdesk.rdc@paruluniversity.ac.in"
-                className="text-lg font-semibold text-primary hover:underline"
-            >
-                helpdesk.rdc@paruluniversity.ac.in
-            </a>
-            <div className="mt-4">
-              <SopDialog />
-              <p className="text-xs text-muted-foreground mt-1">View SOP</p>
-            </div>
+          <a
+            href="mailto:rdc@goa.paruluniversity.ac.in"
+            className="text-lg font-semibold text-primary hover:underline"
+          >
+            rdc@goa.paruluniversity.ac.in
+          </a>
+          <div className="mt-4">
+            <SopDialog />
+            <p className="text-xs text-muted-foreground mt-1">View SOP</p>
+          </div>
         </div>
       </DialogContent>
     </Dialog>

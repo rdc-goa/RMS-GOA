@@ -85,54 +85,72 @@ const bankDetailsSchema = z.object({
 type BankDetailsFormValues = z.infer<typeof bankDetailsSchema>
 
 const croAssignmentSchema = z.object({
-    email: z.string().email("Please enter a valid email address."),
-    faculty: z.string().min(1, "Please select a faculty."),
-    campus: z.string().min(1, "Please select a campus."),
+  email: z.string().email("Please enter a valid email address."),
+  faculty: z.string().min(1, "Please select a faculty."),
+  campus: z.string().min(1, "Please select a campus."),
 })
 type CroAssignmentFormValues = z.infer<typeof croAssignmentSchema>
 
 const faculties = [
-    "Faculty of Engineering, IT & CS",
-    "Faculty of Management Studies",
-    "Faculty of Pharmacy",
-    "Faculty of Applied and Health Sciences",
-    "Faculty of Nursing",
-    "Faculty of Physiotherapy",
-    "University Office"
-];
+  "Faculty of Engineering & Technology",
+  "Faculty of Diploma Studies",
+  "Faculty of Applied Sciences",
+  "Faculty of IT & Computer Science",
+  "Faculty of Agriculture",
+  "Faculty of Architecture & Planning",
+  "Faculty of Design",
+  "Faculty of Fine Arts",
+  "Faculty of Arts",
+  "Faculty of Commerce",
+  "Faculty of Social Work",
+  "Faculty of Management Studies",
+  "Faculty of Hotel Management & Catering Technology",
+  "Faculty of Law",
+  "Faculty of Medicine",
+  "Faculty of Homoeopathy",
+  "Faculty of Ayurved",
+  "Faculty of Nursing",
+  "Faculty of Pharmacy",
+  "Faculty of Physiotherapy",
+  "Faculty of Public Health",
+  "Parul Sevashram Hospital",
+  "RDC",
+  "University Office",
+  "Parul Aarogya Seva Mandal",
+]
 
 const goaFaculties = [
-    "Faculty of Engineering, IT & CS",
-    "Faculty of Management Studies",
-    "Faculty of Pharmacy",
-    "Faculty of Applied and Health Sciences",
-    "Faculty of Nursing",
-    "Faculty of Physiotherapy",
-    "University Office"
+  "Faculty of Engineering, IT & CS",
+  "Faculty of Management Studies",
+  "Faculty of Pharmacy",
+  "Faculty of Applied and Health Sciences",
+  "Faculty of Nursing",
+  "Faculty of Physiotherapy",
+  "University Office"
 ];
 
 const campuses = ["Goa"];
 
 const institutes = [
-    "Parul College of Applied and Health Sciences",
-    "Parul College of Engineering",
-    "Parul College of Information Technology & Computer Science",
-    "Parul College of Management",
-    "Parul College of Nursing",
-    "Parul College of Pharmacy",
-    "Parul College of Physiotherapy",
-    "University Office"
+  "Parul College of Applied and Health Sciences",
+  "Parul College of Engineering",
+  "Parul College of Information Technology & Computer Science",
+  "Parul College of Management",
+  "Parul College of Nursing",
+  "Parul College of Pharmacy",
+  "Parul College of Physiotherapy",
+  "University Office"
 ];
 
 const salaryBanks = ["AU Bank", "HDFC Bank", "Central Bank of India"]
 
 const incentiveClaimTypes = [
-    'Research Papers',
-    'Patents',
-    'Conference Presentations',
-    'Books',
-    'Membership of Professional Bodies',
-    'Seed Money for APC'
+  'Research Papers',
+  'Patents',
+  'Conference Presentations',
+  'Books',
+  'Membership of Professional Bodies',
+  'Seed Money for APC'
 ];
 
 const fileToDataUrl = (file: File): Promise<string> => {
@@ -202,27 +220,28 @@ export default function SettingsPage() {
       ifscCode: "",
     },
   })
-  
+
   const croAssignmentForm = useForm<CroAssignmentFormValues>({
     resolver: zodResolver(croAssignmentSchema),
     defaultValues: {
-        email: '',
-        faculty: '',
-        campus: '',
+      email: '',
+      faculty: '',
+      campus: '',
     },
   })
 
   const dummyForm = useForm(); // For the incentive approvers section
 
-  const facultyOptionsForCro = faculties;
+  const selectedCampusForCro = croAssignmentForm.watch('campus');
+  const facultyOptionsForCro = selectedCampusForCro === 'Goa' ? goaFaculties : faculties;
 
   useEffect(() => {
     // When campus changes, reset faculty if it's not in the new list
     const currentFaculty = croAssignmentForm.getValues('faculty');
     if (currentFaculty && !facultyOptionsForCro.includes(currentFaculty)) {
-        croAssignmentForm.setValue('faculty', '');
+      croAssignmentForm.setValue('faculty', '');
     }
-  }, [facultyOptionsForCro, croAssignmentForm]);
+  }, [selectedCampusForCro, facultyOptionsForCro, croAssignmentForm]);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser: FirebaseUser | null) => {
@@ -266,9 +285,11 @@ export default function SettingsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  const selectedCampus = profileForm.watch('campus');
+
   useEffect(() => {
     async function fetchDepartments() {
-      const endpoint = '/api/get-goa-departments';
+      const endpoint = selectedCampus === 'Goa' ? '/api/get-goa-departments' : '/api/get-departments';
       try {
         const res = await fetch(endpoint);
         const result = await res.json();
@@ -277,7 +298,7 @@ export default function SettingsPage() {
           // If current department is not in the new list, reset it
           const currentDepartment = profileForm.getValues('department');
           if (currentDepartment && !result.data.includes(currentDepartment)) {
-              profileForm.setValue('department', '');
+            profileForm.setValue('department', '');
           }
         }
       } catch (error) {
@@ -285,14 +306,15 @@ export default function SettingsPage() {
       }
     }
     fetchDepartments();
-  }, [profileForm]);
+  }, [selectedCampus, profileForm]);
 
   useEffect(() => {
     const currentInstitute = profileForm.getValues('institute');
-    if (currentInstitute && !institutes.includes(currentInstitute)) {
-        profileForm.setValue('institute', '');
+    const appropriateInstitutes = selectedCampus === 'Goa' ? goaInstitutes : [...new Set(institutes)];
+    if (currentInstitute && !appropriateInstitutes.includes(currentInstitute)) {
+      profileForm.setValue('institute', '');
     }
-  }, [profileForm]);
+  }, [selectedCampus, profileForm]);
 
   async function onProfileSubmit(data: ProfileFormValues) {
     if (!user) return
@@ -315,12 +337,12 @@ export default function SettingsPage() {
       if (data.misId && data.campus) {
         const misIdCheck = await checkMisIdExists(data.misId, user.uid, data.campus);
         if (misIdCheck.exists) {
-            profileForm.setError("misId", {
-                type: "manual",
-                message: "This MIS ID is already registered for this campus.",
-            });
-            setIsSubmittingProfile(false);
-            return;
+          profileForm.setError("misId", {
+            type: "manual",
+            message: "This MIS ID is already registered for this campus.",
+          });
+          setIsSubmittingProfile(false);
+          return;
         }
       }
 
@@ -328,7 +350,7 @@ export default function SettingsPage() {
       const { email, ...updateData } = data
       for (const key in updateData) {
         if ((updateData as any)[key] === undefined) {
-          ;(updateData as any)[key] = ""
+          ; (updateData as any)[key] = ""
         }
       }
       await updateDoc(userDocRef, updateData as any)
@@ -365,7 +387,7 @@ export default function SettingsPage() {
       setIsSubmittingBank(false)
     }
   }
-  
+
 
   async function onPasswordSubmit(data: PasswordFormValues) {
     setIsSubmittingPassword(true)
@@ -497,15 +519,15 @@ export default function SettingsPage() {
     if (!systemSettings) return;
 
     const newAssignment: CroAssignment = {
-        email: values.email.toLowerCase(),
-        faculty: values.faculty,
-        campus: values.campus,
+      email: values.email.toLowerCase(),
+      faculty: values.faculty,
+      campus: values.campus,
     };
 
     const currentAssignments = systemSettings.croAssignments || [];
     if (currentAssignments.some(c => c.email === newAssignment.email)) {
-        toast({ variant: "destructive", title: "Email exists", description: "This email is already assigned." });
-        return;
+      toast({ variant: "destructive", title: "Email exists", description: "This email is already assigned." });
+      return;
     }
 
     await handleSystemSettingsSave({ ...systemSettings, croAssignments: [...currentAssignments, newAssignment] });
@@ -518,12 +540,12 @@ export default function SettingsPage() {
     await handleSystemSettingsSave({ ...systemSettings, croAssignments: currentAssignments.filter(c => c.email !== emailToRemove) });
   };
 
-  const handleApproverChange = async (stage: 2 | 3 | 4 | 5, email: string) => {
+  const handleApproverChange = async (stage: 1 | 2 | 3 | 4, email: string) => {
     if (!systemSettings) return;
     const approvers = systemSettings.incentiveApprovers || [];
     const otherApprovers = approvers.filter(a => a.stage !== stage);
     const newApprovers: ApproverSetting[] = [...otherApprovers];
-    
+
     // Find the previous approver for this stage to remove their access
     const previousApproverEmail = approvers.find(a => a.stage === stage)?.email;
 
@@ -533,35 +555,35 @@ export default function SettingsPage() {
     newApprovers.sort((a, b) => a.stage - b.stage);
 
     await handleSystemSettingsSave({ ...systemSettings, incentiveApprovers: newApprovers });
-    
+
     // After saving, update user permissions
     const usersRef = collection(db, 'users');
 
     // Remove permissions from old approver
     if (previousApproverEmail) {
-        const oldApproverQuery = query(usersRef, where("email", "==", previousApproverEmail));
-        const oldApproverSnapshot = await getDocs(oldApproverQuery);
-        if (!oldApproverSnapshot.empty) {
-            const userDoc = oldApproverSnapshot.docs[0];
-            const userData = userDoc.data() as User;
-            const updatedModules = (userData.allowedModules || []).filter(m => !m.startsWith('incentive-approver-') && m !== 'incentive-approvals');
-            await updateDoc(userDoc.ref, { allowedModules: updatedModules });
-        }
+      const oldApproverQuery = query(usersRef, where("email", "==", previousApproverEmail));
+      const oldApproverSnapshot = await getDocs(oldApproverQuery);
+      if (!oldApproverSnapshot.empty) {
+        const userDoc = oldApproverSnapshot.docs[0];
+        const userData = userDoc.data() as User;
+        const updatedModules = (userData.allowedModules || []).filter(m => !m.startsWith('incentive-approver-') && m !== 'incentive-approvals');
+        await updateDoc(userDoc.ref, { allowedModules: updatedModules });
+      }
     }
 
     // Add permissions to new approver
     if (email) {
-        const newApproverQuery = query(usersRef, where("email", "==", email));
-        const newApproverSnapshot = await getDocs(newApproverQuery);
-        if (!newApproverSnapshot.empty) {
-            const userDoc = newApproverSnapshot.docs[0];
-            const userData = userDoc.data() as User;
-            const approverModule = `incentive-approver-${stage}`;
-            let updatedModules = userData.allowedModules || [];
-            if (!updatedModules.includes(approverModule)) updatedModules.push(approverModule);
-            if (!updatedModules.includes('incentive-approvals')) updatedModules.push('incentive-approvals');
-            await updateDoc(userDoc.ref, { allowedModules: updatedModules });
-        }
+      const newApproverQuery = query(usersRef, where("email", "==", email));
+      const newApproverSnapshot = await getDocs(newApproverQuery);
+      if (!newApproverSnapshot.empty) {
+        const userDoc = newApproverSnapshot.docs[0];
+        const userData = userDoc.data() as User;
+        const approverModule = `incentive-approver-${stage}`;
+        let updatedModules = userData.allowedModules || [];
+        if (!updatedModules.includes(approverModule)) updatedModules.push(approverModule);
+        if (!updatedModules.includes('incentive-approvals')) updatedModules.push('incentive-approvals');
+        await updateDoc(userDoc.ref, { allowedModules: updatedModules });
+      }
     }
   };
 
@@ -575,19 +597,19 @@ export default function SettingsPage() {
   const handleWorkflowChange = async (claimType: string, stage: number, isChecked: boolean) => {
     if (!systemSettings) return;
     const currentWorkflows = systemSettings.incentiveApprovalWorkflows || {};
-    const currentStages = currentWorkflows[claimType] || [1, 2, 3, 4, 5]; // Default to all 5 stages if not set
+    const currentStages = currentWorkflows[claimType] || [1, 2, 3, 4]; // Default to all if not set
 
     let newStages;
     if (isChecked) {
-        newStages = [...new Set([...currentStages, stage])].sort((a, b) => a - b);
+      newStages = [...new Set([...currentStages, stage])].sort((a, b) => a - b);
     } else {
-        newStages = currentStages.filter(s => s !== stage);
+      newStages = currentStages.filter(s => s !== stage);
     }
-    
+
     const newWorkflows = { ...currentWorkflows, [claimType]: newStages };
     await handleSystemSettingsSave({ ...systemSettings, incentiveApprovalWorkflows: newWorkflows });
   };
-  
+
   const handleImrMidTermReviewChange = async (months: number) => {
     if (!systemSettings) return;
     await handleSystemSettingsSave({ ...systemSettings, imrMidTermReviewMonths: months });
@@ -597,8 +619,8 @@ export default function SettingsPage() {
     if (!systemSettings) return;
     await handleSystemSettingsSave({ ...systemSettings, imrEvaluationDays: days });
   };
-  
-   const handleTemplateUrlChange = async (templateKey: keyof NonNullable<SystemSettings['templateUrls']>, url: string) => {
+
+  const handleTemplateUrlChange = async (templateKey: keyof NonNullable<SystemSettings['templateUrls']>, url: string) => {
     if (!systemSettings) return;
     const newTemplateUrls = { ...systemSettings.templateUrls, [templateKey]: url };
     await handleSystemSettingsSave({ ...systemSettings, templateUrls: newTemplateUrls });
@@ -618,35 +640,6 @@ export default function SettingsPage() {
     { key: 'IMR_SANCTION_ORDER', label: 'IMR Sanction Order' },
   ];
 
-  const [selectedInstituteForPrincipal, setSelectedInstituteForPrincipal] = useState<string>('');
-  const [principalEmailForInstitute, setPrincipalEmailForInstitute] = useState<string>('');
-
-  const handlePrincipalEmailChange = async (instituteName: string, email: string) => {
-    if (!systemSettings) return;
-    const updatedPrincipalEmails = { ...systemSettings.principalEmailsByInstitute, [instituteName]: email };
-    // Remove if empty
-    if (!email) {
-      delete updatedPrincipalEmails[instituteName];
-    }
-    await handleSystemSettingsSave({ ...systemSettings, principalEmailsByInstitute: updatedPrincipalEmails });
-  };
-
-  const addPrincipalEmailForInstitute = async () => {
-    if (!selectedInstituteForPrincipal.trim() || !principalEmailForInstitute.trim()) {
-      toast({ variant: 'destructive', title: 'Error', description: 'Please select an institute and enter an email.' });
-      return;
-    }
-    await handlePrincipalEmailChange(selectedInstituteForPrincipal, principalEmailForInstitute);
-    setSelectedInstituteForPrincipal('');
-    setPrincipalEmailForInstitute('');
-    toast({ title: 'Principal email updated', description: `Principal email for ${selectedInstituteForPrincipal} has been set.` });
-  };
-
-  const removePrincipalEmailForInstitute = async (instituteName: string) => {
-    if (!systemSettings) return;
-    await handlePrincipalEmailChange(instituteName, '');
-    toast({ title: 'Principal email removed', description: `Principal email for ${instituteName} has been removed.` });
-  };
 
   const isAcademicInfoLocked = isCro || isPrincipal
 
@@ -703,124 +696,59 @@ export default function SettingsPage() {
               <CardDescription>Global settings for the application. Changes affect all users.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
-                <div className="space-y-4">
-                    <div className="flex items-center gap-2"><Bot className="h-5 w-5" /><Label className="text-base">API Integrations</Label></div>
-                    <p className="text-sm text-muted-foreground">Enable or disable external data fetching services.</p>
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                        <div className="flex items-center justify-between rounded-lg border p-3"><Label htmlFor="scopus-toggle">Scopus</Label><Switch id="scopus-toggle" checked={systemSettings.apiIntegrations?.scopus !== false} onCheckedChange={(c) => handleApiIntegrationToggle('scopus', c)} disabled={isSavingSettings} /></div>
-                        <div className="flex items-center justify-between rounded-lg border p-3"><Label htmlFor="wos-toggle">Web of Science</Label><Switch id="wos-toggle" checked={systemSettings.apiIntegrations?.wos !== false} onCheckedChange={(c) => handleApiIntegrationToggle('wos', c)} disabled={isSavingSettings} /></div>
-                        <div className="flex items-center justify-between rounded-lg border p-3"><Label htmlFor="sci-toggle">ScienceDirect</Label><Switch id="sci-toggle" checked={systemSettings.apiIntegrations?.sci !== false} onCheckedChange={(c) => handleApiIntegrationToggle('sci', c)} disabled={isSavingSettings} /></div>
-                    </div>
+              <div className="space-y-4">
+                <div className="flex items-center gap-2"><Bot className="h-5 w-5" /><Label className="text-base">API Integrations</Label></div>
+                <p className="text-sm text-muted-foreground">Enable or disable external data fetching services.</p>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="flex items-center justify-between rounded-lg border p-3"><Label htmlFor="scopus-toggle">Scopus</Label><Switch id="scopus-toggle" checked={systemSettings.apiIntegrations?.scopus !== false} onCheckedChange={(c) => handleApiIntegrationToggle('scopus', c)} disabled={isSavingSettings} /></div>
+                  <div className="flex items-center justify-between rounded-lg border p-3"><Label htmlFor="wos-toggle">Web of Science</Label><Switch id="wos-toggle" checked={systemSettings.apiIntegrations?.wos !== false} onCheckedChange={(c) => handleApiIntegrationToggle('wos', c)} disabled={isSavingSettings} /></div>
+                  <div className="flex items-center justify-between rounded-lg border p-3"><Label htmlFor="sci-toggle">ScienceDirect</Label><Switch id="sci-toggle" checked={systemSettings.apiIntegrations?.sci !== false} onCheckedChange={(c) => handleApiIntegrationToggle('sci', c)} disabled={isSavingSettings} /></div>
                 </div>
-                <Separator />
-                <div className="space-y-4">
-                    <div className="flex items-center gap-2"><FileText className="h-5 w-5" /><Label className="text-base">Template Management</Label></div>
-                    <p className="text-sm text-muted-foreground">Provide the direct download URLs for the DOCX templates used to generate office notings and other documents.</p>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4">
-                        {templateFields.map(({ key, label }) => (<div key={key} className="space-y-1"><Label htmlFor={`template-${key}`} className="text-sm">{label}</Label><Input id={`template-${key}`} placeholder="https://..." value={systemSettings?.templateUrls?.[key] || ''} onChange={(e) => handleTemplateUrlChange(key, e.target.value)} disabled={isSavingSettings} /></div>))}
-                    </div>
+              </div>
+              <Separator />
+              <div className="space-y-4">
+                <div className="flex items-center gap-2"><FileText className="h-5 w-5" /><Label className="text-base">Template Management</Label></div>
+                <p className="text-sm text-muted-foreground">Provide the direct download URLs for the DOCX templates used to generate office notings and other documents.</p>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4">
+                  {templateFields.map(({ key, label }) => (<div key={key} className="space-y-1"><Label htmlFor={`template-${key}`} className="text-sm">{label}</Label><Input id={`template-${key}`} placeholder="https://..." value={systemSettings?.templateUrls?.[key] || ''} onChange={(e) => handleTemplateUrlChange(key, e.target.value)} disabled={isSavingSettings} /></div>))}
                 </div>
-                <Separator />
-                <div className="flex items-center justify-between">
-                    <div className="space-y-0.5"><Label className="text-base">Two-Factor Authentication (2FA)</Label><p className="text-sm text-muted-foreground">{systemSettings.is2faEnabled ? "Enabled" : "Disabled"} - Require users to verify their identity with an email OTP upon login.</p></div>
-                    <Switch checked={systemSettings.is2faEnabled} onCheckedChange={handle2faToggle} disabled={isSavingSettings}/>
-                </div>
-                <Separator />
-                <div className="space-y-4"><div className="flex items-center gap-2"><Clock className="h-5 w-5" /><Label className="text-base">IMR Mid-term Review Window</Label></div><p className="text-sm text-muted-foreground">Set the number of months after a grant is awarded that a project becomes eligible for a mid-term review.</p><div className="flex items-center gap-2"><Input type="number" className="w-24" value={systemSettings?.imrMidTermReviewMonths || 6} onChange={(e) => handleImrMidTermReviewChange(parseInt(e.target.value, 10) || 6)} disabled={isSavingSettings} min="1" /><span className="text-sm text-muted-foreground">months</span></div></div>
-                <Separator />
-                <div className="space-y-4"><div className="flex items-center gap-2"><CalendarIcon className="h-5 w-5" /><Label className="text-base">IMR Evaluation Window</Label></div><p className="text-sm text-muted-foreground">Set the number of days evaluators have to submit their feedback after the scheduled meeting date. Set to 0 to only allow same-day evaluations.</p><div className="flex items-center gap-2"><Input type="number" className="w-24" value={systemSettings?.imrEvaluationDays || 0} onChange={(e) => handleImrEvaluationDaysChange(parseInt(e.target.value, 10) || 0)} disabled={isSavingSettings} min="0" /><span className="text-sm text-muted-foreground">days</span></div></div>
-                <Separator />
-                <div className="space-y-4"><div className="flex items-center gap-2"><Award className="h-5 w-5" /><Label className="text-base">Incentive Claim Management</Label></div><p className="text-sm text-muted-foreground">Enable or disable specific types of incentive claims for all users.</p><div className="grid grid-cols-2 md:grid-cols-3 gap-4">{incentiveClaimTypes.map(type => (<div key={type} className="flex items-center space-x-2"><Switch id={`incentive-${type.replace(/\s+/g, '-')}`} checked={systemSettings.enabledIncentiveTypes?.[type] !== false} onCheckedChange={(checked) => handleIncentiveTypeToggle(type, checked)} disabled={isSavingSettings} /><Label htmlFor={`incentive-${type.replace(/\s+/g, '-')}`}>{type}</Label></div>))}</div></div>
-                <Separator />
-                <div className="space-y-4"><div className="flex items-center gap-2"><Award className="h-5 w-5" /><Label className="text-base">Incentive Approval Workflow</Label></div><p className="text-sm text-muted-foreground">Select which approval stages are required for each claim type. Stage 1 is automatically the Principal. Stages 2-5 are configured below.</p><Table><TableHeader><TableRow><TableHead>Claim Type</TableHead><TableHead className="text-center">Stage 1 (Principal)</TableHead><TableHead className="text-center">Stage 2</TableHead><TableHead className="text-center">Stage 3</TableHead><TableHead className="text-center">Stage 4</TableHead><TableHead className="text-center">Stage 5</TableHead></TableRow></TableHeader><TableBody>{incentiveClaimTypes.map(type => { const workflow = systemSettings.incentiveApprovalWorkflows?.[type] || [1, 2, 3, 4, 5]; return (<TableRow key={type}><TableCell className="font-medium">{type}</TableCell>{[1, 2, 3, 4, 5].map(stage => (<TableCell key={stage} className="text-center"><Checkbox checked={workflow.includes(stage)} onCheckedChange={(checked) => handleWorkflowChange(type, stage, !!checked)} disabled={isSavingSettings} /></TableCell>))}</TableRow>);})}</TableBody></Table></div>
-                <Separator />
-                <div className="space-y-4"><div className="flex items-center gap-2"><Mail className="h-5 w-5" /><Label className="text-base">Do Not Disturb (DND) Email</Label></div><p className="text-sm text-muted-foreground">The email address entered here will be excluded from all automated system email notifications.</p><Input placeholder="dnd.user@paruluniversity.ac.in" value={systemSettings.dndEmail || ''} onChange={(e) => setSystemSettings(prev => prev ? { ...prev, dndEmail: e.target.value } : null)} onBlur={(e) => handleSystemSettingsSave({ ...systemSettings, dndEmail: e.target.value })} disabled={isSavingSettings} /></div>
-                <Separator />
-                <div className="space-y-4"><Label className="text-base">Allowed Email Domains</Label><p className="text-sm text-muted-foreground">Users with these email domains can register and access the portal.</p><div className="flex gap-2"><Input placeholder="@newcampus.paruluniversity.ac.in" value={newAllowedDomain} onChange={(e) => setNewAllowedDomain(e.target.value)} /><Button onClick={addAllowedDomain} disabled={isSavingSettings || !newAllowedDomain.trim()}><Plus className="h-4 w-4" /></Button></div><div className="flex flex-wrap gap-2">{(systemSettings.allowedDomains || []).map((domain) => (<Badge key={domain} variant="secondary" className="flex items-center gap-1">{domain}<Button variant="ghost" size="icon" className="h-4 w-4 hover:bg-destructive hover:text-destructive-foreground" onClick={() => removeAllowedDomain(domain)} disabled={isSavingSettings}><X className="h-3 w-3" /></Button></Badge>))}</div></div>
-                <Separator />
-                <div className="space-y-4"><Label className="text-base">CRO Pre-assignment</Label><p className="text-sm text-muted-foreground">Pre-assign the CRO role and their primary faculty/campus to a specific email. This will be automatically applied upon sign-up.</p><Form {...croAssignmentForm}><form onSubmit={croAssignmentForm.handleSubmit(addCroAssignment)} className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end p-4 border rounded-lg"><FormField control={croAssignmentForm.control} name="email" render={({ field }) => ( <FormItem><FormLabel>CRO Email</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem> )} /><FormField control={croAssignmentForm.control} name="campus" render={({ field }) => ( <FormItem><FormLabel>Campus</FormLabel><Select onValueChange={field.onChange} value={field.value}><FormControl><SelectTrigger><SelectValue placeholder="Select campus" /></SelectTrigger></FormControl><SelectContent>{campuses.map(c => (<SelectItem key={c} value={c}>{c}</SelectItem>))}</SelectContent></Select><FormMessage /></FormItem> )} /><FormField control={croAssignmentForm.control} name="faculty" render={({ field }) => ( <FormItem><FormLabel>Faculty</FormLabel><Select onValueChange={field.onChange} value={field.value}><FormControl><SelectTrigger><SelectValue placeholder="Select faculty" /></SelectTrigger></FormControl><SelectContent>{facultyOptionsForCro.map(f => (<SelectItem key={f} value={f}>{f}</SelectItem>))}</SelectContent></Select><FormMessage /></FormItem> )} /><Button type="submit" disabled={isSavingSettings}><Plus className="h-4 w-4 mr-2" /> Add CRO</Button></form></Form>{(systemSettings.croAssignments || []).length > 0 && (<Table><TableHeader><TableRow><TableHead>Email</TableHead><TableHead>Faculty</TableHead><TableHead>Campus</TableHead><TableHead className="text-right">Action</TableHead></TableRow></TableHeader><TableBody>{systemSettings.croAssignments?.map((assignment) => (<TableRow key={assignment.email}><TableCell>{assignment.email}</TableCell><TableCell>{assignment.faculty}</TableCell><TableCell>{assignment.campus}</TableCell><TableCell className="text-right"><Button variant="ghost" size="icon" onClick={() => removeCroAssignment(assignment.email)} disabled={isSavingSettings}><X className="h-4 w-4" /></Button></TableCell></TableRow>))}</TableBody></Table>)}</div>
-                <Separator />
-                <div className="space-y-4"><div className="flex items-center gap-2"><Mail className="h-5 w-5" /><Label className="text-base">Utilization Report Email Recipient</Label></div><p className="text-sm text-muted-foreground">The email address that will receive a notification when a PI submits a utilization report and requests the next grant phase.</p><Input placeholder="finance.rdc@paruluniversity.ac.in" value={systemSettings?.utilizationNotificationEmail || ''} onChange={(e) => handleSystemSettingsSave({ ...systemSettings, utilizationNotificationEmail: e.target.value })} disabled={isSavingSettings} /></div>
-                <Separator />
-                <div className="space-y-4"><Label className="text-base">IQAC Email Address</Label><p className="text-sm text-muted-foreground">The user who signs up with this email will be automatically assigned the IQAC role.</p><Input placeholder="iqac@paruluniversity.ac.in" value={systemSettings?.iqacEmail || ''} onChange={(e) => handleSystemSettingsSave({ ...systemSettings, iqacEmail: e.target.value })} disabled={isSavingSettings} /></div>
-                <Separator />
-                <div className="space-y-4">
-                  <Form {...dummyForm}>
-                    <Label className="text-base">Incentive Approval Stages</Label>
-                    <p className="text-sm text-muted-foreground">Configure the approver email addresses for stages 2-5. Stage 1 is automatically assigned to the Principal of the institution.</p>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        {[2, 3, 4, 5].map(stage => {
-                            const approver = systemSettings?.incentiveApprovers?.find(a => a.stage === stage);
-                            return (<div key={stage} className="p-4 border rounded-lg space-y-3"><div className="space-y-2"><Label>Stage {stage} Approver Email</Label><Input type="email" placeholder={`approver.stage${stage}@paruluniversity.ac.in`} value={approver?.email || ''} onChange={(e) => handleApproverChange(stage as 2 | 3 | 4 | 5, e.target.value)} disabled={isSavingSettings} /></div></div>);
-                        })}
-                    </div>
-                  </Form>
-                </div>
-                <Separator />
-                <div className="space-y-4">
-                  <div className="flex items-center gap-2">
-                    <Mail className="h-5 w-5" />
-                    <Label className="text-base">Principal Email Addresses by Institute</Label>
+              </div>
+              <Separator />
+              <div className="flex items-center justify-between">
+                <div className="space-y-0.5"><Label className="text-base">Two-Factor Authentication (2FA)</Label><p className="text-sm text-muted-foreground">{systemSettings.is2faEnabled ? "Enabled" : "Disabled"} - Require users to verify their identity with an email OTP upon login.</p></div>
+                <Switch checked={systemSettings.is2faEnabled} onCheckedChange={handle2faToggle} disabled={isSavingSettings} />
+              </div>
+              <Separator />
+              <div className="space-y-4"><div className="flex items-center gap-2"><Clock className="h-5 w-5" /><Label className="text-base">IMR Mid-term Review Window</Label></div><p className="text-sm text-muted-foreground">Set the number of months after a grant is awarded that a project becomes eligible for a mid-term review.</p><div className="flex items-center gap-2"><Input type="number" className="w-24" value={systemSettings?.imrMidTermReviewMonths || 6} onChange={(e) => handleImrMidTermReviewChange(parseInt(e.target.value, 10) || 6)} disabled={isSavingSettings} min="1" /><span className="text-sm text-muted-foreground">months</span></div></div>
+              <Separator />
+              <div className="space-y-4"><div className="flex items-center gap-2"><CalendarIcon className="h-5 w-5" /><Label className="text-base">IMR Evaluation Window</Label></div><p className="text-sm text-muted-foreground">Set the number of days evaluators have to submit their feedback after the scheduled meeting date. Set to 0 to only allow same-day evaluations.</p><div className="flex items-center gap-2"><Input type="number" className="w-24" value={systemSettings?.imrEvaluationDays || 0} onChange={(e) => handleImrEvaluationDaysChange(parseInt(e.target.value, 10) || 0)} disabled={isSavingSettings} min="0" /><span className="text-sm text-muted-foreground">days</span></div></div>
+              <Separator />
+              <div className="space-y-4"><div className="flex items-center gap-2"><Award className="h-5 w-5" /><Label className="text-base">Incentive Claim Management</Label></div><p className="text-sm text-muted-foreground">Enable or disable specific types of incentive claims for all users.</p><div className="grid grid-cols-2 md:grid-cols-3 gap-4">{incentiveClaimTypes.map(type => (<div key={type} className="flex items-center space-x-2"><Switch id={`incentive-${type.replace(/\s+/g, '-')}`} checked={systemSettings.enabledIncentiveTypes?.[type] !== false} onCheckedChange={(checked) => handleIncentiveTypeToggle(type, checked)} disabled={isSavingSettings} /><Label htmlFor={`incentive-${type.replace(/\s+/g, '-')}`}>{type}</Label></div>))}</div></div>
+              <Separator />
+              <div className="space-y-4"><div className="flex items-center gap-2"><Award className="h-5 w-5" /><Label className="text-base">Incentive Approval Workflow</Label></div><p className="text-sm text-muted-foreground">Select which approval stages are required for each claim type. The first selected stage will be the starting point.</p><Table><TableHeader><TableRow><TableHead>Claim Type</TableHead><TableHead className="text-center">Stage 1</TableHead><TableHead className="text-center">Stage 2</TableHead><TableHead className="text-center">Stage 3</TableHead><TableHead className="text-center">Stage 4</TableHead></TableRow></TableHeader><TableBody>{incentiveClaimTypes.map(type => { const workflow = systemSettings.incentiveApprovalWorkflows?.[type] || [1, 2, 3, 4]; return (<TableRow key={type}><TableCell className="font-medium">{type}</TableCell>{[1, 2, 3, 4].map(stage => (<TableCell key={stage} className="text-center"><Checkbox checked={workflow.includes(stage)} onCheckedChange={(checked) => handleWorkflowChange(type, stage, !!checked)} disabled={isSavingSettings} /></TableCell>))}</TableRow>); })}</TableBody></Table></div>
+              <Separator />
+              <div className="space-y-4"><div className="flex items-center gap-2"><Mail className="h-5 w-5" /><Label className="text-base">Do Not Disturb (DND) Email</Label></div><p className="text-sm text-muted-foreground">The email address entered here will be excluded from all automated system email notifications.</p><Input placeholder="dnd.user@paruluniversity.ac.in" value={systemSettings.dndEmail || ''} onChange={(e) => setSystemSettings(prev => prev ? { ...prev, dndEmail: e.target.value } : null)} onBlur={(e) => handleSystemSettingsSave({ ...systemSettings, dndEmail: e.target.value })} disabled={isSavingSettings} /></div>
+              <Separator />
+              <div className="space-y-4"><Label className="text-base">Allowed Email Domains</Label><p className="text-sm text-muted-foreground">Users with these email domains can register and access the portal.</p><div className="flex gap-2"><Input placeholder="@newcampus.paruluniversity.ac.in" value={newAllowedDomain} onChange={(e) => setNewAllowedDomain(e.target.value)} /><Button onClick={addAllowedDomain} disabled={isSavingSettings || !newAllowedDomain.trim()}><Plus className="h-4 w-4" /></Button></div><div className="flex flex-wrap gap-2">{(systemSettings.allowedDomains || []).map((domain) => (<Badge key={domain} variant="secondary" className="flex items-center gap-1">{domain}<Button variant="ghost" size="icon" className="h-4 w-4 hover:bg-destructive hover:text-destructive-foreground" onClick={() => removeAllowedDomain(domain)} disabled={isSavingSettings}><X className="h-3 w-3" /></Button></Badge>))}</div></div>
+              <Separator />
+              <div className="space-y-4"><Label className="text-base">CRO Pre-assignment</Label><p className="text-sm text-muted-foreground">Pre-assign the CRO role and their primary faculty/campus to a specific email. This will be automatically applied upon sign-up.</p><Form {...croAssignmentForm}><form onSubmit={croAssignmentForm.handleSubmit(addCroAssignment)} className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end p-4 border rounded-lg"><FormField control={croAssignmentForm.control} name="email" render={({ field }) => (<FormItem><FormLabel>CRO Email</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>)} /><FormField control={croAssignmentForm.control} name="campus" render={({ field }) => (<FormItem><FormLabel>Campus</FormLabel><Select onValueChange={field.onChange} value={field.value}><FormControl><SelectTrigger><SelectValue placeholder="Select campus" /></SelectTrigger></FormControl><SelectContent>{campuses.map(c => (<SelectItem key={c} value={c}>{c}</SelectItem>))}</SelectContent></Select><FormMessage /></FormItem>)} /><FormField control={croAssignmentForm.control} name="faculty" render={({ field }) => (<FormItem><FormLabel>Faculty</FormLabel><Select onValueChange={field.onChange} value={field.value}><FormControl><SelectTrigger><SelectValue placeholder="Select faculty" /></SelectTrigger></FormControl><SelectContent>{facultyOptionsForCro.map(f => (<SelectItem key={f} value={f}>{f}</SelectItem>))}</SelectContent></Select><FormMessage /></FormItem>)} /><Button type="submit" disabled={isSavingSettings}><Plus className="h-4 w-4 mr-2" /> Add CRO</Button></form></Form>{(systemSettings.croAssignments || []).length > 0 && (<Table><TableHeader><TableRow><TableHead>Email</TableHead><TableHead>Faculty</TableHead><TableHead>Campus</TableHead><TableHead className="text-right">Action</TableHead></TableRow></TableHeader><TableBody>{systemSettings.croAssignments?.map((assignment) => (<TableRow key={assignment.email}><TableCell>{assignment.email}</TableCell><TableCell>{assignment.faculty}</TableCell><TableCell>{assignment.campus}</TableCell><TableCell className="text-right"><Button variant="ghost" size="icon" onClick={() => removeCroAssignment(assignment.email)} disabled={isSavingSettings}><X className="h-4 w-4" /></Button></TableCell></TableRow>))}</TableBody></Table>)}</div>
+              <Separator />
+              <div className="space-y-4"><div className="flex items-center gap-2"><Mail className="h-5 w-5" /><Label className="text-base">Utilization Report Email Recipient</Label></div><p className="text-sm text-muted-foreground">The email address that will receive a notification when a PI submits a utilization report and requests the next grant phase.</p><Input placeholder="finance.rdc@paruluniversity.ac.in" value={systemSettings?.utilizationNotificationEmail || ''} onChange={(e) => handleSystemSettingsSave({ ...systemSettings, utilizationNotificationEmail: e.target.value })} disabled={isSavingSettings} /></div>
+              <Separator />
+              <div className="space-y-4"><Label className="text-base">IQAC Email Address</Label><p className="text-sm text-muted-foreground">The user who signs up with this email will be automatically assigned the IQAC role.</p><Input placeholder="iqac@paruluniversity.ac.in" value={systemSettings?.iqacEmail || ''} onChange={(e) => handleSystemSettingsSave({ ...systemSettings, iqacEmail: e.target.value })} disabled={isSavingSettings} /></div>
+              <Separator />
+              <div className="space-y-4">
+                <Form {...dummyForm}>
+                  <Label className="text-base">Incentive Approval Workflow</Label>
+                  <p className="text-sm text-muted-foreground">Define the email addresses for the four stages of incentive claim approval.</p>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    {[1, 2, 3, 4].map(stage => {
+                      const approver = systemSettings?.incentiveApprovers?.find(a => a.stage === stage);
+                      return (<div key={stage} className="p-4 border rounded-lg space-y-3"><FormItem><FormLabel>Stage {stage} Approver Email</FormLabel><Input type="email" placeholder={`approver.stage${stage}@paruluniversity.ac.in`} value={approver?.email || ''} onChange={(e) => handleApproverChange(stage as 1 | 2 | 3 | 4, e.target.value)} disabled={isSavingSettings} /></FormItem></div>);
+                    })}
                   </div>
-                  <p className="text-sm text-muted-foreground">Configure the principal email addresses for each institute. These emails will receive incentive application approvals for Stage 1.</p>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end p-4 border rounded-lg">
-                    <div className="space-y-2">
-                      <Label>Institute</Label>
-                      <Select value={selectedInstituteForPrincipal} onValueChange={setSelectedInstituteForPrincipal}>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select institute" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {institutes.map(inst => (
-                            <SelectItem key={inst} value={inst}>{inst}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Principal Email</Label>
-                      <Input 
-                        type="email"
-                        placeholder="principal@paruluniversity.ac.in"
-                        value={principalEmailForInstitute}
-                        onChange={(e) => setPrincipalEmailForInstitute(e.target.value)}
-                        disabled={isSavingSettings}
-                      />
-                    </div>
-                    <Button onClick={addPrincipalEmailForInstitute} disabled={isSavingSettings || !selectedInstituteForPrincipal || !principalEmailForInstitute}>
-                      <Plus className="h-4 w-4 mr-2" /> Set Principal
-                    </Button>
-                  </div>
-                  {(systemSettings?.principalEmailsByInstitute && Object.keys(systemSettings.principalEmailsByInstitute).length > 0) && (
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Institute</TableHead>
-                          <TableHead>Principal Email</TableHead>
-                          <TableHead className="text-right">Action</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {Object.entries(systemSettings.principalEmailsByInstitute).map(([institute, email]) => (
-                          <TableRow key={institute}>
-                            <TableCell className="font-medium">{institute}</TableCell>
-                            <TableCell>{email}</TableCell>
-                            <TableCell className="text-right">
-                              <Button 
-                                variant="ghost" 
-                                size="icon" 
-                                onClick={() => removePrincipalEmailForInstitute(institute)}
-                                disabled={isSavingSettings}
-                              >
-                                <X className="h-4 w-4" />
-                              </Button>
-                            </TableCell>
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  )}
-                </div>
+                </Form>
+              </div>
             </CardContent>
           </Card>
         )}
@@ -888,16 +816,16 @@ export default function SettingsPage() {
                     )}
                   />
                 </div>
-                 <FormField name="campus" control={profileForm.control} render={({ field }) => (
-                    <FormItem>
-                        <FormLabel>Campus</FormLabel>
-                        <Select onValueChange={field.onChange} value={field.value} disabled={user?.email?.endsWith('@goa.paruluniversity.ac.in')}>
-                            <FormControl><SelectTrigger><SelectValue placeholder="Select your campus" /></SelectTrigger></FormControl>
-                            <SelectContent>{campuses.map(campus => (<SelectItem key={campus} value={campus}>{campus}</SelectItem>))}</SelectContent>
-                        </Select>
-                        <FormMessage />
-                    </FormItem>
-                 )} />
+                <FormField name="campus" control={profileForm.control} render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Campus</FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value} disabled={user?.email?.endsWith('@goa.paruluniversity.ac.in')}>
+                      <FormControl><SelectTrigger><SelectValue placeholder="Select your campus" /></SelectTrigger></FormControl>
+                      <SelectContent>{campuses.map(campus => (<SelectItem key={campus} value={campus}>{campus}</SelectItem>))}</SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )} />
                 <FormField
                   name="faculty"
                   control={profileForm.control}
@@ -911,7 +839,7 @@ export default function SettingsPage() {
                           </SelectTrigger>
                         </FormControl>
                         <SelectContent>
-                          {faculties.map((f) => (
+                          {(selectedCampus === 'Goa' ? goaFaculties : faculties).map((f) => (
                             <SelectItem key={f} value={f}>
                               {f}
                             </SelectItem>
@@ -935,7 +863,7 @@ export default function SettingsPage() {
                           </SelectTrigger>
                         </FormControl>
                         <SelectContent>
-                          {[...new Set(institutes)].map((i, index) => (
+                          {[...new Set(selectedCampus === 'Goa' ? goaInstitutes : institutes)].map((i, index) => (
                             <SelectItem key={`${i}-${index}`} value={i}>
                               {i}
                             </SelectItem>
@@ -958,7 +886,7 @@ export default function SettingsPage() {
                         onChange={field.onChange}
                         placeholder="Select your department"
                         searchPlaceholder="Search departments..."
-                        emptyPlaceholder="No department found. If you feel this is a error, please drop a mail to helpdesk.rdc@paruluniversity.ac.in"
+                        emptyPlaceholder="No department found. If you feel this is a error, please drop a mail to rdc@goa.paruluniversity.ac.in"
                         disabled={isAcademicInfoLocked}
                       />
                       <FormMessage />
@@ -1014,9 +942,9 @@ export default function SettingsPage() {
                     render={({ field }) => (
                       <FormItem>
                         <FormLabel>ORCID iD</FormLabel>
-                          <FormControl>
-                            <Input placeholder="e.g., 0000-0001-2345-6789" {...field} />
-                          </FormControl>
+                        <FormControl>
+                          <Input placeholder="e.g., 0000-0001-2345-6789" {...field} />
+                        </FormControl>
                         <FormMessage />
                       </FormItem>
                     )}

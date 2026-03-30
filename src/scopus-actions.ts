@@ -75,13 +75,9 @@ export async function fetchAdvancedScopusData(
     const coverDate = coredata["prism:coverDate"];
     const subtypeDescription = coredata["subtypeDescription"] || "";
     
-    // Defensive check for affiliation data
-    let affiliationData = retrievalResponse.affiliation;
-    if (affiliationData && !Array.isArray(affiliationData)) {
-        affiliationData = [affiliationData];
-    }
-    
+    const affiliationData = retrievalResponse.affiliation;
     let isPuNameInPublication = false;
+    
     if (Array.isArray(affiliationData)) {
         try {
             isPuNameInPublication = affiliationData.some((affil: any) => 
@@ -90,6 +86,8 @@ export async function fetchAdvancedScopusData(
         } catch (e) {
             console.warn("Could not parse Scopus affiliation data, ignoring.", e);
         }
+    } else if (affiliationData && typeof affiliationData === 'object' && affiliationData['affilname']) {
+        isPuNameInPublication = (affiliationData['affilname'] as string).toLowerCase().includes('parul');
     }
 
 
@@ -204,9 +202,9 @@ export async function fetchAdvancedScopusData(
         publicationMonth,
         publicationYear,
         isPuNameInPublication,
-        printIssn,
-        electronicIssn,
-        journalWebsite,
+        printIssn: printIssn || '',
+        electronicIssn: electronicIssn || '',
+        journalWebsite: journalWebsite || '',
         publicationType,
         journalClassification,
       },

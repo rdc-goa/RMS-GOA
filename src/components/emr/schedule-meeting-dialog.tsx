@@ -1,4 +1,4 @@
-
+    
 // src/components/emr/schedule-meeting-dialog.tsx
 'use client';
 
@@ -16,7 +16,7 @@ import { Calendar as CalendarPicker } from '@/components/ui/calendar';
 import { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Checkbox } from '@/components/ui/checkbox';
 import type { FundingCall, User, EmrInterest } from '@/types';
-import { format, parseISO, startOfToday, isToday, parse } from 'date-fns';
+import { format, parseISO, startOfToday, isToday, parse, setHours, setMinutes } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { Calendar, ChevronDown, Loader2, Info } from 'lucide-react';
 import { scheduleEmrMeeting } from '@/app/emr-actions';
@@ -174,7 +174,7 @@ export function ScheduleMeetingDialog({ call, interests, allUsers, currentUser, 
         const isAdminRole = ['Super-admin', 'admin', 'CRO'].includes(u.role);
         const isNotAnApplicant = !usersWithInterest.some(interest => interest.userId === u.uid);
         
-        if (currentUser.designation === 'Head of Goa Campus') {
+        if (currentUser?.designation === 'Head of Goa Campus') {
             return isAdminRole && isNotAnApplicant && u.campus === 'Goa';
         }
         
@@ -228,7 +228,7 @@ export function ScheduleMeetingDialog({ call, interests, allUsers, currentUser, 
                                                             <div>{interest.userName}</div>
                                                             {interestedUser && (
                                                                 <div className="text-xs text-muted-foreground">
-                                                                    {interestedUser.institute}
+                                                                    {interestedUser.institute}{interestedUser.campus && interestedUser.campus !== 'Vadodara' && ` (${interestedUser.campus})`}
                                                                 </div>
                                                             )}
                                                         </FormLabel>

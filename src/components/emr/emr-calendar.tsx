@@ -1,13 +1,12 @@
 
-
 'use client';
 
-import { useState, useEffect, useCallback, createRef } from 'react';
+import { useState, useEffect, useCallback, createRef, useMemo } from 'react';
 import * as z from 'zod';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { db } from '@/lib/config';
-import { collection, query, orderBy, onSnapshot, doc, deleteDoc, updateDoc, where, getDocs } from 'firebase/firestore';
+import { collection, query, orderBy, onSnapshot, doc, deleteDoc, updateDoc, where, getDocs, limit, startAfter, QueryDocumentSnapshot, DocumentData } from 'firebase/firestore';
 import { useToast } from '@/hooks/use-toast';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -34,6 +33,8 @@ import {
 
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage, FormDescription } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+
 import { RichTextEditor } from '@/components/ui/rich-text-editor';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -42,7 +43,7 @@ import { Calendar as CalendarIcon, Edit, Plus, Users, ChevronLeft, ChevronRight,
 import type { FundingCall, User, EmrInterest, EmrEvaluation } from '@/types';
 import { format, differenceInDays, differenceInHours, differenceInMinutes, parseISO, startOfMonth, endOfMonth, eachDayOfInterval, getDay, addMonths, subMonths, isAfter, setHours, setMinutes, setSeconds, isBefore } from 'date-fns';
 import { uploadFileToServer } from '@/app/actions';
-import { createFundingCall, announceEmrCall, registerEmrInterest } from '@/app/emr-actions';
+import { createFundingCall, announceEmrCall, registerEmrInterest, updateFundingCall } from '@/app/emr-actions';
 import Link from 'next/link';
 import { cn } from '@/lib/utils';
 import { Checkbox } from '../ui/checkbox';
@@ -50,8 +51,10 @@ import { EmrActions } from './emr-actions';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
 import { useIsMobile } from '@/hooks/use-mobile';
+
 import { findUserByMisId } from '@/app/userfinding';
 import { RadioGroup, RadioGroupItem } from '../ui/radio-group';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 
 interface EmrCalendarProps {
@@ -73,6 +76,7 @@ const callSchema = z.object({
   detailsUrl: z.string().url('Please enter a valid URL.').optional().or(z.literal('')),
   attachments: z.any().optional(),
   notifyAllStaff: z.boolean().default(false).optional(),
+  notifyDeadlineChange: z.boolean().default(false).optional(),
 }).refine(data => data.interestDeadline <= data.applyDeadline, {
   message: 'Interest deadline must be on or before the agency application deadline.',
   path: ['interestDeadline'],
@@ -93,6 +97,8 @@ function RegisterUserDialog({ call, adminUser, isOpen, onOpenChange, onRegisterS
     const [searchTerm, setSearchTerm] = useState('');
     const [foundUsers, setFoundUsers] = useState<any[]>([]);
     const [isSearching, setIsSearching] = useState(false);
+    const [pptFile, setPptFile] = useState<File | null>(null);
+
 
     const handleSearch = async () => {
         if (!searchTerm.trim()) return;
@@ -108,9 +114,18 @@ function RegisterUserDialog({ call, adminUser, isOpen, onOpenChange, onRegisterS
     };
 
     const handleRegister = async (userToRegister: User) => {
+        if (!pptFile) {
+            toast({ variant: 'destructive', title: 'Error', description: 'Please upload a presentation (PPT) first.' });
+            return;
+        }
+        if (pptFile.size > 10 * 1024 * 1024) {
+            toast({ variant: 'destructive', title: 'Error', description: 'Presentation size must be less than 10MB.' });
+            return;
+        }
         setIsSubmitting(true);
+
         try {
-            const result = await registerEmrInterest(call.id, userToRegister, [], { adminUid: adminUser.uid, adminName: adminUser.name });
+            const result = await registerEmrInterest(call.id, userToRegister, { dataUrl: await fileToDataUrl(pptFile!), fileName: pptFile!.name }, [], { adminUid: adminUser.uid, adminName: adminUser.name });
             if (result.success) {
                 toast({ title: 'Success', description: `${userToRegister.name} has been registered for the call.` });
                 onRegisterSuccess();
@@ -128,12 +143,18 @@ function RegisterUserDialog({ call, adminUser, isOpen, onOpenChange, onRegisterS
             <DialogContent>
                 <DialogHeader>
                     <DialogTitle>Register a User for: {call.title}</DialogTitle>
-                    <DialogDescription>Search for a user by their MIS ID to register them for this funding call.</DialogDescription>
+                    <DialogDescription>Search for a user by their MIS ID and upload their presentation to register them.</DialogDescription>
                 </DialogHeader>
                 <div className="py-4 space-y-4">
+                    <div className="space-y-2">
+                        <Label>User Presentation (PPT/PDF) <span className="text-destructive">*</span></Label>
+                        <Input type="file" accept=".ppt,.pptx,.pdf" onChange={(e) => setPptFile(e.target.files?.[0] || null)} />
+                        <p className="text-xs text-muted-foreground">Uploading a presentation (PPT or PDF) is mandatory for EMR registration. (Max size: 10MB)</p>
+                    </div>
+
                     <div className="flex items-center gap-2">
                         <Input placeholder="Enter user's MIS ID" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
-                        <Button onClick={handleSearch} disabled={isSearching}>{isSearching ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Search'}</Button>
+                        <Button onClick={handleSearch} disabled={isSearching}>{isSearching ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Search User'}</Button>
                     </div>
                     {foundUsers.length > 0 && (
                         <div className="space-y-2 max-h-60 overflow-y-auto">
@@ -143,7 +164,9 @@ function RegisterUserDialog({ call, adminUser, isOpen, onOpenChange, onRegisterS
                                         <p className="font-semibold">{user.name}</p>
                                         <p className="text-xs text-muted-foreground">{user.email}</p>
                                     </div>
-                                    <Button size="sm" onClick={() => handleRegister(user)} disabled={isSubmitting}>Register</Button>
+                                    <Button size="sm" onClick={() => handleRegister(user)} disabled={isSubmitting || !pptFile}>
+                                        {isSubmitting ? 'Registering...' : 'Register'}
+                                    </Button>
                                 </div>
                             ))}
                         </div>
@@ -183,6 +206,7 @@ export function AddEditCallDialog({
         interestDeadline: parseISO(existingCall.interestDeadline),
         applyDeadline: parseISO(existingCall.applyDeadline),
         notifyAllStaff: existingCall.isAnnounced,
+        notifyDeadlineChange: false,
       });
     } else {
       form.reset({
@@ -195,6 +219,7 @@ export function AddEditCallDialog({
         applyDeadline: undefined,
         attachments: undefined,
         notifyAllStaff: true,
+        notifyDeadlineChange: false,
       });
     }
   }, [existingCall, form]);
@@ -204,7 +229,9 @@ export function AddEditCallDialog({
     try {
         const callDataForServer: any = { ...values };
 
-        if (values.attachments && values.attachments.length > 0) {
+        // Only process attachments if they are valid File objects
+        if (values.attachments && values.attachments.length > 0 && 
+            values.attachments[0] instanceof File) {
             const attachmentDataUrls = await Promise.all(
                 Array.from(values.attachments as FileList).map(async (file: File) => ({
                     name: file.name,
@@ -212,17 +239,23 @@ export function AddEditCallDialog({
                 }))
             );
             callDataForServer.attachments = attachmentDataUrls;
+        } else {
+            // Remove attachments if they're not valid files
+            delete callDataForServer.attachments;
         }
 
         if (existingCall) {
             // Update logic
-            const callRef = doc(db, 'fundingCalls', existingCall.id);
-            await updateDoc(callRef, {
-                ...callDataForServer,
-                interestDeadline: values.interestDeadline.toISOString(),
-                applyDeadline: values.applyDeadline.toISOString(),
+            const result = await updateFundingCall(existingCall.id, callDataForServer, values.notifyDeadlineChange);
+            if (!result.success) {
+                throw new Error(result.error);
+            }
+            toast({
+              title: 'Success',
+              description: result.notificationEmailSent
+                ? `Funding call has been updated. ${result.notificationMessage}`
+                : 'Funding call has been updated.'
             });
-            toast({ title: 'Success', description: 'Funding call has been updated.' });
         } else {
             // Create logic
             const result = await createFundingCall(callDataForServer);
@@ -296,6 +329,28 @@ export function AddEditCallDialog({
             </div>
              <FormField name="detailsUrl" control={form.control} render={({ field }) => ( <FormItem><FormLabel>URL for Full Details</FormLabel><FormControl><Input type="url" {...field} /></FormControl><FormMessage /></FormItem> )} />
              <FormField name="attachments" control={form.control} render={({ field: { onChange, value, ...rest }}) => ( <FormItem><FormLabel>Attachments (Optional)</FormLabel><FormControl><Input type="file" multiple onChange={(e) => onChange(e.target.files)} {...rest} /></FormControl><FormMessage /></FormItem> )} />
+              {existingCall && (
+                 <FormField
+                  control={form.control}
+                  name="notifyDeadlineChange"
+                  render={({ field }) => (
+                    <FormItem className="flex flex-row items-center justify-between rounded-lg border p-3 shadow-sm">
+                      <div className="space-y-0.5">
+                        <FormLabel>Notify Deadline Change</FormLabel>
+                        <FormDescription>
+                          Send an email notification to all staff about the updated interest registration deadline.
+                        </FormDescription>
+                      </div>
+                      <FormControl>
+                        <Checkbox
+                          checked={field.value}
+                          onCheckedChange={field.onChange}
+                        />
+                      </FormControl>
+                    </FormItem>
+                  )}
+                />
+              )}
               {!existingCall && (
                  <FormField
                   control={form.control}
@@ -371,7 +426,8 @@ function ViewDescriptionDialog({ call }: { call: FundingCall }) {
 
 export function EmrCalendar({ user }: EmrCalendarProps) {
     const { toast } = useToast();
-    const [calls, setCalls] = useState<FundingCall[]>([]);
+    const [upcomingCalls, setUpcomingCalls] = useState<FundingCall[]>([]);
+    const [pastCalls, setPastCalls] = useState<FundingCall[]>([]);
     const [userInterests, setUserInterests] = useState<EmrInterest[]>([]);
     const [loading, setLoading] = useState(true);
     const [isAddEditDialogOpen, setIsAddEditDialogOpen] = useState(false);
@@ -380,6 +436,12 @@ export function EmrCalendar({ user }: EmrCalendarProps) {
     const [currentMonth, setCurrentMonth] = useState(new Date());
     const [isAnnounceDialogOpen, setIsAnnounceDialogOpen] = useState(false);
     const [isAnnouncing, setIsAnnouncing] = useState(false);
+    
+    const [lastVisibleDoc, setLastVisibleDoc] = useState<QueryDocumentSnapshot<DocumentData> | null>(null);
+    const [hasMorePast, setHasMorePast] = useState(true);
+    const [loadingPast, setLoadingPast] = useState(false);
+    const [activeTab, setActiveTab] = useState('upcoming');
+    const pageSize = 10;
 
     const isAdmin = user.role === 'Super-admin' || user.role === 'admin';
     const isSuperAdmin = user.role === 'Super-admin';
@@ -389,8 +451,10 @@ export function EmrCalendar({ user }: EmrCalendarProps) {
     const daysInMonth = eachDayOfInterval({ start: firstDay, end: lastDay });
     const startingDayIndex = getDay(firstDay);
 
+    const allCalls = useMemo(() => [...upcomingCalls, ...pastCalls], [upcomingCalls, pastCalls]);
+
     const eventRefs = new Map<string, React.RefObject<HTMLDivElement>>();
-    calls.forEach(call => {
+    allCalls.forEach(call => {
         eventRefs.set(`deadline-${call.id}`, createRef());
         if (call.meetingDetails?.date) {
             eventRefs.set(`meeting-${call.id}`, createRef());
@@ -407,7 +471,7 @@ export function EmrCalendar({ user }: EmrCalendarProps) {
     };
 
 
-    const eventsByDate = calls.reduce((acc, call) => {
+    const eventsByDate = useMemo(() => allCalls.reduce((acc, call) => {
         const deadlineDate = format(parseISO(call.interestDeadline), 'yyyy-MM-dd');
         if (!acc[deadlineDate]) acc[deadlineDate] = [];
         acc[deadlineDate].push({ type: 'deadline', call });
@@ -422,24 +486,31 @@ export function EmrCalendar({ user }: EmrCalendarProps) {
             acc[meetingDate].push({ type: 'meeting', call });
         }
         return acc;
-    }, {} as Record<string, CalendarEvent[]>);
+    }, {} as Record<string, CalendarEvent[]>), [allCalls]);
 
 
     const fetchData = useCallback(async () => {
         setLoading(true);
         try {
-            const callsQuery = query(collection(db, 'fundingCalls'), orderBy('interestDeadline', 'desc'));
-            const unsubscribeCalls = onSnapshot(callsQuery, (snapshot) => {
-                setCalls(snapshot.docs.map(callDoc => ({ id: callDoc.id, ...callDoc.data() } as FundingCall)));
+            const nowISO = new Date().toISOString();
+            
+            // Upcoming Calls - Real-time Snapshot
+            const upcomingQuery = query(
+                collection(db, 'fundingCalls'), 
+                where('interestDeadline', '>=', nowISO),
+                orderBy('interestDeadline', 'asc')
+            );
+            const unsubscribeCalls = onSnapshot(upcomingQuery, (snapshot) => {
+                setUpcomingCalls(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as FundingCall)));
+                setLoading(false);
             });
 
+            // User Interests - Real-time Snapshot
             const userInterestsQuery = query(collection(db, 'emrInterests'), where('userId', '==', user.uid));
             const unsubscribeUserInterests = onSnapshot(userInterestsQuery, (snapshot) => {
-                setUserInterests(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() as EmrInterest})));
+                setUserInterests(snapshot.docs.map(doc => ({ ...doc.data() as EmrInterest, id: doc.id })));
             });
             
-            setLoading(false);
-
             return () => {
                 unsubscribeCalls();
                 unsubscribeUserInterests();
@@ -452,12 +523,53 @@ export function EmrCalendar({ user }: EmrCalendarProps) {
         }
     }, [toast, user.uid]);
 
+    const fetchPastCalls = useCallback(async (isLoadMore = false) => {
+        if (loadingPast || (!hasMorePast && isLoadMore)) return;
+        setLoadingPast(true);
+        try {
+            const nowISO = new Date().toISOString();
+            let pastQuery = query(
+                collection(db, 'fundingCalls'),
+                where('interestDeadline', '<', nowISO),
+                orderBy('interestDeadline', 'desc'),
+                limit(pageSize)
+            );
+
+            if (isLoadMore && lastVisibleDoc) {
+                pastQuery = query(pastQuery, startAfter(lastVisibleDoc));
+            }
+
+            const snapshot = await getDocs(pastQuery);
+            const newPast = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as FundingCall));
+            
+            if (isLoadMore) {
+                setPastCalls(prev => [...prev, ...newPast]);
+            } else {
+                setPastCalls(newPast);
+            }
+            
+            setLastVisibleDoc(snapshot.docs[snapshot.docs.length - 1] as QueryDocumentSnapshot<DocumentData> || null);
+            setHasMorePast(snapshot.docs.length === pageSize);
+        } catch (error) {
+            console.error("Error fetching past calls:", error);
+            toast({ variant: 'destructive', title: 'Error', description: 'Could not fetch past calls.' });
+        } finally {
+            setLoadingPast(false);
+        }
+    }, [hasMorePast, lastVisibleDoc, loadingPast, toast]);
+
     useEffect(() => {
         const unsubscribePromise = fetchData();
         return () => {
              unsubscribePromise.then(fn => fn && fn());
         }
     }, [fetchData]);
+
+    useEffect(() => {
+        if (activeTab === 'past' && pastCalls.length === 0) {
+            fetchPastCalls();
+        }
+    }, [activeTab, fetchPastCalls, pastCalls.length]);
     
     
     const getStatusBadge = (call: FundingCall) => {
@@ -494,7 +606,59 @@ export function EmrCalendar({ user }: EmrCalendarProps) {
         return <Skeleton className="h-96 w-full" />;
     }
 
-    const upcomingCalls = calls.filter(c => !isAfter(new Date(), parseISO(c.interestDeadline)));
+    const renderCallCard = (call: FundingCall) => {
+        const interestDetails = userInterests.find(i => i.callId === call.id);
+        const callRef = eventRefs.get(`deadline-${call.id}`);
+        const isCallClosed = isAfter(new Date(), parseISO(call.interestDeadline));
+
+        return (
+            <div key={call.id} ref={callRef} className="border p-4 rounded-lg space-y-3 bg-card shadow-sm">
+                <div className="flex items-start justify-between gap-4">
+                    <div className="flex-1">
+                        <h4 className="font-semibold text-base line-clamp-2">{call.title}</h4>
+                        <p className="text-sm text-muted-foreground">Agency: {call.agency}</p>
+                        <div className="flex items-center gap-2 mt-2">
+                            <Badge variant="secondary" className="capitalize">{call.callType}</Badge>
+                            {!isCallClosed && getStatusBadge(call)}
+                        </div>
+                    </div>
+                     <EmrActions user={user} call={call} interestDetails={interestDetails} onActionComplete={fetchData} />
+                </div>
+                
+                <div className="flex items-center justify-between pt-3 border-t">
+                    <div className="text-xs text-muted-foreground space-y-1">
+                        <p>Interest Deadline: <span className="font-medium text-foreground">{format(parseISO(call.interestDeadline), 'PPp')}</span></p>
+                        <p>Application Deadline: <span className="font-medium text-foreground">{format(parseISO(call.applyDeadline), 'PP')}</span></p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                        {isAdmin && (
+                            <Button asChild variant="ghost" size="sm" className="h-8">
+                                <Link href={`/dashboard/emr-management/${call.id}`}>
+                                    <Users className="h-4 w-4 mr-1"/> View Registrations
+                                </Link>
+                            </Button>
+                        )}
+                    </div>
+                 </div>
+
+                <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2 text-xs flex-wrap">
+                        <ViewDescriptionDialog call={call} />
+                        {call.detailsUrl && <Button variant="link" asChild className="p-0 h-auto text-xs"><a href={call.detailsUrl} target="_blank" rel="noopener noreferrer"><LinkIcon className="h-3 w-3 mr-1"/> View Full Details</a></Button>}
+                        {call.attachments && call.attachments.map((att, i) => (
+                            <Button key={i} variant="link" asChild className="p-0 h-auto text-xs"><a href={att.url} target="_blank" rel="noopener noreferrer"><Download className="h-3 w-3 mr-1"/>Download</a></Button>
+                        ))}
+                    </div>
+                    {isSuperAdmin && !call.isAnnounced && !isCallClosed && (
+                        <Button size="sm" variant="outline" className="h-8" onClick={() => { setSelectedCall(call); setIsAnnounceDialogOpen(true); }}>
+                            <Send className="mr-2 h-3 w-3" /> Announce
+                        </Button>
+                    )}
+                </div>
+
+            </div>
+        )
+    };
 
     return (
         <div className="space-y-8">
@@ -507,7 +671,7 @@ export function EmrCalendar({ user }: EmrCalendarProps) {
                     <CardContent>
                         <div className="space-y-4">
                             {userInterests.map(interest => {
-                                const call = calls.find(c => c.id === interest.callId);
+                                const call = allCalls.find(c => c.id === interest.callId);
                                 if (!call) return null;
                                 return (
                                     <div key={interest.id} className="p-3 border rounded-lg bg-background">
@@ -571,65 +735,39 @@ export function EmrCalendar({ user }: EmrCalendarProps) {
                             </div>
                         </div>
                         
-                        <div className="space-y-4 max-h-[500px] overflow-y-auto pr-2">
-                            <h4 className="font-semibold">All Upcoming Deadlines</h4>
-                            {upcomingCalls.length > 0 ? upcomingCalls.map(call => {
-                                const interestDetails = userInterests.find(i => i.callId === call.id);
-                                const callRef = eventRefs.get(`deadline-${call.id}`);
-                                const isCallClosed = isAfter(new Date(), parseISO(call.interestDeadline));
-
-                                return (
-                                    <div key={call.id} ref={callRef} className="border p-4 rounded-lg space-y-3">
-                                        <div className="flex items-start justify-between gap-4">
-                                            <div className="flex-1">
-                                                <h4 className="font-semibold text-base">{call.title}</h4>
-                                                <p className="text-sm text-muted-foreground">Agency: {call.agency}</p>
-                                                <div className="flex items-center gap-2 mt-2">
-                                                    <Badge variant="secondary">{call.callType}</Badge>
-                                                    {getStatusBadge(call)}
-                                                </div>
-                                            </div>
-                                             <EmrActions user={user} call={call} interestDetails={interestDetails} onActionComplete={fetchData} />
+                        <div className="space-y-4 max-h-[700px] overflow-y-auto pr-2 px-1">
+                            <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+                                <TabsList className="grid w-full grid-cols-2 mb-4">
+                                    <TabsTrigger value="upcoming">Upcoming ({upcomingCalls.length})</TabsTrigger>
+                                    <TabsTrigger value="past">Past Calls ({pastCalls.length}{hasMorePast ? '+' : ''})</TabsTrigger>
+                                </TabsList>
+                                <TabsContent value="upcoming" className="space-y-4 mt-0">
+                                    {upcomingCalls.length > 0 ? upcomingCalls.map(renderCallCard) : (
+                                        <div className="text-center py-10 text-muted-foreground border rounded-lg border-dashed">
+                                            No upcoming deadlines.
                                         </div>
-                                        
-                                        <div className="flex items-center justify-between pt-3 border-t">
-                                            <div className="text-xs text-muted-foreground space-y-1">
-                                                <p>Interest Deadline: <span className="font-medium text-foreground">{format(parseISO(call.interestDeadline), 'PPp')}</span></p>
-                                                <p>Application Deadline: <span className="font-medium text-foreground">{format(parseISO(call.applyDeadline), 'PP')}</span></p>
-                                            </div>
-                                            <div className="flex items-center gap-2">
-                                                {isAdmin && (
-                                                    <Button asChild variant="ghost" size="sm">
-                                                        <Link href={`/dashboard/emr-management/${call.id}`}>
-                                                            <Users className="h-4 w-4 mr-1"/> View Registrations
-                                                        </Link>
+                                    )}
+                                </TabsContent>
+                                <TabsContent value="past" className="space-y-4 mt-0">
+                                    {pastCalls.length > 0 ? (
+                                        <>
+                                            {pastCalls.map(renderCallCard)}
+                                            {hasMorePast && (
+                                                <div className="flex justify-center py-4">
+                                                    <Button variant="outline" size="sm" onClick={() => fetchPastCalls(true)} disabled={loadingPast}>
+                                                        {loadingPast ? <Loader2 className="h-4 w-4 animate-spin mr-2"/> : <ChevronRight className="h-4 w-4 mr-2 rotate-90"/>}
+                                                        Load More
                                                     </Button>
-                                                )}
-                                            </div>
-                                         </div>
-
-                                        <div className="flex items-center justify-between">
-                                            <div className="flex items-center gap-2 text-xs">
-                                                <ViewDescriptionDialog call={call} />
-                                                {call.detailsUrl && <Button variant="link" asChild className="p-0 h-auto text-xs"><a href={call.detailsUrl} target="_blank" rel="noopener noreferrer"><LinkIcon className="h-3 w-3 mr-1"/> View Full Details</a></Button>}
-                                                {call.attachments && call.attachments.map((att, i) => (
-                                                    <Button key={i} variant="link" asChild className="p-0 h-auto text-xs"><a href={att.url} target="_blank" rel="noopener noreferrer"><Download className="h-3 w-3 mr-1"/>Download</a></Button>
-                                                ))}
-                                            </div>
-                                            {isSuperAdmin && !call.isAnnounced && !isCallClosed && (
-                                                <Button size="sm" variant="outline" onClick={() => { setSelectedCall(call); setIsAnnounceDialogOpen(true); }}>
-                                                    <Send className="mr-2 h-4 w-4" /> Announce
-                                                </Button>
+                                                </div>
                                             )}
+                                        </>
+                                    ) : (
+                                        <div className="text-center py-10 text-muted-foreground border rounded-lg border-dashed">
+                                            {loadingPast ? <Loader2 className="h-8 w-8 animate-spin mx-auto"/> : 'No past calls found.'}
                                         </div>
-
-                                    </div>
-                                )
-                            }) : (
-                                 <div className="text-center py-10 text-muted-foreground">
-                                    No upcoming deadlines.
-                                </div>
-                            )}
+                                    )}
+                                </TabsContent>
+                            </Tabs>
                         </div>
                     </div>
                 </CardContent>
@@ -661,7 +799,7 @@ export function EmrCalendar({ user }: EmrCalendarProps) {
                                </AlertDialogContent>
                              </AlertDialog>
                          )}
-                         <RegisterUserDialog call={upcomingCalls[0]} adminUser={user} isOpen={isRegisterUserDialogOpen} onOpenChange={setIsRegisterUserDialogOpen} onRegisterSuccess={fetchData}/>
+                         <RegisterUserDialog call={upcomingCalls[0] || pastCalls[0]} adminUser={user} isOpen={isRegisterUserDialogOpen} onOpenChange={setIsRegisterUserDialogOpen} onRegisterSuccess={fetchData}/>
                     </>
                 )}
             </Card>

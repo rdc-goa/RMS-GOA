@@ -19,6 +19,7 @@ This is the base role for all teaching and research staff.
 -   Submitting Intramural research project proposals (IMR).
 -   Registering interest in Extramural research funding calls (EMR).
 -   Applying for research-related incentives (e.g., for publications, patents).
+-   Posting job openings for research projects.
 -   Maintaining a public researcher profile and managing publications.
 
 ### Profile & Settings
@@ -80,15 +81,18 @@ This is the base role for all teaching and research staff.
     -   Before the deadline, you can view, replace, or remove your uploaded presentation using the "Manage PPT" button on your application card.
 
 ### Incentive Claim Workflow
+For a detailed guide on how to submit and manage incentive claims, please refer to the dedicated **[Incentive Claims SOP](src/INCENTIVE_SOP.md)**. The general process is:
 1.  **Access Portal:** Navigate to **Incentive Claims** from the sidebar.
-2.  **Select Claim Type:** Choose the category for which you are claiming an incentive (e.g., Research Papers, Patents, Books).
-3.  **Fill the Form:** Complete the detailed application form for your chosen category. You will be required to provide specific details and upload supporting documents (e.g., publication proofs, payment receipts).
-4.  **Save or Submit:**
-    -   You can **Save as Draft** at any point to save your progress.
-    -   Once complete, click **Submit Claim**.
-5.  **Track Status:**
-    -   Go to the **My Claims** tab on the Incentive Claims page to track the status of all your submissions.
-    -   If another author on a paper you co-authored submits a claim, it will appear in the **Co-Author Claims** tab, allowing you to apply for your share of the incentive.
+2.  **Select Claim Type:** Choose the category for your claim (e.g., Research Papers, Patents, Books).
+3.  **Fill & Submit:** Complete the form with all required details and proofs. You can save a draft at any time.
+4.  **Track Status:** Use the "My Claims" and "Co-Author Claims" tabs to monitor the progress of your applications.
+
+
+### Project Recruitment Workflow
+1.  **Create a Posting:** Navigate to **Post a Job** from the sidebar.
+2.  **Fill Details:** Click "Create New Posting" and fill out the form with the job title, description, qualifications, and application deadline.
+3.  **Submit for Approval:** Your job posting will be submitted to an administrator for review before it becomes public.
+4.  **Manage Postings:** You can view the status of your postings (Pending Approval, Approved, Rejected) on the "Post a Job" page. Once approved, you can view the list of applicants for each position.
 
 ### Public Profile & Publications
 -   Your public profile page is accessible to administrators and assigned evaluators for review purposes.
@@ -231,6 +235,11 @@ These roles have the highest level of access for managing the entire portal.
 
 4.  **Review Evaluations:**
     -   From the **EMR Evaluations** page, you can view all feedback and recommendations submitted by the committee for each applicant and make a final decision on their status.
+
+### Recruitment Management (Admins)
+-   Navigate to **Recruitment Approvals**.
+-   Review job postings submitted by faculty.
+-   You can approve a posting to make it public on the `/hiring` page or reject it.
 
 ### System Administration
 1.  **User Management:**

@@ -107,7 +107,7 @@ export function AdminDashboard() {
 
             const totalImrProjects = allProjects.length;
             const totalEmrProjects = emrSnapshot.data().count;
-            const pendingReviews = allProjects.filter(p => p.status === 'Submitted' || p.status === 'Under Review' || p.status === 'Pending Completion Approval').length;
+            const pendingReviews = allProjects.filter(p => p.status === 'Submitted' || p.status === 'Under Review' || p.status === 'Revision Submitted' || p.status === 'Pending Completion Approval').length;
             const completedProjects = allProjects.filter(p => p.status === 'Completed').length;
             const totalUsers = usersSnapshot.size;
 

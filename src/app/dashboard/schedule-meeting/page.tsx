@@ -435,6 +435,10 @@ export default function ScheduleMeetingPage() {
   
   const newSubmissions = allProjects.filter(p => p.status === 'Submitted');
   
+  const revisedProposalProjects = allProjects.filter(p => 
+    p.status === 'Revision Submitted'
+  );
+  
   const midTermReviewProjects = allProjects.filter(p => {
     const isEligibleStatus = p.status === 'In Progress' || (p.isBulkUploaded && (p.status === 'Sanctioned' || p.status === 'SANCTIONED'));
     if (!isEligibleStatus) return false;
@@ -473,7 +477,7 @@ export default function ScheduleMeetingPage() {
     return scheduledMeetingsHistory; // 'all'
   }, [scheduledMeetingsHistory, historyFilter]);
 
-  const projectsForCurrentTab = activeTab === 'new-submissions' ? newSubmissions : filteredMidTermProjects;
+  const projectsForCurrentTab = activeTab === 'new-submissions' ? newSubmissions : (activeTab === 'revised-proposals' ? revisedProposalProjects : filteredMidTermProjects);
 
   const totalPages = useMemo(() => {
     let dataForTab = projectsForCurrentTab;
@@ -637,8 +641,9 @@ export default function ScheduleMeetingPage() {
       />
       <div className="mt-8">
         <Tabs value={activeTab} onValueChange={setActiveTab}>
-          <TabsList className="grid w-full grid-cols-3">
+          <TabsList className="grid w-full grid-cols-4">
             <TabsTrigger value="new-submissions">New Submissions ({newSubmissions.length})</TabsTrigger>
+            <TabsTrigger value="revised-proposals">Revised Proposals ({revisedProposalProjects.length})</TabsTrigger>
             <TabsTrigger value="mid-term-review">Mid-term Review ({midTermReviewProjects.length})</TabsTrigger>
             <TabsTrigger value="history">History ({scheduledMeetingsHistory.length})</TabsTrigger>
           </TabsList>
@@ -721,6 +726,43 @@ export default function ScheduleMeetingPage() {
                   </div>
                 )}
               </TabsContent>
+              <TabsContent value="revised-proposals" className="mt-0 space-y-4">
+                <ProjectListTable
+                  projects={paginatedProjects} selectedProjects={selectedProjects} onSelectAll={handleSelectAll} onSelectOne={handleSelectOne}
+                  usersMap={usersMap} usersByEmailMap={usersByEmailMap} title="Revised Proposals Awaiting Meeting"
+                  description="Select revised proposals that have been submitted to schedule their re-evaluation meeting." dateColumnHeader="Revision Submission Date"
+                />
+                {revisedProposalProjects.length > itemsPerPage && (
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm text-muted-foreground">
+                      Showing {(currentPage - 1) * itemsPerPage + 1} to {Math.min(currentPage * itemsPerPage, revisedProposalProjects.length)} of {revisedProposalProjects.length} projects
+                    </p>
+                    <div className="flex gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                        disabled={currentPage === 1}
+                      >
+                        Previous
+                      </Button>
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm text-muted-foreground">
+                          Page {currentPage} of {Math.ceil(revisedProposalProjects.length / itemsPerPage)}
+                        </span>
+                      </div>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setCurrentPage(prev => Math.min(Math.ceil(revisedProposalProjects.length / itemsPerPage), prev + 1))}
+                        disabled={currentPage === Math.ceil(revisedProposalProjects.length / itemsPerPage)}
+                      >
+                        Next
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </TabsContent>
               <TabsContent value="history" className="mt-0 space-y-4">
                 <HistoryTable 
                     projects={paginatedProjects} 
@@ -766,7 +808,23 @@ export default function ScheduleMeetingPage() {
             </div>
             
             {activeTab !== 'history' && (
-              <div className="lg:col-span-1">
+              <div className="lg:col-span-1 space-y-4">
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Submission Counts</CardTitle>
+                    <CardDescription>Quick overview before scheduling.</CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-2">
+                    <div className="flex justify-between">
+                      <span>Fresh Submissions</span>
+                      <span className="font-semibold">{newSubmissions.length}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Revised Submissions</span>
+                      <span className="font-semibold">{revisedProposalProjects.length}</span>
+                    </div>
+                  </CardContent>
+                </Card>
                 <ScheduleForm isEditing={false} />
               </div>
             )}

@@ -266,6 +266,14 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         badge: pendingBankClaimsCount,
       },
       {
+        id: "system-analytics",
+        href: "/dashboard/system-analytics",
+        tooltip: "System Analytics",
+        icon: ShieldCheck,
+        label: "System Analytics",
+        condition: user?.role === "Super-admin",
+      },
+      {
         id: "bulk-upload",
         href: "/dashboard/bulk-upload",
         tooltip: "Bulk Upload Projects",
@@ -366,10 +374,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         }
 
         setUser(appUser)
-        console.log('User profile loaded in dashboard layout:', appUser.name)
-        console.log('User designation:', appUser.designation)
-        console.log('User role:', appUser.role)
-        console.log('User modules:', appUser.allowedModules)
         localStorage.setItem("user", JSON.stringify(appUser))
         setLoading(false)
       } else {
@@ -421,15 +425,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       const filtered = allNavItems.filter((item) => {
         if (item.condition) return true
         if (item.id === "incentive-approvals") {
-          const hasApproverModule = user.allowedModules?.some((m) => m.startsWith("incentive-approver-")) || false;
-          const isPrincipal = user.designation === 'Principal';
-          const shouldShow = hasApproverModule || isPrincipal;
-          console.log('Checking incentive-approvals - has approver module:', hasApproverModule, 'is principal:', isPrincipal, 'show:', shouldShow);
-          return shouldShow;
+          return user.allowedModules?.some((m) => m.startsWith("incentive-approver-"))
         }
         return user.allowedModules?.includes(item.id)
       })
-      console.log('Filtered menu items:', filtered.map(item => item.id));
       const sorted = user.sidebarOrder
         ? filtered.sort((a, b) => user.sidebarOrder!.indexOf(a.id) - user.sidebarOrder!.indexOf(b.id))
         : filtered
@@ -455,6 +454,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     // Pending Meetings listener (for admins)
     if (user.allowedModules?.includes("schedule-meeting")) {
       let unsubscribeNew: () => void;
+      let unsubscribeRevision: () => void;
       let unsubscribeMidTerm: () => void;
 
       const fetchSettingsAndSubscribe = async () => {
@@ -463,17 +463,19 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         const thresholdDate = subMonths(new Date(), reviewMonths);
 
         const newSubmissionsQuery = query(collection(db, "projects"), where("status", "==", "Submitted"));
+        const revisionSubmissionsQuery = query(collection(db, "projects"), where("status", "==", "Revision Submitted"));
         const midTermQuery = query(
-          collection(db, "projects"), 
+          collection(db, "projects"),
           where('status', '==', 'In Progress'),
           where('grant.phases.0.disbursementDate', '<=', thresholdDate.toISOString())
         );
 
         let newCount = 0;
+        let revisionCount = 0;
         let midTermCount = 0;
 
         const updateTotal = () => {
-          setPendingMeetingsCount(newCount + midTermCount);
+          setPendingMeetingsCount(newCount + revisionCount + midTermCount);
         };
 
         unsubscribeNew = onSnapshot(newSubmissionsQuery, (snapshot) => {
@@ -481,54 +483,36 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           updateTotal();
         });
 
-        unsubscribeMidTerm = onSnapshot(midTermQuery, (snapshot) => {
-            midTermCount = snapshot.docs.filter(doc => {
-                const project = doc.data();
-                // Additional client-side check if needed, though Firestore should handle it
-                const firstDisbursement = project.grant?.phases?.[0]?.disbursementDate;
-                return firstDisbursement && new Date(firstDisbursement) <= thresholdDate;
-            }).length;
-            updateTotal();
+        unsubscribeRevision = onSnapshot(revisionSubmissionsQuery, (snapshot) => {
+          revisionCount = snapshot.size;
+          updateTotal();
         });
 
-        unsubscribes.push(unsubscribeNew, unsubscribeMidTerm);
+        unsubscribeMidTerm = onSnapshot(midTermQuery, (snapshot) => {
+          midTermCount = snapshot.docs.filter(doc => {
+            const project = doc.data();
+            // Additional client-side check if needed, though Firestore should handle it
+            const firstDisbursement = project.grant?.phases?.[0]?.disbursementDate;
+            return firstDisbursement && new Date(firstDisbursement) <= thresholdDate;
+          }).length;
+          updateTotal();
+        });
+
+        unsubscribes.push(unsubscribeNew, unsubscribeRevision, unsubscribeMidTerm);
       };
 
       fetchSettingsAndSubscribe();
     }
 
-    // Incentive Approvals listener - handles both principal and stage approver roles
+    // Incentive Approvals listener
     const approverModule = user.allowedModules?.find((m) => m.startsWith("incentive-approver-"))
-    const isPrincipal = user.designation === 'Principal'
-    
-    // Track counts separately for aggregation
-    let stageApprovalCount = 0
-    let principalApprovalCount = 0
-    
-    // Listen to stage approvals if user has an approver module
     if (approverModule) {
-      const stageNumber = Number.parseInt(approverModule.split("-")[2], 10)
-      const statusToFetch = `Pending Stage ${stageNumber} Approval`
-      console.log('Fetching stage approvals with status:', statusToFetch);
-      const stageQuery = query(collection(db, "incentiveClaims"), where("status", "==", statusToFetch))
+      const stage = Number.parseInt(approverModule.split("-")[2], 10)
+      const statusToFetch = `Pending Stage ${stage} Approval`
+      const incentiveQuery = query(collection(db, "incentiveClaims"), where("status", "==", statusToFetch))
       unsubscribes.push(
-        onSnapshot(stageQuery, (snapshot) => {
-          stageApprovalCount = snapshot.size
-          console.log('Stage approvals count updated:', stageApprovalCount);
-          setPendingIncentiveApprovalsCount(stageApprovalCount + principalApprovalCount)
-        }),
-      )
-    }
-    
-    // Listen to principal approvals if user is a principal
-    if (isPrincipal) {
-      console.log('User is Principal, enabling principal approvals fetch');
-      const principalQuery = query(collection(db, "incentiveClaims"), where("status", "==", "Pending Principal Approval"), where("institute", "==", user.institute))
-      unsubscribes.push(
-        onSnapshot(principalQuery, (snapshot) => {
-          principalApprovalCount = snapshot.size
-          console.log('Principal approvals count updated:', principalApprovalCount);
-          setPendingIncentiveApprovalsCount(stageApprovalCount + principalApprovalCount)
+        onSnapshot(incentiveQuery, (snapshot) => {
+          setPendingIncentiveApprovalsCount(snapshot.size)
         }),
       )
     }
@@ -545,34 +529,34 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         }),
       )
     }
-    
+
     // Pending Evaluations listener
     if (user.allowedModules?.includes("evaluator-dashboard")) {
-        let imrCount = 0;
-        let emrCount = 0;
-        const updateCounts = () => setPendingEvaluationsCount(imrCount + emrCount);
-        
-        const imrQuery = query(collection(db, "projects"), where("status", "==", "Under Review"), where("meetingDetails.assignedEvaluators", "array-contains", user.uid));
-        unsubscribes.push(
-            onSnapshot(imrQuery, (snapshot) => {
-                imrCount = snapshot.docs.filter(doc => {
-                    const project = doc.data() as Project;
-                    return !project.evaluatedBy?.includes(user.uid) && !project.wasAbsent;
-                }).length;
-                updateCounts();
-            })
-        );
-        
-        const emrQuery = query(collection(db, "emrInterests"), where("status", "==", "Evaluation Pending"), where("assignedEvaluators", "array-contains", user.uid));
-        unsubscribes.push(
-            onSnapshot(emrQuery, (snapshot) => {
-                emrCount = snapshot.docs.filter(doc => {
-                    const interest = doc.data() as EmrInterest;
-                    return !interest.evaluatedBy?.includes(user.uid) && !interest.wasAbsent;
-                }).length;
-                updateCounts();
-            })
-        );
+      let imrCount = 0;
+      let emrCount = 0;
+      const updateCounts = () => setPendingEvaluationsCount(imrCount + emrCount);
+
+      const imrQuery = query(collection(db, "projects"), where("status", "==", "Under Review"), where("meetingDetails.assignedEvaluators", "array-contains", user.uid));
+      unsubscribes.push(
+        onSnapshot(imrQuery, (snapshot) => {
+          imrCount = snapshot.docs.filter(doc => {
+            const project = doc.data() as Project;
+            return !project.evaluatedBy?.includes(user.uid) && !project.wasAbsent;
+          }).length;
+          updateCounts();
+        })
+      );
+
+      const emrQuery = query(collection(db, "emrInterests"), where("status", "==", "Evaluation Pending"), where("assignedEvaluators", "array-contains", user.uid));
+      unsubscribes.push(
+        onSnapshot(emrQuery, (snapshot) => {
+          emrCount = snapshot.docs.filter(doc => {
+            const interest = doc.data() as EmrInterest;
+            return !interest.evaluatedBy?.includes(user.uid) && !interest.wasAbsent;
+          }).length;
+          updateCounts();
+        })
+      );
     }
 
     return () => unsubscribes.forEach((unsub) => unsub())
@@ -719,7 +703,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           <SidebarFooter className="hidden md:flex mt-auto group-data-[collapsible=icon]:hidden">
             <Image
               src="https://lhdlkrfbkon55i6u.public.blob.vercel-storage.com/PU%20Goa%20Black.png"
-              alt="Parul University Logo"
+              alt="Parul University Goa Logo"
               width={150}
               height={50}
               className="mx-auto"

@@ -41,7 +41,7 @@ import { Calendar as CalendarIcon, Edit, Plus, Users, ChevronLeft, ChevronRight,
 import type { FundingCall, User, EmrInterest, EmrEvaluation } from '@/types';
 import { format, differenceInDays, differenceInHours, differenceInMinutes, parseISO, startOfMonth, endOfMonth, eachDayOfInterval, getDay, addMonths, subMonths, isAfter, setHours, setMinutes, setSeconds, isBefore } from 'date-fns';
 import { uploadFileToServer } from '@/app/actions';
-import { createFundingCall, announceEmrCall } from '@/app/emr-actions';
+import { createFundingCall, announceEmrCall, updateFundingCall } from '@/app/emr-actions';
 import Link from 'next/link';
 import { cn } from '@/lib/utils';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -70,6 +70,7 @@ const callSchema = z.object({
   detailsUrl: z.string().url('Please enter a valid URL.').optional().or(z.literal('')),
   attachments: z.any().optional(),
   notifyAllStaff: z.boolean().default(false).optional(),
+  notifyDeadlineChange: z.boolean().default(false).optional(),
 }).refine(data => data.interestDeadline <= data.applyDeadline, {
   message: 'Interest deadline must be on or before the agency application deadline.',
   path: ['interestDeadline'],
@@ -113,6 +114,7 @@ export function AddEditCallDialog({
         interestDeadline: parseISO(existingCall.interestDeadline),
         applyDeadline: parseISO(existingCall.applyDeadline),
         notifyAllStaff: existingCall.isAnnounced,
+        notifyDeadlineChange: false,
       });
     } else {
       form.reset({
@@ -125,6 +127,7 @@ export function AddEditCallDialog({
         applyDeadline: undefined,
         attachments: undefined,
         notifyAllStaff: true,
+        notifyDeadlineChange: false,
       });
     }
   }, [existingCall, form]);
@@ -146,12 +149,10 @@ export function AddEditCallDialog({
 
         if (existingCall) {
             // Update logic
-            const callRef = doc(db, 'fundingCalls', existingCall.id);
-            await updateDoc(callRef, {
-                ...callDataForServer,
-                interestDeadline: values.interestDeadline.toISOString(),
-                applyDeadline: values.applyDeadline.toISOString(),
-            });
+            const result = await updateFundingCall(existingCall.id, callDataForServer, values.notifyDeadlineChange);
+            if (!result.success) {
+                throw new Error(result.error);
+            }
             toast({ title: 'Success', description: 'Funding call has been updated.' });
         } else {
             // Create logic
@@ -226,6 +227,28 @@ export function AddEditCallDialog({
             </div>
              <FormField name="detailsUrl" control={form.control} render={({ field }) => ( <FormItem><FormLabel>URL for Full Details</FormLabel><FormControl><Input type="url" {...field} /></FormControl><FormMessage /></FormItem> )} />
              <FormField name="attachments" control={form.control} render={({ field: { onChange, value, ...rest }}) => ( <FormItem><FormLabel>Attachments (Optional)</FormLabel><FormControl><Input type="file" multiple onChange={(e) => onChange(e.target.files)} {...rest} /></FormControl><FormMessage /></FormItem> )} />
+              {existingCall && (
+                 <FormField
+                  control={form.control}
+                  name="notifyDeadlineChange"
+                  render={({ field }) => (
+                    <FormItem className="flex flex-row items-center justify-between rounded-lg border p-3 shadow-sm">
+                      <div className="space-y-0.5">
+                        <FormLabel>Notify Deadline Change</FormLabel>
+                        <FormDescription>
+                          Send an email notification to all staff about the updated interest registration deadline.
+                        </FormDescription>
+                      </div>
+                      <FormControl>
+                        <Checkbox
+                          checked={field.value}
+                          onCheckedChange={field.onChange}
+                        />
+                      </FormControl>
+                    </FormItem>
+                  )}
+                />
+              )}
               {!existingCall && (
                  <FormField
                   control={form.control}

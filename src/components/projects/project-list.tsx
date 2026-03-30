@@ -34,6 +34,7 @@ interface ProjectListProps {
 const statusVariant: { [key: string]: 'default' | 'secondary' | 'destructive' | 'outline' } = {
   'Draft': 'secondary',
   'Submitted': 'secondary',
+  'Revision Submitted': 'secondary',
   'Recommended': 'default',
   'In Progress': 'default',
   'Under Review': 'secondary',

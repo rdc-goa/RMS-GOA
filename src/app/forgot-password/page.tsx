@@ -54,7 +54,7 @@ export default function ForgotPasswordPage() {
       });
 
       const checkData = await checkRes.json();
-      
+
       // We send the email regardless of existence to prevent email enumeration,
       // but we block disallowed domains.
       if (!checkRes.ok || !checkData.allowed) {
@@ -69,8 +69,8 @@ export default function ForgotPasswordPage() {
       });
       router.push('/login');
     } catch (error: any) {
-       console.error('Password reset error:', error);
-       toast({
+      console.error('Password reset error:', error);
+      toast({
         variant: 'destructive',
         title: 'Error',
         description: error.message || 'Failed to send reset email. Please try again.',
@@ -80,7 +80,7 @@ export default function ForgotPasswordPage() {
 
   return (
     <div className="flex flex-col min-h-screen bg-background dark:bg-transparent">
-       <header className="container mx-auto px-4 lg:px-6 h-20 flex items-center justify-between sticky top-0 z-50 bg-background/80 backdrop-blur-lg border-b">
+      <header className="container mx-auto px-4 lg:px-6 h-20 flex items-center justify-between sticky top-0 z-50 bg-background/80 backdrop-blur-lg border-b">
         <Logo />
       </header>
       <main className="flex-1 flex min-h-screen items-center justify-center bg-muted/40 p-4 dark:bg-transparent">
@@ -118,8 +118,8 @@ export default function ForgotPasswordPage() {
               </Form>
             </CardContent>
             <CardFooter className="justify-center text-sm">
-               <Link href="/login" passHref>
-                  <Button variant="link" className="p-0 h-auto">Back to Sign In</Button>
+              <Link href="/login" passHref>
+                <Button variant="link" className="p-0 h-auto">Back to Sign In</Button>
               </Link>
             </CardFooter>
           </Card>

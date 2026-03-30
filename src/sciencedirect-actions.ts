@@ -73,7 +73,7 @@ export async function fetchScienceDirectData(
     let isPuNameInPublication = false;
     const affiliations = entry?.affiliation;
     if (Array.isArray(affiliations)) {
-        isPuNameInPublication = affiliations.some((affil: any) => affil?.['affilname']?.toLowerCase().includes('parul'));
+        isPuNameInPublication = affiliations.some((affil: any) => affil['affilname']?.toLowerCase().includes('parul'));
     } else if (affiliations && affiliations['affilname']) {
         isPuNameInPublication = (affiliations['affilname'] || '').toLowerCase().includes('parul');
     }

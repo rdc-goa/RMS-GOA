@@ -7,7 +7,7 @@ import { getTemplateContentFromUrl } from '@/lib/template-manager';
 import PizZip from 'pizzip';
 import Docxtemplater from 'docxtemplater';
 import { format } from 'date-fns';
-import { getSystemSettings } from './server-actions';
+import { getSystemSettings } from './actions';
 
 export async function generateResearchPaperIncentiveForm(claimId: string): Promise<{ success: boolean; fileData?: string; error?: string }> {
     try {

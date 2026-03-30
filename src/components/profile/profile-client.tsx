@@ -18,6 +18,7 @@ import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogClose } from '../ui/dialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '../ui/alert-dialog';
+import { reportSystemError } from '@/lib/error-reporting';
 import { useToast } from '@/hooks/use-toast';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Label } from '../ui/label';
@@ -374,6 +375,7 @@ function EditBulkEmrDialog({ interest, isOpen, onOpenChange, onUpdate }: { inter
                 coPiDetails: coPis,
                 coPiUids: coPis.map(c => c.uid).filter(Boolean) as string[],
                 coPiNames: coPis.map(c => c.name),
+                coPiEmails: coPis.map(c => c.email.toLowerCase()),
                 proofUrl,
             };
             const result = await updateEmrInterestDetails(interest.id, updates);
@@ -385,6 +387,7 @@ function EditBulkEmrDialog({ interest, isOpen, onOpenChange, onUpdate }: { inter
                 throw new Error(result.error);
             }
         } catch (error: any) {
+            reportSystemError(error, null);
             toast({ variant: 'destructive', title: 'Error', description: error.message || 'Failed to save changes.' });
         } finally {
             setIsSubmitting(false);

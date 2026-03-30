@@ -76,7 +76,7 @@ export async function GET(request: NextRequest) {
             
             await sendEmail({
               bcc: recipients.join(','),
-              to: process.env.RDC_EMAIL || 'helpdesk.rdc@paruluniversity.ac.in', // A nominal "to" address is needed
+              to: process.env.RDC_EMAIL, // A nominal "to" address is needed
               subject: `Reminder: Presentation Submission for EMR Call "${call.title}"`,
               html: emailHtml,
               from: 'default'

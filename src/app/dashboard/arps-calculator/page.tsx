@@ -165,7 +165,7 @@ export default function ArpsCalculatorPage() {
             return canvas.toDataURL('image/png');
         };
 
-        const logoUrl = 'https://lhdlkrfbkon55i6u.public.blob.vercel-storage.com/PU%20Goa%20Black.png';
+        const logoUrl = 'https://pinxoxpbufq92wb4.public.blob.vercel-storage.com/RDC-PU-LOGO-BLACK.svg';
         let logoPng: string | null = null;
         try {
             logoPng = await svgToPngDataUrl(logoUrl);

@@ -28,9 +28,9 @@ export default function GoaProfileLayout({ children }: { children: React.ReactNo
         if (userDocSnap.exists()) {
           setUser({ uid: firebaseUser.uid, ...userDocSnap.data() } as User);
         } else {
-            // If user exists in auth but not in DB, something is wrong. Log them out.
-            await signOut(auth);
-            setUser(null);
+          // If user exists in auth but not in DB, something is wrong. Log them out.
+          await signOut(auth);
+          setUser(null);
         }
       } else {
         setUser(null);
@@ -59,11 +59,11 @@ export default function GoaProfileLayout({ children }: { children: React.ReactNo
 
   if (loading) {
     return (
-        <div className="flex h-screen w-full items-center justify-center">
-            <div className="w-full max-w-4xl space-y-4 p-4">
-                <Skeleton className="h-24 w-full" />
-                <Skeleton className="h-48 w-full" />
-            </div>
+      <div className="flex h-screen w-full items-center justify-center">
+        <div className="w-full max-w-4xl space-y-4 p-4">
+          <Skeleton className="h-24 w-full" />
+          <Skeleton className="h-48 w-full" />
+        </div>
       </div>
     );
   }
@@ -76,14 +76,14 @@ export default function GoaProfileLayout({ children }: { children: React.ReactNo
 
   return (
     <div className="flex flex-col min-h-screen bg-background dark:bg-transparent">
-       <header className="container mx-auto px-4 lg:px-6 h-20 flex items-center justify-between sticky top-0 z-50 bg-background/80 backdrop-blur-lg border-b">
+      <header className="container mx-auto px-4 lg:px-6 h-20 flex items-center justify-between sticky top-0 z-50 bg-background/80 backdrop-blur-lg border-b">
         <Logo />
         <nav className="flex items-center gap-4 sm:gap-6">
-            <Link href="/dashboard">
-                <Button variant="ghost">Dashboard</Button>
-            </Link>
-            <ThemeToggle />
-            <UserNav user={user} onLogout={handleLogout} />
+          <Link href="/dashboard">
+            <Button variant="ghost">Dashboard</Button>
+          </Link>
+          <ThemeToggle />
+          <UserNav user={user} onLogout={handleLogout} />
         </nav>
       </header>
       <main className="flex-1">

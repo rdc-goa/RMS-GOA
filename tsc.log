@@ -1,0 +1,244 @@
+﻿src/app/actions.ts(100,11): error TS2769: No overload matches this call.
+  Overload 1 of 6, '(params?: Params$Resource$Files$Create | undefined, options?: MethodOptions | undefined): GaxiosPromise<Schema$File>', gave the following error.
+    Object literal may only specify known properties, and 'resource' does not exist in type 'Params$Resource$Files$Create'.
+  Overload 2 of 6, '(callback: BodyResponseCallback<Schema$File>): void', gave the following error.
+    Object literal may only specify known properties, and 'resource' does not exist in type 'BodyResponseCallback<Schema$File>'.
+src/app/actions.ts(103,36): error TS2339: Property 'data' does not exist on type 'GaxiosPromise<Readable> & GaxiosPromise<Schema$File> & void'.
+src/app/actions.ts(127,7): error TS2769: No overload matches this call.
+  Overload 1 of 6, '(params?: Params$Resource$Files$Create | undefined, options?: MethodOptions | undefined): GaxiosPromise<Schema$File>', gave the following error.
+    Object literal may only specify known properties, and 'resource' does not exist in type 'Params$Resource$Files$Create'.
+  Overload 2 of 6, '(callback: BodyResponseCallback<Schema$File>): void', gave the following error.
+    Object literal may only specify known properties, and 'resource' does not exist in type 'BodyResponseCallback<Schema$File>'.
+src/app/actions.ts(132,25): error TS2339: Property 'data' does not exist on type 'GaxiosPromise<Readable> & GaxiosPromise<Schema$File> & void'.
+src/app/actions.ts(138,29): error TS2769: No overload matches this call.
+  Overload 1 of 6, '(params?: Params$Resource$Permissions$Create | undefined, options?: MethodOptions | undefined): GaxiosPromise<Schema$Permission>', gave the following error.
+    Object literal may only specify known properties, and 'resource' does not exist in type 'Params$Resource$Permissions$Create'.
+  Overload 2 of 6, '(callback: BodyResponseCallback<Schema$Permission>): void', gave the following error.
+    Object literal may only specify known properties, and 'fileId' does not exist in type 'BodyResponseCallback<Schema$Permission>'.
+src/app/actions.ts(146,30): error TS2339: Property 'data' does not exist on type 'GaxiosPromise<Readable> & GaxiosPromise<Schema$File> & void'.
+src/app/actions.ts(281,7): error TS2322: Type 'string | undefined' is not assignable to type 'string'.
+  Type 'undefined' is not assignable to type 'string'.
+src/app/actions.ts(520,24): error TS2783: 'id' is specified more than once, so this usage will be overwritten.
+src/app/actions.ts(535,20): error TS2783: 'uid' is specified more than once, so this usage will be overwritten.
+src/app/actions.ts(2441,11): error TS2358: The left-hand side of an 'instanceof' expression must be of type 'any', an object type or a type parameter.
+src/app/actions.ts(2463,13): error TS2741: Property 'teamInfo' is missing in type '{ title: string; pi: string; pi_email: string; faculty: string; institute: string; departmentName: string; submissionDate: string; sanctionDate: string | undefined; seedMoneyReceivedDate: string | undefined; ... 6 more ...; grant: GrantDetails | undefined; }' but required in type 'Omit<Project, "id">'.
+src/app/api/cron/send-emr-interest-reminders/route.ts(79,15): error TS2322: Type 'string | undefined' is not assignable to type 'string'.
+  Type 'undefined' is not assignable to type 'string'.
+src/app/arps-actions.ts(742,70): error TS7006: Parameter 'a' implicitly has an 'any' type.
+src/app/arps-actions.ts(775,62): error TS7006: Parameter 'inv' implicitly has an 'any' type.
+src/app/bulkpapers.ts(322,5): error TS2322: Type 'string | null' is not assignable to type 'string | undefined'.
+  Type 'null' is not assignable to type 'string | undefined'.
+src/app/bulkpapers.ts(323,5): error TS2322: Type 'string | null' is not assignable to type 'string | undefined'.
+  Type 'null' is not assignable to type 'string | undefined'.
+src/app/bulkpapers.ts(324,5): error TS2322: Type 'string | null' is not assignable to type 'string | undefined'.
+  Type 'null' is not assignable to type 'string | undefined'.
+src/app/bulkpapers.ts(325,5): error TS2322: Type 'number | null' is not assignable to type 'number | undefined'.
+  Type 'null' is not assignable to type 'number | undefined'.
+src/app/dashboard/all-projects/page.tsx(824,172): error TS2345: Argument of type '(prev: DateRange | undefined) => { to: Date | undefined; from?: Date | undefined; }' is not assignable to parameter of type 'SetStateAction<DateRange | undefined>'.
+  Type '(prev: DateRange | undefined) => { to: Date | undefined; from?: Date | undefined; }' is not assignable to type '(prevState: DateRange | undefined) => DateRange | undefined'.
+    Type '{ to: Date | undefined; from?: Date | undefined; }' is not assignable to type 'DateRange'.
+      Property 'from' is optional in type '{ to: Date | undefined; from?: Date | undefined; }' but required in type 'DateRange'.
+src/app/dashboard/analytics/page.tsx(569,21): error TS18046: 'b.projects' is of type 'unknown'.
+src/app/dashboard/analytics/page.tsx(569,34): error TS18046: 'a.projects' is of type 'unknown'.
+src/app/dashboard/analytics/page.tsx(1171,259): error TS2322: Type '{ children: Element[]; accessibilityLayer: true; data: { group: string; projects: unknown; }[]; layout: "vertical"; margin: { left: number; }; isAnimationActive: boolean; }' is not assignable to type 'IntrinsicAttributes & CategoricalChartProps & RefAttributes<{ readonly eventEmitterSymbol: Symbol; clipPathId: string; accessibilityManager: AccessibilityManager; ... 65 more ...; UNSAFE_componentWillUpdate?(nextProps: Readonly<...>, nextState: Readonly<...>, nextContext: any): void; }>'.
+  Property 'isAnimationActive' does not exist on type 'IntrinsicAttributes & CategoricalChartProps & RefAttributes<{ readonly eventEmitterSymbol: Symbol; clipPathId: string; accessibilityManager: AccessibilityManager; ... 65 more ...; UNSAFE_componentWillUpdate?(nextProps: Readonly<...>, nextState: Readonly<...>, nextContext: any): void; }>'.
+src/app/dashboard/analytics/page.tsx(1171,456): error TS2769: No overload matches this call.
+  Overload 1 of 2, '(props: Props): YAxis', gave the following error.
+    Object literal may only specify known properties, and 'whiteSpace' does not exist in type 'SVGProps<SVGTextElement> | ReactElement<SVGElement, string | JSXElementConstructor<any>> | ((props: any) => ReactElement<...>)'.
+  Overload 2 of 2, '(props: Props, context: any): YAxis', gave the following error.
+    Object literal may only specify known properties, and 'whiteSpace' does not exist in type 'SVGProps<SVGTextElement> | ReactElement<SVGElement, string | JSXElementConstructor<any>> | ((props: any) => ReactElement<...>)'.
+src/app/dashboard/analytics/page.tsx(1315,801): error TS2769: No overload matches this call.
+  Overload 1 of 2, '(props: Props): YAxis', gave the following error.
+    Object literal may only specify known properties, and 'whiteSpace' does not exist in type 'SVGProps<SVGTextElement> | ReactElement<SVGElement, string | JSXElementConstructor<any>> | ((props: any) => ReactElement<...>)'.
+  Overload 2 of 2, '(props: Props, context: any): YAxis', gave the following error.
+    Object literal may only specify known properties, and 'whiteSpace' does not exist in type 'SVGProps<SVGTextElement> | ReactElement<SVGElement, string | JSXElementConstructor<any>> | ((props: any) => ReactElement<...>)'.
+src/app/dashboard/analytics/page.tsx(1316,824): error TS2769: No overload matches this call.
+  Overload 1 of 2, '(props: Props): YAxis', gave the following error.
+    Object literal may only specify known properties, and 'whiteSpace' does not exist in type 'SVGProps<SVGTextElement> | ReactElement<SVGElement, string | JSXElementConstructor<any>> | ((props: any) => ReactElement<...>)'.
+  Overload 2 of 2, '(props: Props, context: any): YAxis', gave the following error.
+    Object literal may only specify known properties, and 'whiteSpace' does not exist in type 'SVGProps<SVGTextElement> | ReactElement<SVGElement, string | JSXElementConstructor<any>> | ((props: any) => ReactElement<...>)'.
+src/app/dashboard/emr-calendar/page.tsx(390,62): error TS2783: 'id' is specified more than once, so this usage will be overwritten.
+src/app/dashboard/emr-management/[callId]/page.tsx(112,21): error TS2322: Type '{ call: FundingCall; interests: EmrInterest[]; allUsers: User[]; currentUser: User; onActionComplete: () => Promise<void>; }' is not assignable to type 'IntrinsicAttributes & EmrManagementClientProps'.
+  Property 'interests' does not exist on type 'IntrinsicAttributes & EmrManagementClientProps'.
+src/app/dashboard/incentive-approvals/approval-dialog.tsx(502,93): error TS18047: 'claimant' is possibly 'null'.
+src/app/dashboard/incentive-approvals/page.tsx(236,109): error TS18048: 'claimant' is possibly 'undefined'.
+src/app/dashboard/incentive-approvals/page.tsx(293,103): error TS18048: 'claimant' is possibly 'undefined'.
+src/app/dashboard/incentive-approvals/page.tsx(396,69): error TS2322: Type 'string | undefined' is not assignable to type 'string'.
+  Type 'undefined' is not assignable to type 'string'.
+src/app/dashboard/incentive-claim/page.tsx(504,17): error TS2322: Type 'number | null' is not assignable to type 'number | undefined'.
+  Type 'null' is not assignable to type 'number | undefined'.
+src/app/dashboard/incentive-claim/page.tsx(761,94): error TS2367: This comparison appears to be unintentional because the types '"First Author" | "Corresponding Author" | "Co-Author" | "First & Corresponding Author" | "Presenting Author" | "First & Presenting Author"' and '"Main Author"' have no overlap.
+src/app/dashboard/manage-users/page.tsx(283,51): error TS2345: Argument of type 'string | null | undefined' is not assignable to parameter of type 'string | number | string[] | undefined'.
+  Type 'null' is not assignable to type 'string | number | string[] | undefined'.
+src/app/dashboard/my-evaluations/page.tsx(53,50): error TS18047: 'user' is possibly 'null'.
+src/app/dashboard/notifications/page.tsx(132,120): error TS2345: Argument of type '"" | "First Author" | "Corresponding Author" | "Co-Author" | "First & Corresponding Author" | "Presenting Author" | "First & Presenting Author" | undefined' is not assignable to parameter of type '"First Author" | "Corresponding Author" | "Co-Author" | "First & Corresponding Author" | "Presenting Author" | "First & Presenting Author" | undefined'.
+  Type '""' is not assignable to type '"First Author" | "Corresponding Author" | "Co-Author" | "First & Corresponding Author" | "Presenting Author" | "First & Presenting Author" | undefined'.
+src/app/dashboard/schedule-meeting/page.tsx(182,103): error TS2339: Property 'mode' does not exist on type '{ date: string; time: string; venue: string; assignedEvaluators?: string[] | undefined; absentEvaluators?: string[] | undefined; }'.
+src/app/dashboard/schedule-meeting/page.tsx(428,51): error TS2339: Property 'mode' does not exist on type '{ date: string; time: string; venue: string; assignedEvaluators?: string[] | undefined; absentEvaluators?: string[] | undefined; }'.
+src/app/dashboard/schedule-meeting/page.tsx(443,111): error TS2367: This comparison appears to be unintentional because the types '"Completed" | "Recommended" | "Not Recommended" | "Draft" | "Submitted" | "Under Review" | "Revision Needed" | "Revision Submitted" | "Pending Completion Approval"' and '"SANCTIONED"' have no overlap.
+src/app/dashboard/settings/page.tsx(413,15): error TS2345: Argument of type '{ faculty: string; misId: string; name: string; designation: string; institute: string; orcidId?: string; campus?: string | undefined; department?: string | null; scopusId?: string; vidwanId?: string; ... 13 more ...; notificationSettings?: NotificationSettings; }' is not assignable to parameter of type 'SetStateAction<User | null>'.
+  Type '{ faculty: string; misId: string; name: string; designation: string; institute: string; orcidId?: string; campus?: string | undefined; department?: string | null; scopusId?: string; vidwanId?: string; ... 13 more ...; notificationSettings?: NotificationSettings; }' is not assignable to type 'User'.
+    Types of property 'campus' are incompatible.
+      Type 'string | undefined' is not assignable to type '"Vadodara" | "Ahmedabad" | "Rajkot" | "Goa" | undefined'.
+        Type 'string' is not assignable to type '"Vadodara" | "Ahmedabad" | "Rajkot" | "Goa" | undefined'.
+src/app/dashboard/system-analytics/page.tsx(181,19): error TS2322: Type '"ghost"' is not assignable to type '"secondary" | "destructive" | "default" | "outline" | null | undefined'.
+src/app/document-actions.ts(67,47): error TS2304: Cannot find name 'claim'.
+src/app/document-actions.ts(68,85): error TS2304: Cannot find name 'claimId'.
+src/app/document-actions.ts(69,9): error TS2322: Type 'null' is not assignable to type 'string'.
+src/app/emr-actions.ts(79,24): error TS2783: 'id' is specified more than once, so this usage will be overwritten.
+src/app/emr-actions.ts(616,34): error TS2349: This expression is not callable.
+  Type 'Boolean' has no call signatures.
+src/app/emr-actions.ts(701,34): error TS2349: This expression is not callable.
+  Type 'Boolean' has no call signatures.
+src/app/emr-actions.ts(1448,34): error TS2349: This expression is not callable.
+  Type 'Boolean' has no call signatures.
+src/app/emr-actions.ts(1718,49): error TS2339: Property 'firestore' does not exist on type 'Firestore'.
+src/app/grant-actions.ts(55,11): error TS2322: Type '{ id: string; name: string; amount: number; status: "Pending Disbursement" | "Pending"; transactions: never[]; }[]' is not assignable to type 'GrantPhase[]'.
+  Type '{ id: string; name: string; amount: number; status: "Pending Disbursement" | "Pending"; transactions: never[]; }' is not assignable to type 'GrantPhase'.
+    Types of property 'status' are incompatible.
+      Type '"Pending Disbursement" | "Pending"' is not assignable to type '"Pending Disbursement" | "Disbursed" | "Utilization Submitted" | "Completed"'.
+        Type '"Pending"' is not assignable to type '"Pending Disbursement" | "Disbursed" | "Utilization Submitted" | "Completed"'.
+src/app/grant-actions.ts(260,7): error TS2322: Type 'string | null' is not assignable to type 'string | undefined'.
+  Type 'null' is not assignable to type 'string | undefined'.
+src/app/grant-actions.ts(417,47): error TS2538: Type 'undefined' cannot be used as an index type.
+src/app/grant-actions.ts(435,25): error TS2538: Type 'undefined' cannot be used as an index type.
+src/app/hiring/apply/[id]/page.tsx(19,28): error TS2769: No overload matches this call.
+  Overload 1 of 3, '(firestore: Firestore, path: string, ...pathSegments: string[]): DocumentReference<DocumentData, DocumentData>', gave the following error.
+    Argument of type 'FirebaseFirestore.Firestore' is not assignable to parameter of type 'import("C:/Users/37922/Videos/Research-Development-Portal-for-RDC-Parul-University-Goa/Research-Development-Portal-for-RDC-Parul-University-Goa/node_modules/@firebase/firestore/dist/index").Firestore'.
+      Type 'Firestore' is missing the following properties from type 'Firestore': type, app, toJSON
+  Overload 2 of 3, '(reference: CollectionReference<unknown, DocumentData>, path?: string | undefined, ...pathSegments: string[]): DocumentReference<unknown, DocumentData>', gave the following error.
+    Argument of type 'Firestore' is not assignable to parameter of type 'CollectionReference<unknown, DocumentData>'.
+      Type 'Firestore' is missing the following properties from type 'CollectionReference<unknown, DocumentData>': type, id, path, parent, and 3 more.
+  Overload 3 of 3, '(reference: DocumentReference<unknown, DocumentData>, path: string, ...pathSegments: string[]): DocumentReference<DocumentData, DocumentData>', gave the following error.
+    Argument of type 'Firestore' is not assignable to parameter of type 'DocumentReference<unknown, DocumentData>'.
+      Type 'Firestore' is missing the following properties from type 'DocumentReference<unknown, DocumentData>': converter, type, firestore, id, and 3 more.
+src/app/hiring/apply/[id]/page.tsx(54,28): error TS2769: No overload matches this call.
+  Overload 1 of 3, '(firestore: Firestore, path: string, ...pathSegments: string[]): DocumentReference<DocumentData, DocumentData>', gave the following error.
+    Argument of type 'FirebaseFirestore.Firestore' is not assignable to parameter of type 'import("C:/Users/37922/Videos/Research-Development-Portal-for-RDC-Parul-University-Goa/Research-Development-Portal-for-RDC-Parul-University-Goa/node_modules/@firebase/firestore/dist/index").Firestore'.
+      Type 'Firestore' is missing the following properties from type 'Firestore': type, app, toJSON
+  Overload 2 of 3, '(reference: CollectionReference<unknown, DocumentData>, path?: string | undefined, ...pathSegments: string[]): DocumentReference<unknown, DocumentData>', gave the following error.
+    Argument of type 'Firestore' is not assignable to parameter of type 'CollectionReference<unknown, DocumentData>'.
+      Type 'Firestore' is missing the following properties from type 'CollectionReference<unknown, DocumentData>': type, id, path, parent, and 3 more.
+  Overload 3 of 3, '(reference: DocumentReference<unknown, DocumentData>, path: string, ...pathSegments: string[]): DocumentReference<DocumentData, DocumentData>', gave the following error.
+    Argument of type 'Firestore' is not assignable to parameter of type 'DocumentReference<unknown, DocumentData>'.
+      Type 'Firestore' is missing the following properties from type 'DocumentReference<unknown, DocumentData>': converter, type, firestore, id, and 3 more.
+src/app/incentive-actions.ts(60,29): error TS2339: Property 'bookCoAuthors' does not exist on type 'IncentiveClaim'.
+src/app/incentive-actions.ts(60,51): error TS7006: Parameter 'a' implicitly has an 'any' type.
+src/app/incentive-actions.ts(60,84): error TS7006: Parameter 'a' implicitly has an 'any' type.
+src/app/incentive-actions.ts(66,40): error TS2339: Property 'bookCoAuthors' does not exist on type 'IncentiveClaim'.
+src/app/incentive-actions.ts(66,62): error TS7006: Parameter 'a' implicitly has an 'any' type.
+src/app/incentive-approval-actions.ts(109,45): error TS2339: Property 'claimId' does not exist on type 'Omit<IncentiveClaim, "id" | "claimId">'.
+src/app/incentive-approval-actions.ts(129,13): error TS2322: Type '`Pending Stage ${number} Approval`' is not assignable to type '"Pending" | "Draft" | "Rejected" | "Accepted" | "Pending Stage 1 Approval" | "Pending Stage 2 Approval" | "Pending Stage 3 Approval" | "Pending Stage 4 Approval" | "Submitted to Accounts" | "Payment Completed"'.
+src/app/incentive-approval-actions.ts(134,55): error TS2339: Property 'claimId' does not exist on type 'Omit<IncentiveClaim, "id" | "claimId">'.
+src/app/incentive-approval-actions.ts(295,26): error TS2345: Argument of type '{ uid: string; email: string; name: string; role: "Co-Author"; status: "approved"; }' is not assignable to parameter of type 'Author'.
+  Property 'isExternal' is missing in type '{ uid: string; email: string; name: string; role: "Co-Author"; status: "approved"; }' but required in type 'Author'.
+src/app/incentive-approval-actions.ts(314,13): error TS2322: Type 'string | null' is not assignable to type 'string | undefined'.
+  Type 'null' is not assignable to type 'string | undefined'.
+src/app/incentive-approval-actions.ts(315,13): error TS2322: Type 'string | null' is not assignable to type 'string | undefined'.
+  Type 'null' is not assignable to type 'string | undefined'.
+src/app/incentive-approval-actions.ts(316,13): error TS2322: Type '"Q1" | "Q2" | "Q3" | "Q4" | "Nature/Science/Lancet" | "Top 1% Journals" | null' is not assignable to type 'string | undefined'.
+  Type 'null' is not assignable to type 'string | undefined'.
+src/app/incentive-approval-actions.ts(388,17): error TS2322: Type '`Pending Stage ${number} Approval`' is not assignable to type '"Pending" | "Draft" | "Rejected" | "Accepted" | "Pending Stage 1 Approval" | "Pending Stage 2 Approval" | "Pending Stage 3 Approval" | "Pending Stage 4 Approval" | "Submitted to Accounts" | "Payment Completed"'.
+src/app/incentive-bulk-actions.ts(62,7): error TS2741: Property 'data' is missing in type '{ success: false; error: string; }' but required in type '{ success: boolean; data: { successfulClaims: { title: string; userEmail: string; linked: boolean; }[]; totalRecords: number; errors: { title: string; reason: string; }[]; }; error?: string | undefined; }'.
+src/app/incentive-bulk-actions.ts(181,7): error TS2741: Property 'data' is missing in type '{ success: false; error: string; }' but required in type '{ success: boolean; data: { successfulClaims: { title: string; userEmail: string; linked: boolean; }[]; totalRecords: number; errors: { title: string; reason: string; }[]; }; error?: string | undefined; }'.
+src/app/incentive-calculation.ts(4,31): error TS2724: '"@/types"' has no exported member named 'CoAuthor'. Did you mean 'Author'?
+src/app/incentive-calculation.ts(459,20): error TS2367: This comparison appears to be unintentional because the types '"Awarded" | "Under Examination" | "FER Responded" | "Amended Examination" | undefined' and '"Granted"' have no overlap.
+src/app/manage-claims-actions.ts(236,30): error TS2345: Argument of type 'Buffer<ArrayBufferLike>' is not assignable to parameter of type 'Buffer'.
+  Type 'Buffer<ArrayBufferLike>' is missing the following properties from type 'Buffer': maxByteLength, resizable, resize, detached, and 2 more.
+src/app/manage-claims-actions.ts(336,30): error TS2345: Argument of type 'Buffer<ArrayBufferLike>' is not assignable to parameter of type 'Buffer'.
+  Type 'Buffer<ArrayBufferLike>' is missing the following properties from type 'Buffer': maxByteLength, resizable, resize, detached, and 2 more.
+src/app/profile-setup/page.tsx(285,13): error TS2322: Type '{ photoURL: string; profileComplete: true; name: string; designation: string; campus: string; faculty: string; institute: string; misId: string; phoneNumber: string; department?: string | undefined; orcidId?: string | undefined; scopusId?: string | undefined; vidwanId?: string | undefined; googleScholarId?: string |...' is not assignable to type 'Partial<User>'.
+  Types of property 'campus' are incompatible.
+    Type 'string' is not assignable to type '"Vadodara" | "Ahmedabad" | "Rajkot" | "Goa" | undefined'.
+src/app/research-paper-actions.ts(63,34): error TS2339: Property 'totalInternalAuthors' does not exist on type 'IncentiveClaim'.
+src/app/scholar-actions.ts(64,19): error TS7022: 'response' implicitly has type 'any' because it does not have a type annotation and is referenced directly or indirectly in its own initializer.
+src/app/scholar-actions.ts(69,19): error TS7022: 'data' implicitly has type 'any' because it does not have a type annotation and is referenced directly or indirectly in its own initializer.
+src/app/server-actions.ts(233,24): error TS2783: 'id' is specified more than once, so this usage will be overwritten.
+src/app/server-actions.ts(248,20): error TS2783: 'uid' is specified more than once, so this usage will be overwritten.
+src/app/server-actions.ts(1716,56): error TS2339: Property 'pi' does not exist on type '{ id: string; pi_uid: string; title: string; pi_email?: string | undefined; }'.
+src/components/dashboard/arps/arps-results-display.tsx(177,205): error TS18048: 'calculation.base' is possibly 'undefined'.
+src/components/dashboard/arps/arps-results-display.tsx(183,339): error TS18048: 'calculation.base' is possibly 'undefined'.
+src/components/dashboard/arps/arps-results-display.tsx(184,66): error TS2339: Property 'divisor' does not exist on type 'CalculationDetails'.
+src/components/dashboard/arps/arps-results-display.tsx(184,89): error TS2339: Property 'divisor' does not exist on type 'CalculationDetails'.
+src/components/dashboard/arps/arps-results-display.tsx(185,112): error TS2339: Property 'divisor' does not exist on type 'CalculationDetails'.
+src/components/dashboard/arps/arps-results-display.tsx(185,192): error TS2339: Property 'divisor' does not exist on type 'CalculationDetails'.
+src/components/dashboard/arps/arps-results-display.tsx(228,221): error TS18048: 'calculation.base' is possibly 'undefined'.
+src/components/dashboard/dashboard-client.tsx(15,36): error TS2741: Property 'user' is missing in type '{}' but required in type '{ user: User; }'.
+src/components/emr/schedule-meeting-dialog.tsx(291,779): error TS7006: Parameter 'currentDate' implicitly has an 'any' type.
+src/components/incentives/apc-form.tsx(333,32): error TS2345: Argument of type '{ apcApcWaiverProof: undefined; apcPublicationProof: undefined; apcInvoiceProof: undefined; id: string; uid: string; userName: string; userEmail: string; claimId?: string; status: "Pending" | "Accepted" | "Rejected" | "Draft" | "Pending Stage 1 Approval" | "Pending Stage 2 Approval" | "Pending Stage 3 Approval" | "P...' is not assignable to parameter of type '{ authors: { status: "approved" | "pending" | "Applied"; name: string; role: "First Author" | "Corresponding Author" | "Co-Author" | "First & Corresponding Author" | "Presenting Author" | "First & Presenting Author"; email: string; isExternal: boolean; uid?: string | ... 1 more ... | undefined; }[]; ... 19 more ...;...'.
+  Type '{ apcApcWaiverProof: undefined; apcPublicationProof: undefined; apcInvoiceProof: undefined; id: string; uid: string; userName: string; userEmail: string; claimId?: string; status: "Pending" | "Accepted" | "Rejected" | "Draft" | "Pending Stage 1 Approval" | "Pending Stage 2 Approval" | "Pending Stage 3 Approval" | "P...' is not assignable to type '{ authors: { status: "approved" | "pending" | "Applied"; name: string; role: "First Author" | "Corresponding Author" | "Co-Author" | "First & Corresponding Author" | "Presenting Author" | "First & Presenting Author"; email: string; isExternal: boolean; uid?: string | ... 1 more ... | undefined; }[]; ... 19 more ...;...'.
+    Type '{ apcApcWaiverProof: undefined; apcPublicationProof: undefined; apcInvoiceProof: undefined; id: string; uid: string; userName: string; userEmail: string; claimId?: string; status: "Pending" | "Accepted" | "Rejected" | "Draft" | "Pending Stage 1 Approval" | "Pending Stage 2 Approval" | "Pending Stage 3 Approval" | "P...' is not assignable to type '{ authors?: ({ status?: "approved" | "pending" | "Applied" | undefined; name?: string | undefined; role?: "First Author" | "Corresponding Author" | "Co-Author" | "First & Corresponding Author" | "Presenting Author" | "First & Presenting Author" | undefined; email?: string | undefined; isExternal?: boolean | undefine...'.
+      Types of property 'apcQRating' are incompatible.
+        Type 'string | undefined' is not assignable to type '"Q1" | "Q2" | "Q3" | "Q4" | undefined'.
+          Type 'string' is not assignable to type '"Q1" | "Q2" | "Q3" | "Q4" | undefined'.
+src/components/incentives/apc-form.tsx(410,60): error TS2339: Property 'journalWebsite' does not exist on type '{ paperTitle: string; journalName: string; publicationMonth: string; publicationYear: string; isPuNameInPublication: boolean; printIssn?: string | undefined; electronicIssn?: string | undefined; } | { ...; } | { ...; }'.
+  Property 'journalWebsite' does not exist on type '{ paperTitle: string; journalName: string; publicationMonth: string; publicationYear: string; isPuNameInPublication: boolean; printIssn?: string | undefined; electronicIssn?: string | undefined; }'.
+src/components/incentives/apc-form.tsx(566,13): error TS2322: Type 'number | null' is not assignable to type 'number | undefined'.
+  Type 'null' is not assignable to type 'number | undefined'.
+src/components/incentives/apc-form.tsx(567,13): error TS2322: Type 'string | null' is not assignable to type 'string | undefined'.
+  Type 'null' is not assignable to type 'string | undefined'.
+src/components/incentives/apc-form.tsx(568,13): error TS2322: Type 'string | null' is not assignable to type 'string | undefined'.
+  Type 'null' is not assignable to type 'string | undefined'.
+src/components/incentives/apc-form.tsx(577,13): error TS2322: Type 'UserBankDetails | null' is not assignable to type 'UserBankDetails | undefined'.
+  Type 'null' is not assignable to type 'UserBankDetails | undefined'.
+src/components/incentives/book-form.tsx(24,37): error TS2305: Module '"@/types"' has no exported member 'BookCoAuthor'.
+src/components/incentives/book-form.tsx(248,49): error TS2345: Argument of type '{ authors: { status: "approved" | "pending" | "Applied"; name: string; role: "First Author" | "Corresponding Author" | "Co-Author" | "First & Corresponding Author" | "Presenting Author" | "First & Presenting Author"; email: string; isExternal: boolean; uid?: string | ... 1 more ... | undefined; }[]; ... 25 more ...;...' is not assignable to parameter of type 'Partial<IncentiveClaim>'.
+  Types of property 'publicationYear' are incompatible.
+    Type 'number' is not assignable to type 'string'.
+src/components/incentives/book-form.tsx(298,32): error TS2345: Argument of type '{ bookProof: undefined; scopusProof: undefined; id: string; uid: string; userName: string; userEmail: string; claimId?: string; status: "Pending" | "Accepted" | "Rejected" | "Draft" | "Pending Stage 1 Approval" | "Pending Stage 2 Approval" | "Pending Stage 3 Approval" | "Pending Stage 4 Approval" | "Submitted to Acc...' is not assignable to parameter of type '{ authors: { status: "approved" | "pending" | "Applied"; name: string; role: "First Author" | "Corresponding Author" | "Co-Author" | "First & Corresponding Author" | "Presenting Author" | "First & Presenting Author"; email: string; isExternal: boolean; uid?: string | ... 1 more ... | undefined; }[]; ... 25 more ...;...'.
+  Type '{ bookProof: undefined; scopusProof: undefined; id: string; uid: string; userName: string; userEmail: string; claimId?: string; status: "Pending" | "Accepted" | "Rejected" | "Draft" | "Pending Stage 1 Approval" | "Pending Stage 2 Approval" | "Pending Stage 3 Approval" | "Pending Stage 4 Approval" | "Submitted to Acc...' is not assignable to type '{ authors: { status: "approved" | "pending" | "Applied"; name: string; role: "First Author" | "Corresponding Author" | "Co-Author" | "First & Corresponding Author" | "Presenting Author" | "First & Presenting Author"; email: string; isExternal: boolean; uid?: string | ... 1 more ... | undefined; }[]; ... 25 more ...;...'.
+    Type '{ bookProof: undefined; scopusProof: undefined; id: string; uid: string; userName: string; userEmail: string; claimId?: string; status: "Pending" | "Accepted" | "Rejected" | "Draft" | "Pending Stage 1 Approval" | "Pending Stage 2 Approval" | "Pending Stage 3 Approval" | "Pending Stage 4 Approval" | "Submitted to Acc...' is not assignable to type '{ authors?: ({ status?: "approved" | "pending" | "Applied" | undefined; name?: string | undefined; role?: "First Author" | "Corresponding Author" | "Co-Author" | "First & Corresponding Author" | "Presenting Author" | "First & Presenting Author" | undefined; email?: string | undefined; isExternal?: boolean | undefine...'.
+      Types of property 'publicationYear' are incompatible.
+        Type 'string | undefined' is not assignable to type 'number | undefined'.
+          Type 'string' is not assignable to type 'number'.
+src/components/incentives/book-form.tsx(350,64): error TS2345: Argument of type '{ authors: { status: "approved" | "pending" | "Applied"; name: string; role: "First Author" | "Corresponding Author" | "Co-Author" | "First & Corresponding Author" | "Presenting Author" | "First & Presenting Author"; email: string; isExternal: boolean; uid?: string | ... 1 more ... | undefined; }[]; ... 25 more ...;...' is not assignable to parameter of type 'Partial<IncentiveClaim>'.
+  Types of property 'publicationYear' are incompatible.
+    Type 'number' is not assignable to type 'string'.
+src/components/incentives/book-form.tsx(393,13): error TS2322: Type 'number' is not assignable to type 'string'.
+src/components/incentives/claim-details-dialog.tsx(130,49): error TS2345: Argument of type 'IncentiveClaim | null' is not assignable to parameter of type 'Partial<IncentiveClaim>'.
+  Type 'null' is not assignable to type 'Partial<IncentiveClaim>'.
+src/components/incentives/claim-details-dialog.tsx(141,63): error TS18047: 'claim' is possibly 'null'.
+src/components/incentives/claim-details-dialog.tsx(142,65): error TS18047: 'claim' is possibly 'null'.
+src/components/incentives/claim-details-dialog.tsx(197,42): error TS18047: 'claim' is possibly 'null'.
+src/components/incentives/claim-details-dialog.tsx(251,93): error TS18047: 'claimant' is possibly 'null'.
+src/components/incentives/incentive-form.tsx(44,10): error TS2305: Module '"@/app/actions"' has no exported member 'fetchScopusDataByUrl'.
+src/components/incentives/incentive-form.tsx(44,32): error TS2305: Module '"@/app/actions"' has no exported member 'getJournalWebsite'.
+src/components/incentives/incentive-form.tsx(44,51): error TS2305: Module '"@/app/actions"' has no exported member 'fetchWosDataByUrl'.
+src/components/incentives/incentive-form.tsx(640,17): error TS2353: Object literal may only specify known properties, and 'flightTicketsUrl' does not exist in type 'Omit<IncentiveClaim, "id">'.
+src/components/incentives/membership-form.tsx(206,13): error TS2322: Type 'number | null' is not assignable to type 'number | undefined'.
+  Type 'null' is not assignable to type 'number | undefined'.
+src/components/incentives/membership-form.tsx(207,13): error TS2322: Type 'string | null' is not assignable to type 'string | undefined'.
+  Type 'null' is not assignable to type 'string | undefined'.
+src/components/incentives/membership-form.tsx(208,13): error TS2322: Type 'string | null' is not assignable to type 'string | undefined'.
+  Type 'null' is not assignable to type 'string | undefined'.
+src/components/incentives/membership-form.tsx(217,13): error TS2322: Type 'UserBankDetails | null' is not assignable to type 'UserBankDetails | undefined'.
+  Type 'null' is not assignable to type 'UserBankDetails | undefined'.
+src/components/incentives/research-paper-form.tsx(405,58): error TS2345: Argument of type '{ userEmail: string; sdgGoals: string[]; authors: { status: "approved" | "pending" | "Applied"; name: string; role: "First Author" | "Corresponding Author" | "Co-Author" | "First & Corresponding Author" | "Presenting Author" | "First & Presenting Author"; email: string; isExternal: boolean; uid?: string | ... 1 more...' is not assignable to parameter of type 'Partial<IncentiveClaim>'.
+  Types of property 'autoFetchedFields' are incompatible.
+    Type 'string[] | undefined' is not assignable to type '(keyof IncentiveClaim)[] | undefined'.
+      Type 'string[]' is not assignable to type '(keyof IncentiveClaim)[]'.
+        Type 'string' is not assignable to type 'keyof IncentiveClaim'.
+src/components/incentives/research-paper-form.tsx(544,46): error TS2345: Argument of type 'undefined' is not assignable to parameter of type '"Q1" | "Q2" | "Q3" | "Q4" | "Nature/Science/Lancet" | "Top 1% Journals"'.
+src/components/incentives/research-paper-form.tsx(785,9): error TS2322: Type 'number | null' is not assignable to type 'number | undefined'.
+  Type 'null' is not assignable to type 'number | undefined'.
+src/components/incentives/research-paper-form.tsx(786,9): error TS2322: Type 'string | null' is not assignable to type 'string | undefined'.
+  Type 'null' is not assignable to type 'string | undefined'.
+src/components/incentives/research-paper-form.tsx(787,9): error TS2322: Type 'string | null' is not assignable to type 'string | undefined'.
+  Type 'null' is not assignable to type 'string | undefined'.
+src/components/incentives/research-paper-form.tsx(796,9): error TS2322: Type 'UserBankDetails | null' is not assignable to type 'UserBankDetails | undefined'.
+  Type 'null' is not assignable to type 'UserBankDetails | undefined'.
+src/components/profile/profile-client.tsx(642,67): error TS2322: Type 'string | null | undefined' is not assignable to type 'string | undefined'.
+  Type 'null' is not assignable to type 'string | undefined'.
+src/components/projects/schedule-meeting-form.tsx(130,42): error TS2345: Argument of type '{ id: string; pi_uid: string; title: string; pi_email: string | undefined; }[]' is not assignable to parameter of type '{ id: string; pi_uid: string; pi: string; title: string; pi_email?: string | undefined; }[]'.
+  Property 'pi' is missing in type '{ id: string; pi_uid: string; title: string; pi_email: string | undefined; }' but required in type '{ id: string; pi_uid: string; pi: string; title: string; pi_email?: string | undefined; }'.
+src/components/projects/submission-form.tsx(238,27): error TS2304: Cannot find name 'emailToRemove'.
+src/components/projects/submission-form.tsx(461,30): error TS18048: 'field.value.length' is possibly 'undefined'.
+src/components/projects/submission-form.tsx(461,59): error TS18048: 'field.value' is possibly 'undefined'.
+src/firebase/error-emitter.ts(15,57): error TS2344: Type 'T[K]' does not satisfy the constraint '(...args: any) => any'.
+  Type 'T[keyof T]' is not assignable to type '(...args: any) => any'.
+    Type 'T[string] | T[number] | T[symbol]' is not assignable to type '(...args: any) => any'.
+      Type 'T[string]' is not assignable to type '(...args: any) => any'.
+src/firebase/error-emitter.ts(20,47): error TS2345: Argument of type 'T[K]' is not assignable to parameter of type '(...args: any[]) => void'.
+  Type 'T[keyof T]' is not assignable to type '(...args: any[]) => void'.
+    Type 'T[string] | T[number] | T[symbol]' is not assignable to type '(...args: any[]) => void'.
+      Type 'T[string]' is not assignable to type '(...args: any[]) => void'.
