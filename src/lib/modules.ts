@@ -33,25 +33,25 @@ export const ALL_MODULES = [
 ]
 
 const coreModules = ["dashboard", "notifications", "settings", "emr-calendar", "incentive-claim"]
-const facultyCoreModules = ["new-submissiogin", "my-projects"]
+const facultyCoreModules = ["new-submission", "my-projects"]
 const hierarchyCoreModules = ["analytics"]
 
 const facultyDefaults = [...coreModules, ...facultyCoreModules]
-const croDefaults = [...coreModules, ...facultyCoreModules, "all-projects", "analytics"]
+const croDefaults = [...coreModules, ...facultyCoreModules, "all-projects", "analytics", "incentive-approvals"]
 const iqacDefaults = [...coreModules, "all-projects", "analytics"]
 const adminDefaults = [...croDefaults, "schedule-meeting", "pending-reviews", "completed-reviews", "emr-management", "manage-incentive-claims"]
 const superAdminDefaults = [...adminDefaults, "module-management", "arps-calculator"]
 
 // Default modules for special designations who are otherwise 'faculty' role
-const principalDefaults = [...coreModules, ...hierarchyCoreModules, "all-projects"]
-const hodDefaults = [...coreModules, ...hierarchyCoreModules, "all-projects"]
+const principalDefaults = [...coreModules, ...hierarchyCoreModules, "all-projects", "incentive-approvals", "incentive-approver-1"]
+const hodDefaults = [...coreModules, ...hierarchyCoreModules, "all-projects", "incentive-approvals", "incentive-approver-1"]
 const goaHeadDefaults = [...coreModules, ...hierarchyCoreModules, "all-projects"] // Read-only access
 
 export function getDefaultModulesForRole(role: User["role"], designation?: User["designation"]): string[] {
   if (designation === "Head of Goa Campus") {
     return goaHeadDefaults
   }
-  
+
   if (role === "faculty") {
     if (designation === "Principal") {
       return principalDefaults
@@ -65,9 +65,9 @@ export function getDefaultModulesForRole(role: User["role"], designation?: User[
   if (role === "Evaluator") {
     return [...coreModules, "evaluator-dashboard", "my-evaluations", "emr-evaluations"]
   }
-  
+
   if (role === 'IQAC') {
-      return iqacDefaults;
+    return iqacDefaults;
   }
 
   switch (role) {

@@ -93,6 +93,10 @@ export default function IncentiveApprovalsPage() {
             
             setApprovalStage(stage);
 
+            if (parsedUser.designation === "Principal" || parsedUser.designation === "HOD") {
+              setInstituteFilter(parsedUser.institute || 'all');
+            }
+
             if (stage !== null) {
                 fetchClaimsAndUsers(parsedUser, stage);
             } else {
