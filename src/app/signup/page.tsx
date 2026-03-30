@@ -115,11 +115,11 @@ export default function SignupPage() {
     let campus: User['campus'] = 'Vadodara';
 
     if (firebaseUser.email?.endsWith('@goa.paruluniversity.ac.in')) {
-        campus = 'Goa';
+      campus = 'Goa';
     } else if (firebaseUser.email?.endsWith('@rajkot.paruluniversity.ac.in')) {
-        campus = 'Rajkot';
+      campus = 'Rajkot';
     } else if (firebaseUser.email?.endsWith('@ahmedabad.paruluniversity.ac.in')) {
-        campus = 'Ahmedabad';
+      campus = 'Ahmedabad';
     }
 
 
@@ -193,7 +193,7 @@ export default function SignupPage() {
       if (emrInterestResult.success && emrInterestResult.count > 0) {
         console.log(`Successfully linked ${emrInterestResult.count} EMR interests for new user ${user.email}.`)
       }
-      
+
       const emrCoPiResult = await linkEmrCoPiInterestsToNewUser(user.uid, user.email);
       if (emrCoPiResult.success && emrCoPiResult.count > 0) {
         console.log(`Successfully linked ${emrCoPiResult.count} EMR Co-PI interests for new user ${user.email}.`);
@@ -287,12 +287,12 @@ export default function SignupPage() {
       setIsSubmitting(false)
     }
   }
-  
+
   if (loading) {
     return (
-        <div className="flex flex-col min-h-screen items-center justify-center">
-            <Loader2 className="h-12 w-12 animate-spin text-primary" />
-        </div>
+      <div className="flex flex-col min-h-screen items-center justify-center">
+        <Loader2 className="h-12 w-12 animate-spin text-primary" />
+      </div>
     )
   }
 
