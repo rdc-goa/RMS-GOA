@@ -49,43 +49,20 @@ export default function IncentiveApprovalsPage() {
             const claimsCollection = collection(db, 'incentiveClaims');
             const usersQuery = query(collection(db, 'users'));
             
-            // Determine the status to fetch based on the approval stage
-            // Stage 0 (Principal) uses "Pending Principal Approval", others use "Pending Stage X Approval"
-            const statusToFetch = stage === 0 ? 'Pending Principal Approval' : `Pending Stage ${stage + 1} Approval`;
+            const statusToFetch = `Pending Stage ${stage + 1} Approval`;
             
-            // Build pending claims query with institute filter for principals
-            let pendingClaimsQuery;
-            if (stage === 0 && currentUser.institute) {
-                pendingClaimsQuery = query(
-                    claimsCollection, 
-                    where('status', '==', statusToFetch),
-                    where('institute', '==', currentUser.institute),
-                    orderBy('submissionDate', 'desc')
-                );
-            } else {
-                pendingClaimsQuery = query(
-                    claimsCollection, 
-                    where('status', '==', statusToFetch), 
-                    orderBy('submissionDate', 'desc')
-                );
-            }
+            const pendingClaimsQuery = query(
+                claimsCollection, 
+                where('status', '==', statusToFetch), 
+                orderBy('submissionDate', 'desc')
+            );
 
-            // Build history query with institute filter for principals
-            let historyQuery;
-            if (stage === 0 && currentUser.institute) {
-                historyQuery = query(
-                    claimsCollection, 
-                    where(`approvals.${stage}.approverUid`, '==', currentUser.uid),
-                    where('institute', '==', currentUser.institute),
-                    orderBy('submissionDate', 'desc')
-                );
-            } else {
-                historyQuery = query(
-                    claimsCollection, 
-                    where(`approvals.${stage}.approverUid`, '==', currentUser.uid),
-                    orderBy('submissionDate', 'desc')
-                );
-            }
+            // History should include all claims the user has acted upon at their stage
+            const historyQuery = query(
+              claimsCollection, 
+              where(`approvals.${stage}.approverUid`, '==', currentUser.uid),
+              orderBy('submissionDate', 'desc')
+            );
             
             const [pendingSnapshot, historySnapshot, usersSnapshot] = await Promise.all([
                 getDocs(pendingClaimsQuery),
@@ -110,38 +87,18 @@ export default function IncentiveApprovalsPage() {
         if (storedUser) {
             const parsedUser = JSON.parse(storedUser) as User;
             setUser(parsedUser);
-            
-            console.log('User loaded:', parsedUser.name);
-            console.log('User designation:', parsedUser.designation);
-            console.log('User allowedModules:', parsedUser.allowedModules);
-            
-            // Determine approval stage:
-            // - Principals automatically have Stage 1 (0) access
-            // - Others get access based on their assigned module permission
-            let stage: number | null = null;
-            if (parsedUser.designation === 'Principal') {
-                stage = 0; // Stage 1 for principals
-                console.log('User is Principal - assigned stage 0');
-            } else {
-                const approverModule = parsedUser.allowedModules?.find(m => m.startsWith('incentive-approver-'));
-                console.log('Looking for incentive-approver module:', approverModule);
-                stage = approverModule
-                    ? parseInt(approverModule.split('-')[2], 10) - 1
-                    : null;
-                console.log('Determined stage:', stage);
-            }
+            const stage = parsedUser.allowedModules?.find(m => m.startsWith('incentive-approver-'))
+                ? parseInt(parsedUser.allowedModules.find(m => m.startsWith('incentive-approver-'))!.split('-')[2], 10) - 1
+                : null;
             
             setApprovalStage(stage);
 
             if (stage !== null) {
-                console.log('Fetching claims for stage:', stage);
                 fetchClaimsAndUsers(parsedUser, stage);
             } else {
-                console.log('No approval stage assigned - access denied');
                 setLoading(false);
             }
         } else {
-            console.log('No stored user found');
             setLoading(false);
         }
     }, [fetchClaimsAndUsers]);

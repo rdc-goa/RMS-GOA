@@ -24,8 +24,8 @@ export async function GET(request: NextRequest) {
     // We send the reminder 1 day before the evaluation window closes.
     // If evaluationDays is 0, the deadline is the meeting day, so no reminder is possible with a daily cron.
     if (evaluationDays < 1) {
-        console.log(`IMR Evaluation Reminder Cron: No reminders sent as evaluation window is less than 1 day.`);
-        return NextResponse.json({ success: true, message: 'Evaluation window is 0 days, no reminders sent.' });
+      console.log(`IMR Evaluation Reminder Cron: No reminders sent as evaluation window is less than 1 day.`);
+      return NextResponse.json({ success: true, message: 'Evaluation window is 0 days, no reminders sent.' });
     }
 
     // The reminder goes out on `meetingDate + evaluationDays - 1`.
@@ -33,7 +33,7 @@ export async function GET(request: NextRequest) {
     const reminderOffsetDays = evaluationDays - 1;
     const targetMeetingDate = subDays(new Date(), reminderOffsetDays);
     const targetMeetingDateString = format(targetMeetingDate, 'yyyy-MM-dd');
-    
+
     console.log(`IMR Evaluation Reminder Cron: Looking for meetings on ${targetMeetingDateString} to send reminders.`);
 
     const projectsSnapshot = await adminDb.collection('projects')
@@ -62,25 +62,25 @@ export async function GET(request: NextRequest) {
       if (pendingEvaluatorUids.length === 0) {
         continue;
       }
-      
+
       const usersRef = adminDb.collection('users');
       // Firestore 'in' queries are limited to 30 values. If there are more, we need to chunk.
       const MAX_IN_QUERY_SIZE = 30;
       for (let i = 0; i < pendingEvaluatorUids.length; i += MAX_IN_QUERY_SIZE) {
-          const chunk = pendingEvaluatorUids.slice(i, i + MAX_IN_QUERY_SIZE);
-          const evaluatorsSnapshot = await usersRef.where('__name__', 'in', chunk).get();
+        const chunk = pendingEvaluatorUids.slice(i, i + MAX_IN_QUERY_SIZE);
+        const evaluatorsSnapshot = await usersRef.where('__name__', 'in', chunk).get();
 
-          for (const userDoc of evaluatorsSnapshot.docs) {
-            const evaluator = userDoc.data() as User;
+        for (const userDoc of evaluatorsSnapshot.docs) {
+          const evaluator = userDoc.data() as User;
 
-            if (evaluator.email) {
-                const meetingDateTimeString = `${project.meetingDetails!.date}T${project.meetingDetails!.time}:00`;
-                const deadline = addDays(new Date(project.meetingDetails!.date.replace(/-/g, '/')), evaluationDays);
+          if (evaluator.email) {
+            const meetingDateTimeString = `${project.meetingDetails!.date}T${project.meetingDetails!.time}:00`;
+            const deadline = addDays(new Date(project.meetingDetails!.date.replace(/-/g, '/')), evaluationDays);
 
-                const emailHtml = `
+            const emailHtml = `
                     <div style="background-color:#121212; color:#ffffff; font-family:Arial, sans-serif; padding:20px; border-radius:8px;">
                       <div style="text-align:center; margin-bottom:20px;">
-                        <img src="https://pinxoxpbufq92wb4.public.blob.vercel-storage.com/RDC-PU-LOGO-WHITE.png" alt="RDC-PU Logo" style="max-width:300px; height:auto;" />
+                        <img src="https://lhdlkrfbkon55i6u.public.blob.vercel-storage.com/Pu%20Goa%20White.png" alt="RDC-PU Logo" style="max-width:300px; height:auto;" />
                       </div>
 
                       <h2 style="color: #ffca28;">Urgent Reminder</h2>
@@ -109,15 +109,15 @@ export async function GET(request: NextRequest) {
                     </div>
                   `;
 
-                await sendEmail({
-                    to: evaluator.email,
-                    subject: `URGENT: IMR Evaluation window closing tomorrow for "${project.title}"`,
-                    html: emailHtml,
-                    from: 'default'
-                });
-                sentCount++;
-            }
+            await sendEmail({
+              to: evaluator.email,
+              subject: `URGENT: IMR Evaluation window closing tomorrow for "${project.title}"`,
+              html: emailHtml,
+              from: 'default'
+            });
+            sentCount++;
           }
+        }
       }
     }
 

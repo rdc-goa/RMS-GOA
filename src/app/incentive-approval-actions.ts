@@ -59,7 +59,7 @@ const getClaimTitle = (claimData: Partial<IncentiveClaim>): string => {
         || 'your recent incentive claim';
 };
 
-export async function submitIncentiveClaim(claimData: Omit<IncentiveClaim, 'id' | 'claimId'>, claimIdToUpdate?: string): Promise<{ success: boolean; error?: string, claimId?: string }> {
+export async function submitIncentiveClaim(claimData: Omit<IncentiveClaim, 'id'>, claimIdToUpdate?: string): Promise<{ success: boolean; error?: string, claimId?: string }> {
     try {
         const claimsRef = adminDb.collection('incentiveClaims');
 
@@ -126,7 +126,7 @@ export async function submitIncentiveClaim(claimData: Omit<IncentiveClaim, 'id' 
         let initialStatus: IncentiveClaim['status'] = 'Accepted'; // Default if no workflow
         if (workflow && workflow.length > 0) {
             const firstStage = Math.min(...workflow);
-            initialStatus = `Pending Stage ${firstStage} Approval`;
+            initialStatus = `Pending Stage ${firstStage} Approval` as IncentiveClaim['status'];
         }
 
         const finalClaimData: Omit<IncentiveClaim, 'id'> = {
@@ -297,6 +297,7 @@ async function addPaperFromApprovedClaim(claim: IncentiveClaim): Promise<void> {
                 email: claim.userEmail,
                 name: claim.userName,
                 role: 'Co-Author', // Default role, can be adjusted if more info is available
+                isExternal: false,
                 status: 'approved',
             });
         }
@@ -311,9 +312,9 @@ async function addPaperFromApprovedClaim(claim: IncentiveClaim): Promise<void> {
             authors,
             authorUids: authors.map(a => a.uid).filter(Boolean) as string[],
             authorEmails: authors.map(a => a.email.toLowerCase()),
-            journalName: claim.journalName || null,
-            journalWebsite: claim.journalWebsite || null,
-            qRating: claim.journalClassification || null,
+            journalName: claim.journalName ?? undefined,
+            journalWebsite: claim.journalWebsite ?? undefined,
+            qRating: claim.journalClassification ?? undefined,
             createdAt: now,
             updatedAt: now,
         };
@@ -332,7 +333,7 @@ export async function processIncentiveClaimAction(
     claimId: string,
     action: 'approve' | 'reject' | 'verify',
     approver: User,
-    stageIndex: number, // 0, 1, 2, or 3
+    stageIndex: number, // 0, 1, 2, 3, or 4 (Stage 1-5)
     data: { amount?: number; comments?: string, verifiedFields?: { [key: string]: boolean }, suggestions?: { [key: string]: string } }
 ): Promise<{ success: boolean; error?: string }> {
     try {
@@ -347,10 +348,7 @@ export async function processIncentiveClaimAction(
         const effectiveApprovedAmount = isDisbursementEligible ? (data.amount || 0) : 0;
         const settings = await getSystemSettings();
 
-        if (!settings.incentiveApprovers || settings.incentiveApprovers.length <= stageIndex) {
-            return { success: false, error: 'Approval workflow is not configured correctly.' };
-        }
-        const currentStageApprover = settings.incentiveApprovers.find(a => a.stage === stageIndex + 1);
+        const currentStageApprover = (settings.incentiveApprovers || []).find(a => a.stage === stageIndex + 1);
         if (!currentStageApprover || approver.email?.toLowerCase() !== currentStageApprover.email.toLowerCase()) {
             return { success: false, error: 'You are not authorized to perform this action for this stage.' };
         }
@@ -376,7 +374,7 @@ export async function processIncentiveClaimAction(
 
 
         let newStatus: IncentiveClaim['status'];
-        const workflow = settings.incentiveApprovalWorkflows?.[claim.claimType] || [1, 2, 3, 4]; // Default to all stages
+        const workflow = settings.incentiveApprovalWorkflows?.[claim.claimType] || [1, 2, 3, 4, 5]; // Default to all stages
 
         if (action === 'reject') {
             newStatus = 'Rejected';
@@ -385,7 +383,7 @@ export async function processIncentiveClaimAction(
             const nextStage = workflow.find(stage => stage > currentStage);
 
             if (nextStage) {
-                newStatus = `Pending Stage ${nextStage} Approval`;
+                newStatus = `Pending Stage ${nextStage} Approval` as IncentiveClaim['status'];
             } else {
                 newStatus = 'Accepted'; // No more stages in the workflow
             }

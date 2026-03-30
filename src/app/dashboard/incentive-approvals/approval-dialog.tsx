@@ -132,18 +132,20 @@ function ResearchPaperClaimDetails({
         return (
             <div className="grid grid-cols-12 gap-2 text-sm items-center py-1">
                 <span className="text-muted-foreground col-span-5">{label}</span>
-                <span className="col-span-4">{displayValue}</span>
-                <div className="col-span-3 flex justify-end gap-1">
-                    {stageIndex > 0 && (
-                        <div className="w-7 h-7 flex items-center justify-center">
-                            <TooltipProvider><Tooltip><TooltipTrigger>{getVerificationMark(approval1, fieldId)}</TooltipTrigger><TooltipContent><p>Approver 1 Verification</p></TooltipContent></Tooltip></TooltipProvider>
-                        </div>
-                    )}
-                     {stageIndex > 1 && (
-                        <div className="w-7 h-7 flex items-center justify-center">
-                             <TooltipProvider><Tooltip><TooltipTrigger>{getVerificationMark(approval2, fieldId)}</TooltipTrigger><TooltipContent><p>Approver 2 Verification</p></TooltipContent></Tooltip></TooltipProvider>
-                        </div>
-                    )}
+                <span className="col-span-3">{displayValue}</span>
+                <div className="col-span-4 flex justify-end gap-1">
+                    {previousApprovals.map((approval, idx) => (
+                        approval && (
+                            <div key={idx} className="w-7 h-7 flex items-center justify-center">
+                                <TooltipProvider>
+                                    <Tooltip>
+                                        <TooltipTrigger>{getVerificationMark(approval, fieldId)}</TooltipTrigger>
+                                        <TooltipContent><p>Stage {idx + 1} Verification</p></TooltipContent>
+                                    </Tooltip>
+                                </TooltipProvider>
+                            </div>
+                        )
+                    ))}
                     {isChecklistEnabled && (
                         <FormField
                             control={form.control}

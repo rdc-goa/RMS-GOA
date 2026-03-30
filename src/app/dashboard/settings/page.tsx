@@ -310,7 +310,7 @@ export default function SettingsPage() {
 
   useEffect(() => {
     const currentInstitute = profileForm.getValues('institute');
-    const appropriateInstitutes = selectedCampus === 'Goa' ? goaInstitutes : [...new Set(institutes)];
+    const appropriateInstitutes = selectedCampus === 'Goa' ? institutes : [...new Set(institutes)];
     if (currentInstitute && !appropriateInstitutes.includes(currentInstitute)) {
       profileForm.setValue('institute', '');
     }
@@ -354,7 +354,7 @@ export default function SettingsPage() {
         }
       }
       await updateDoc(userDocRef, updateData as any)
-      const updatedUser = { ...user, ...updateData }
+      const updatedUser = { ...user, ...updateData } as User;
       localStorage.setItem("user", JSON.stringify(updatedUser))
       setUser(updatedUser)
       toast({ title: "Profile updated successfully!" })
@@ -540,7 +540,7 @@ export default function SettingsPage() {
     await handleSystemSettingsSave({ ...systemSettings, croAssignments: currentAssignments.filter(c => c.email !== emailToRemove) });
   };
 
-  const handleApproverChange = async (stage: 1 | 2 | 3 | 4, email: string) => {
+  const handleApproverChange = async (stage: 1 | 2 | 3 | 4 | 5, email: string) => {
     if (!systemSettings) return;
     const approvers = systemSettings.incentiveApprovers || [];
     const otherApprovers = approvers.filter(a => a.stage !== stage);
@@ -597,7 +597,7 @@ export default function SettingsPage() {
   const handleWorkflowChange = async (claimType: string, stage: number, isChecked: boolean) => {
     if (!systemSettings) return;
     const currentWorkflows = systemSettings.incentiveApprovalWorkflows || {};
-    const currentStages = currentWorkflows[claimType] || [1, 2, 3, 4]; // Default to all if not set
+    const currentStages = currentWorkflows[claimType] || [1, 2, 3, 4, 5]; // Default to all if not set
 
     let newStages;
     if (isChecked) {
@@ -725,7 +725,7 @@ export default function SettingsPage() {
               <Separator />
               <div className="space-y-4"><div className="flex items-center gap-2"><Award className="h-5 w-5" /><Label className="text-base">Incentive Claim Management</Label></div><p className="text-sm text-muted-foreground">Enable or disable specific types of incentive claims for all users.</p><div className="grid grid-cols-2 md:grid-cols-3 gap-4">{incentiveClaimTypes.map(type => (<div key={type} className="flex items-center space-x-2"><Switch id={`incentive-${type.replace(/\s+/g, '-')}`} checked={systemSettings.enabledIncentiveTypes?.[type] !== false} onCheckedChange={(checked) => handleIncentiveTypeToggle(type, checked)} disabled={isSavingSettings} /><Label htmlFor={`incentive-${type.replace(/\s+/g, '-')}`}>{type}</Label></div>))}</div></div>
               <Separator />
-              <div className="space-y-4"><div className="flex items-center gap-2"><Award className="h-5 w-5" /><Label className="text-base">Incentive Approval Workflow</Label></div><p className="text-sm text-muted-foreground">Select which approval stages are required for each claim type. The first selected stage will be the starting point.</p><Table><TableHeader><TableRow><TableHead>Claim Type</TableHead><TableHead className="text-center">Stage 1</TableHead><TableHead className="text-center">Stage 2</TableHead><TableHead className="text-center">Stage 3</TableHead><TableHead className="text-center">Stage 4</TableHead></TableRow></TableHeader><TableBody>{incentiveClaimTypes.map(type => { const workflow = systemSettings.incentiveApprovalWorkflows?.[type] || [1, 2, 3, 4]; return (<TableRow key={type}><TableCell className="font-medium">{type}</TableCell>{[1, 2, 3, 4].map(stage => (<TableCell key={stage} className="text-center"><Checkbox checked={workflow.includes(stage)} onCheckedChange={(checked) => handleWorkflowChange(type, stage, !!checked)} disabled={isSavingSettings} /></TableCell>))}</TableRow>); })}</TableBody></Table></div>
+              <div className="space-y-4"><div className="flex items-center gap-2"><Award className="h-5 w-5" /><Label className="text-base">Incentive Approval Workflow</Label></div><p className="text-sm text-muted-foreground">Select which approval stages are required for each claim type. The first selected stage will be the starting point.</p><Table><TableHeader><TableRow><TableHead>Claim Type</TableHead><TableHead className="text-center">Stage 1</TableHead><TableHead className="text-center">Stage 2</TableHead><TableHead className="text-center">Stage 3</TableHead><TableHead className="text-center">Stage 4</TableHead><TableHead className="text-center">Stage 5</TableHead></TableRow></TableHeader><TableBody>{incentiveClaimTypes.map(type => { const workflow = systemSettings.incentiveApprovalWorkflows?.[type] || [1, 2, 3, 4, 5]; return (<TableRow key={type}><TableCell className="font-medium">{type}</TableCell>{[1, 2, 3, 4, 5].map(stage => (<TableCell key={stage} className="text-center"><Checkbox checked={workflow.includes(stage)} onCheckedChange={(checked) => handleWorkflowChange(type, stage, !!checked)} disabled={isSavingSettings} /></TableCell>))}</TableRow>); })}</TableBody></Table></div>
               <Separator />
               <div className="space-y-4"><div className="flex items-center gap-2"><Mail className="h-5 w-5" /><Label className="text-base">Do Not Disturb (DND) Email</Label></div><p className="text-sm text-muted-foreground">The email address entered here will be excluded from all automated system email notifications.</p><Input placeholder="dnd.user@paruluniversity.ac.in" value={systemSettings.dndEmail || ''} onChange={(e) => setSystemSettings(prev => prev ? { ...prev, dndEmail: e.target.value } : null)} onBlur={(e) => handleSystemSettingsSave({ ...systemSettings, dndEmail: e.target.value })} disabled={isSavingSettings} /></div>
               <Separator />
@@ -742,9 +742,9 @@ export default function SettingsPage() {
                   <Label className="text-base">Incentive Approval Workflow</Label>
                   <p className="text-sm text-muted-foreground">Define the email addresses for the four stages of incentive claim approval.</p>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    {[1, 2, 3, 4].map(stage => {
+                    {[1, 2, 3, 4, 5].map(stage => {
                       const approver = systemSettings?.incentiveApprovers?.find(a => a.stage === stage);
-                      return (<div key={stage} className="p-4 border rounded-lg space-y-3"><FormItem><FormLabel>Stage {stage} Approver Email</FormLabel><Input type="email" placeholder={`approver.stage${stage}@paruluniversity.ac.in`} value={approver?.email || ''} onChange={(e) => handleApproverChange(stage as 1 | 2 | 3 | 4, e.target.value)} disabled={isSavingSettings} /></FormItem></div>);
+                      return (<div key={stage} className="p-4 border rounded-lg space-y-3"><FormItem><FormLabel>Stage {stage} Approver Email</FormLabel><Input type="email" placeholder={`approver.stage${stage}@paruluniversity.ac.in`} value={approver?.email || ''} onChange={(e) => handleApproverChange(stage as 1 | 2 | 3 | 4 | 5, e.target.value)} disabled={isSavingSettings} /></FormItem></div>);
                     })}
                   </div>
                 </Form>
@@ -863,7 +863,7 @@ export default function SettingsPage() {
                           </SelectTrigger>
                         </FormControl>
                         <SelectContent>
-                          {[...new Set(selectedCampus === 'Goa' ? goaInstitutes : institutes)].map((i, index) => (
+                          {[...new Set(selectedCampus === 'Goa' ? institutes : institutes)].map((i, index) => (
                             <SelectItem key={`${i}-${index}`} value={i}>
                               {i}
                             </SelectItem>

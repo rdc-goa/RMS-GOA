@@ -108,9 +108,10 @@ export default function LoginPage() {
 
       const domainCheck = await isEmailDomainAllowed(firebaseUser.email!)
 
-      if (staffResult.success) {
-        userDataFromExcel = staffResult.data
-        const userType = staffResult.data.type
+      if (staffResult.success && Array.isArray(staffResult.data) && staffResult.data.length > 0) {
+        const staffData = staffResult.data[0]
+        userDataFromExcel = staffData
+        const userType = staffData.type
 
         if (userType === "CRO") {
           role = "CRO"

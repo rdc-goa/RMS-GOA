@@ -590,7 +590,7 @@ export async function updateSystemSettings(settings: SystemSettings): Promise<{ 
 }
 
 export async function uploadApproverSignature(
-  stage: 2 | 3 | 4,
+  stage: 1 | 2 | 3 | 4 | 5,
   signatureDataUrl: string
 ): Promise<{ success: boolean; url?: string; error?: string }> {
   try {
