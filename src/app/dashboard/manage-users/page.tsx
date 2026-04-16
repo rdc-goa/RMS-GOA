@@ -727,7 +727,7 @@ export default function ManageUsersPage() {
                 const isActionsDisabled = isCurrentUserLoggedIn || (isPrimarySuperAdmin && currentUser?.email !== PRIMARY_SUPER_ADMIN_EMAIL);
                 const profileLink = user.campus === 'Goa' ? `/goa/${user.misId}` : `/profile/${user.misId}`;
                 return (
-                  <Card key={user.uid} className="flex flex-col">
+                  <Card key={user.uid} className="flex flex-col h-full">
                     <CardHeader className="flex-row items-start justify-between gap-4 pb-2">
                         <div className="flex items-center gap-2">
                            <Checkbox

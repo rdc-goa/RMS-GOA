@@ -1185,7 +1185,7 @@ export default function IncentiveClaimPage() {
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {enabledClaimTypes.map(claim => {
                   const cardContent = (
-                    <Card className={`flex flex-col w-full transition-colors ${claim.disabled ? 'bg-muted/50' : 'hover:bg-accent/50 dark:hover:bg-accent/20'}`}>
+                    <Card className={`flex flex-col w-full h-full transition-colors ${claim.disabled ? 'bg-muted/50' : 'hover:bg-accent/50 dark:hover:bg-accent/20'}`}>
                       <CardHeader>
                         <claim.icon className={`h-7 w-7 mb-2 ${claim.disabled ? 'text-muted-foreground' : 'text-primary'}`} />
                         <CardTitle>{claim.title}</CardTitle>
@@ -1202,16 +1202,16 @@ export default function IncentiveClaimPage() {
                   );
 
                   return (
-                    <div key={claim.href}>
+                    <div key={claim.href} className="flex">
                         {claim.disabled ? (
                              <TooltipProvider>
                                 <Tooltip>
-                                    <TooltipTrigger asChild><div className="flex cursor-not-allowed">{cardContent}</div></TooltipTrigger>
+                                    <TooltipTrigger asChild><div className="flex h-full w-full cursor-not-allowed">{cardContent}</div></TooltipTrigger>
                                     <TooltipContent><p>{claim.tooltip}</p></TooltipContent>
                                 </Tooltip>
                             </TooltipProvider>
                         ) : (
-                            <Link href={claim.href} className="flex">{cardContent}</Link>
+                            <Link href={claim.href} className="flex h-full w-full">{cardContent}</Link>
                         )}
                     </div>
                   );

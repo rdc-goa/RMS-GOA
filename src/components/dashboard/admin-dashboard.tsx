@@ -193,7 +193,7 @@ export function AdminDashboard() {
             {statCards.map((card, index) => (
             <Card 
                 key={card.title} 
-                className="animate-in fade-in-0 slide-in-from-bottom-4"
+                className="animate-in fade-in-0 slide-in-from-bottom-4 h-full"
                 style={{ animationFillMode: 'backwards', animationDelay: `${index * 100}ms` }}
             >
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">

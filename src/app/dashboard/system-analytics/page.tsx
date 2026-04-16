@@ -200,7 +200,7 @@ export default function SystemAnalyticsPage() {
            { label: 'Active Users', val: analytics.summary.actUsers, sub: `Unique active in last ${timeRange} days`, icon: Users, color: 'text-indigo-600', bg: 'bg-indigo-50' },
            { label: 'Audit Completeness', val: analytics.summary.auditComp + '%', sub: 'Full trace availability', icon: ClipboardCheck, color: 'text-emerald-600', bg: 'bg-emerald-50' },
          ].map((item, i) => (
-           <Card key={i} className="shadow-sm border-muted/50 hover:border-primary/20 transition-colors">
+           <Card key={i} className="shadow-sm border-muted/50 hover:border-primary/20 transition-colors h-full">
              <CardHeader className="pb-2 flex flex-row items-center justify-between">
                 <CardTitle className="text-xs font-semibold uppercase text-muted-foreground">{item.label}</CardTitle>
                 <div className={`p-1.5 rounded-md ${item.bg} ${item.color}`}>
