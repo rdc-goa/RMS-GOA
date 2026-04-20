@@ -521,7 +521,7 @@ export function ApprovalDialog({ claim, approver, claimant, stageIndex, isOpen, 
     }, [isConferenceClaim, isResearchPaperClaim, claim, claimant]);
 
     const formSchemaWithVerification = useMemo(() => approvalSchema.refine(data => {
-        if (!isChecklistEnabled) return true;
+        if (!isChecklistEnabled || data.action === 'reject') return true;
         return fieldsToVerify.every(fieldId => typeof data.verifiedFields?.[fieldId] === 'boolean');
     }, {
         message: 'You must verify all visible fields (mark as correct or incorrect).',
@@ -577,7 +577,7 @@ export function ApprovalDialog({ claim, approver, claimant, stageIndex, isOpen, 
 
     const action = form.watch('action');
     const showAmountField = action !== 'reject';
-    const showCommentsField = (showActionButtons && stageIndex < 2) || (stageIndex >= 1);
+    const showCommentsField = action === 'reject' || (!isChecklistEnabled && stageIndex < 2) || (stageIndex >= 1);
 
 
     const handleSubmit = async (values: ApprovalFormData) => {
@@ -693,7 +693,6 @@ export function ApprovalDialog({ claim, approver, claimant, stageIndex, isOpen, 
                                 </div>
                             )}
 
-                            {showActionButtons && (
                                 <FormField
                                     name="action"
                                     control={form.control}
@@ -702,15 +701,23 @@ export function ApprovalDialog({ claim, approver, claimant, stageIndex, isOpen, 
                                             <FormLabel>Your Action</FormLabel>
                                             <FormControl>
                                                 <RadioGroup onValueChange={field.onChange} defaultValue={field.value} className="flex space-x-4">
-                                                    <FormItem className="flex items-center space-x-2"><FormControl><RadioGroupItem value="approve" /></FormControl><FormLabel className="font-normal">Approve</FormLabel></FormItem>
-                                                    <FormItem className="flex items-center space-x-2"><FormControl><RadioGroupItem value="reject" /></FormControl><FormLabel className="font-normal">Reject</FormLabel></FormItem>
+                                                    {isChecklistEnabled ? (
+                                                        <>
+                                                            <FormItem className="flex items-center space-x-2"><FormControl><RadioGroupItem value="verify" /></FormControl><FormLabel className="font-normal">Verify & Forward</FormLabel></FormItem>
+                                                            <FormItem className="flex items-center space-x-2"><FormControl><RadioGroupItem value="reject" /></FormControl><FormLabel className="font-normal">Reject</FormLabel></FormItem>
+                                                        </>
+                                                    ) : (
+                                                        <>
+                                                            <FormItem className="flex items-center space-x-2"><FormControl><RadioGroupItem value="approve" /></FormControl><FormLabel className="font-normal">Approve</FormLabel></FormItem>
+                                                            <FormItem className="flex items-center space-x-2"><FormControl><RadioGroupItem value="reject" /></FormControl><FormLabel className="font-normal">Reject</FormLabel></FormItem>
+                                                        </>
+                                                    )}
                                                 </RadioGroup>
                                             </FormControl>
                                             <FormMessage />
                                         </FormItem>
                                     )}
                                 />
-                            )}
                             {showAmountField && (
                                 <FormField
                                     name="amount"
@@ -752,7 +759,7 @@ export function ApprovalDialog({ claim, approver, claimant, stageIndex, isOpen, 
                     <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
                     <Button type="submit" form="approval-form" disabled={isSubmitting}>
                         {isSubmitting ? <><Loader2 className="mr-2 h-4 w-4 animate-spin"/> Submitting...</> : (
-                            showActionButtons ? 'Submit Action' : 'Submit & Forward'
+                            action === 'reject' ? 'Submit Rejection' : (!isChecklistEnabled ? 'Submit Action' : 'Verify & Forward')
                         )}
                     </Button>
                 </DialogFooter>

@@ -438,6 +438,12 @@ export async function processIncentiveClaimAction(
                     <p style="color:#e0e0e0;">
                         After careful review, your application has been <strong style="color:#ff5252;">rejected</strong>.
                     </p>
+                    <div style="background: rgba(255,255,255,0.05); padding: 15px; border-radius: 8px; border-left: 4px solid #ff5252; margin: 20px 0;">
+                      <p style="color:#e0e0e0; margin: 0;">
+                        <strong>Approver's Comments:</strong><br/>
+                        ${data.comments || 'No specific comments provided.'}
+                      </p>
+                    </div>
                     <p style="color:#e0e0e0;">For more information, please visit the portal or contact the RDC office.</p>
                     ${EMAIL_STYLES.footer}
                 </div>
