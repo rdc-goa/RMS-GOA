@@ -12,6 +12,8 @@ import Link from 'next/link';
 import { Tooltip, TooltipProvider, TooltipTrigger, TooltipContent } from '../ui/tooltip';
 import { generateOfficeNotingForClaim } from '@/app/document-actions';
 import { isEligibleForFinancialDisbursement } from '@/lib/incentive-eligibility';
+import { IncentiveCalculationBreakdown } from './calculation-breakdown';
+import { Calculator } from 'lucide-react';
 
 
 function getVerificationMark(approval: ApprovalStage | null | undefined, fieldId: string) {
@@ -29,102 +31,10 @@ export function ClaimDetailsDialog({ claim, open, onOpenChange, currentUser, cla
     // Check if amount hasn't been changed by any approver
     const isAmountUnchanged = useMemo(() => {
         if (claim && claim.claimType === 'Research Papers' && claim.calculatedIncentive && claim.finalApprovedAmount) {
-            // If the amounts match, it means no approver has changed the amount
             return claim.calculatedIncentive === claim.finalApprovedAmount;
         }
         return false;
     }, [claim]);
-
-    // Calculate incentive breakdown for research papers
-    const calculateIncentiveBreakdown = () => {
-        if (!claim || claim.claimType !== 'Research Papers') return null;
-        
-        try {
-            const { journalClassification, publicationType, wasApcPaidByUniversity, isPuNameInPublication, authors = [] } = claim;
-            const internalAuthors = authors.filter(a => !a.isExternal);
-            const mainAuthors = internalAuthors.filter(a => ['First Author', 'Corresponding Author', 'First & Corresponding Author'].includes(a.role));
-            const coAuthors = internalAuthors.filter(a => a.role === 'Co-Author');
-
-            // Base incentive
-            let baseAmount = 0;
-            switch (journalClassification) {
-                case 'Nature/Science/Lancet': baseAmount = 50000; break;
-                case 'Top 1% Journals': baseAmount = 25000; break;
-                case 'Q1': baseAmount = 15000; break;
-                case 'Q2': baseAmount = 10000; break;
-                case 'Q3': baseAmount = 6000; break;
-                case 'Q4': baseAmount = 4000; break;
-            }
-
-            // Apply publication type adjustment
-            let adjustedAmount = baseAmount;
-            if (publicationType === 'Case Reports/Short Surveys') {
-                adjustedAmount = baseAmount * 0.9;
-            } else if (publicationType === 'Review Articles' && ['Q3', 'Q4'].includes(journalClassification || '')) {
-                adjustedAmount = baseAmount * 0.8;
-            } else if (publicationType === 'Letter to the Editor/Editorial') {
-                adjustedAmount = 2500;
-            }
-
-            // Apply university-level deductions
-            let deductedAmount = adjustedAmount;
-            const deductions = [];
-            
-            if (wasApcPaidByUniversity) {
-                deductedAmount /= 2;
-                deductions.push('APC Paid by University (÷2)');
-            }
-            if (isPuNameInPublication === false) {
-                deductedAmount /= 2;
-                deductions.push('PU Name Not in Publication (÷2)');
-            }
-
-            // Calculate share based on author composition
-            let finalAmount = 0;
-            let authorShare = 'N/A';
-
-            if (internalAuthors.length === 0) {
-                finalAmount = 0;
-                authorShare = 'No internal authors';
-            } else if (internalAuthors.length === 1) {
-                if (mainAuthors.length === 1) {
-                    finalAmount = deductedAmount;
-                    authorShare = 'Sole main author (100%)';
-                } else if (coAuthors.length === 1) {
-                    finalAmount = deductedAmount * 0.8;
-                    authorShare = 'Sole co-author (80%)';
-                }
-            } else if (mainAuthors.length > 0 && coAuthors.length > 0) {
-                const mainShare = (deductedAmount * 0.7) / mainAuthors.length;
-                const coShare = (deductedAmount * 0.3) / coAuthors.length;
-                finalAmount = mainAuthors.length > 0 ? mainShare : coShare;
-                authorShare = `Mixed: Main (70% ÷ ${mainAuthors.length}), Co-Author (30% ÷ ${coAuthors.length})`;
-            } else if (mainAuthors.length === 0 && coAuthors.length > 1) {
-                finalAmount = (deductedAmount * 0.8) / coAuthors.length;
-                authorShare = `Multiple co-authors (80% ÷ ${coAuthors.length})`;
-            } else if (mainAuthors.length > 0) {
-                finalAmount = deductedAmount / mainAuthors.length;
-                authorShare = `Multiple main authors (÷ ${mainAuthors.length})`;
-            }
-
-            return {
-                baseAmount,
-                publicationTypeAdjustment: publicationType === 'Case Reports/Short Surveys' ? '0.9×' : publicationType === 'Review Articles' && ['Q3', 'Q4'].includes(journalClassification || '') ? '0.8×' : '1.0×',
-                adjustedAmount: Math.round(adjustedAmount),
-                deductions,
-                deductedAmount: Math.round(deductedAmount),
-                internalAuthorsCount: internalAuthors.length,
-                mainAuthorsCount: mainAuthors.length,
-                coAuthorsCount: coAuthors.length,
-                authorShare,
-                finalAmount: Math.round(finalAmount),
-            };
-        } catch (error) {
-            return null;
-        }
-    };
-
-    const breakdown = isAmountUnchanged ? calculateIncentiveBreakdown() : null;
     
     const handleDownloadNoting = async () => {
         if (!isEligibleForFinancialDisbursement(claim)) {
@@ -467,54 +377,15 @@ a.href = url;
                             {renderDetail("Final Approved Amount", claim.finalApprovedAmount?.toLocaleString('en-IN', { style: 'currency', currency: 'INR' }))}
                             {renderDetail("Payment Sheet Ref No.", claim.paymentSheetRef)}
                             {renderDetail("Payment Remarks", claim.paymentSheetRemarks)}
-                            
-                            {breakdown && (
-                                <div className="space-y-2 mt-4 bg-blue-50 dark:bg-blue-950 rounded-lg p-3 border border-blue-200 dark:border-blue-800">
-                                    <h5 className="text-sm font-semibold text-blue-900 dark:text-blue-100">Incentive Calculation Breakdown</h5>
-                                    <div className="space-y-1.5 text-xs">
-                                        <div className="grid grid-cols-2 gap-2">
-                                            <span className="text-blue-700 dark:text-blue-300">1. Base Amount (Q-Rating):</span>
-                                            <span className="font-medium text-right">₹{breakdown.baseAmount.toLocaleString('en-IN')}</span>
-                                        </div>
-                                        <div className="grid grid-cols-2 gap-2">
-                                            <span className="text-blue-700 dark:text-blue-300">2. Publication Type Adjustment:</span>
-                                            <span className="font-medium text-right">×{breakdown.publicationTypeAdjustment}</span>
-                                        </div>
-                                        <div className="grid grid-cols-2 gap-2">
-                                            <span className="text-blue-700 dark:text-blue-300">3. After Adjustment:</span>
-                                            <span className="font-medium text-right">₹{breakdown.adjustedAmount.toLocaleString('en-IN')}</span>
-                                        </div>
-                                        {breakdown.deductions.length > 0 && (
-                                            <>
-                                                <div className="border-t border-blue-200 dark:border-blue-800 pt-1.5 mt-1.5">
-                                                    <p className="text-blue-700 dark:text-blue-300 font-medium mb-1">University-level Deductions:</p>
-                                                    {breakdown.deductions.map((deduction, i) => (
-                                                        <div key={i} className="grid grid-cols-2 gap-2 ml-2">
-                                                            <span className="text-blue-600 dark:text-blue-400">• {deduction}</span>
-                                                        </div>
-                                                    ))}
-                                                </div>
-                                                <div className="grid grid-cols-2 gap-2 font-semibold border-t border-blue-200 dark:border-blue-800 pt-1.5 mt-1.5">
-                                                    <span className="text-blue-900 dark:text-blue-100">After All Deductions:</span>
-                                                    <span className="text-right text-blue-900 dark:text-blue-100">₹{breakdown.deductedAmount.toLocaleString('en-IN')}</span>
-                                                </div>
-                                            </>
-                                        )}
-                                        <div className="border-t border-blue-200 dark:border-blue-800 pt-1.5 mt-1.5">
-                                            <p className="text-blue-700 dark:text-blue-300 font-medium mb-1">Author Distribution:</p>
-                                            <div className="ml-2 space-y-0.5">
-                                                <div className="text-blue-600 dark:text-blue-400">Internal Authors: {breakdown.internalAuthorsCount}</div>
-                                                <div className="text-blue-600 dark:text-blue-400">Main Authors: {breakdown.mainAuthorsCount}, Co-Authors: {breakdown.coAuthorsCount}</div>
-                                                <div className="text-blue-600 dark:text-blue-400 text-xs italic">{breakdown.authorShare}</div>
-                                            </div>
-                                        </div>
-                                        <div className="grid grid-cols-2 gap-2 font-bold border-t border-blue-200 dark:border-blue-800 pt-1.5 mt-1.5 bg-blue-100 dark:bg-blue-900 p-2 rounded">
-                                            <span className="text-blue-900 dark:text-blue-50">Final Incentive per Author:</span>
-                                            <span className="text-right text-green-700 dark:text-green-400">₹{breakdown.finalAmount.toLocaleString('en-IN')}</span>
-                                        </div>
-                                    </div>
-                                </div>
-                            )}
+                        </>
+                    )}
+
+                    {isAmountUnchanged && claim.claimType && ['Research Papers', 'Patents', 'Books', 'Conference Presentations'].includes(claim.claimType) && (
+                        <>
+                            <hr className="my-4" />
+                             <IncentiveCalculationBreakdown claimData={claim} user={claimant || currentUser} />
+                        </>
+                    )}
                             
                             {claim.approvals && claim.approvals.length > 0 && (
                                 <div className="space-y-2 pt-2">
@@ -540,8 +411,6 @@ a.href = url;
                                     {renderDetail("City", claim.bankDetails.city)}
                                     {renderDetail("IFSC Code", claim.bankDetails.ifscCode)}
                                 </>
-                            )}
-                        </>
                     )}
                 </div>
                 <DialogFooter className="gap-2">

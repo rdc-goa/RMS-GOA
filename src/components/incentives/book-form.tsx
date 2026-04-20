@@ -29,6 +29,7 @@ import { submitIncentiveClaimViaApi } from '@/lib/incentive-claim-client';
 import { calculateBookIncentive } from '@/app/incentive-calculation';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../ui/table';
 import { Badge } from '../ui/badge';
+import { IncentiveCalculationBreakdown } from './calculation-breakdown';
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
 
@@ -96,7 +97,7 @@ type BookFormValues = z.infer<typeof bookSchema>;
 
 const coAuthorRoles: Author['role'][] = ['First Author', 'Corresponding Author', 'Co-Author', 'First & Corresponding Author'];
 
-function ReviewDetails({ data, onEdit }: { data: BookFormValues; onEdit: () => void }) {
+function ReviewDetails({ data, user, onEdit }: { data: BookFormValues; user: User | null; onEdit: () => void }) {
     const renderDetail = (label: string, value?: string | number | boolean | string[] | Author[]) => {
         if (!value && value !== 0 && value !== false) return null;
         
@@ -181,6 +182,10 @@ function ReviewDetails({ data, onEdit }: { data: BookFormValues; onEdit: () => v
                 {renderDetail("Publication Order in Year", data.publicationOrderInYear)}
                 {renderDetail("Proof of Publication", bookProofFile?.name)}
                 {renderDetail("Scopus Proof", scopusProofFile?.name)}
+                
+                <div className="mt-8 pt-4 border-t">
+                  <IncentiveCalculationBreakdown claimData={{ ...data, claimType: 'Books' } as any} user={user} />
+                </div>
             </CardContent>
         </Card>
     );
@@ -565,7 +570,7 @@ export function BookForm() {
       <Card>
         <form onSubmit={form.handleSubmit(onFinalSubmit)}>
           <CardContent className="pt-6">
-            <ReviewDetails data={form.getValues()} onEdit={() => setCurrentStep(1)} />
+            <ReviewDetails data={form.getValues()} user={user} onEdit={() => setCurrentStep(1)} />
           </CardContent>
           <CardFooter>
             <Button type="submit" disabled={isSubmitting || bankDetailsMissing}>
@@ -707,10 +712,10 @@ export function BookForm() {
                 <FormField name="publisherWebsite" control={form.control} render={({ field }) => ( <FormItem><FormLabel>Publisher Website</FormLabel><FormControl><Input type="url" placeholder="https://example.com" {...field} /></FormControl><FormMessage /></FormItem> )} />
                 <FormField name="publicationOrderInYear" control={form.control} render={({ field }) => ( <FormItem><FormLabel>Is this your First/Second/Third Chapter/Book in the calendar year?</FormLabel><Select onValueChange={field.onChange} value={field.value}><FormControl><SelectTrigger><SelectValue placeholder="Select publication order" /></SelectTrigger></FormControl><SelectContent><SelectItem value="First">First</SelectItem><SelectItem value="Second">Second</SelectItem><SelectItem value="Third">Third</SelectItem></SelectContent></Select><FormMessage /></FormItem> )} />
                  {calculatedIncentive !== null && (
-                    <div className="p-4 bg-secondary rounded-md">
-                        <p className="text-sm font-medium">Tentative Eligible Incentive Amount: <span className="font-bold text-lg text-primary">₹{calculatedIncentive.toLocaleString('en-IN')}</span></p>
-                        <p className="text-xs text-muted-foreground">This is your individual share based on policy, publication type, and author roles.</p>
-                    </div>
+                    <IncentiveCalculationBreakdown 
+                      claimData={{ ...formValues, claimType: 'Books' } as any} 
+                      user={user} 
+                    />
                 )}
                 <FormField name="bookProof" control={form.control} render={({ field: { value, onChange, ...fieldProps } }) => ( <FormItem><FormLabel>Attach copy of Book / Book Chapter (First Page, Publisher Page, Index, Abstract) (PDF)</FormLabel><FormControl><Input {...fieldProps} type="file" onChange={(e) => onChange(e.target.files)} /></FormControl><FormMessage /></FormItem> )} />
                 {isScopusIndexed && <FormField name="scopusProof" control={form.control} render={({ field: { value, onChange, ...fieldProps } }) => ( <FormItem><FormLabel>Attach Proof of indexed in Scopus (PDF)</FormLabel><FormControl><Input {...fieldProps} type="file" onChange={(e) => onChange(e.target.files)} /></FormControl><FormMessage /></FormItem> )} />}

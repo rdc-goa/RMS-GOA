@@ -41,6 +41,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from ".
 import { Badge } from "../ui/badge"
 import { findUserByMisId } from "@/app/userfinding"
 import { isEligibleForFinancialDisbursement } from "@/lib/incentive-eligibility"
+import { IncentiveCalculationBreakdown } from "./calculation-breakdown"
 
 
 const MAX_FILES = 10
@@ -253,7 +254,7 @@ const SPECIAL_POLICY_FACULTIES = [
   "Faculty of Engineering & Technology"
 ];
 
-function ReviewDetails({ data, onEdit }: { data: ResearchPaperFormValues; onEdit: () => void }) {
+function ReviewDetails({ data, user, onEdit }: { data: ResearchPaperFormValues; user: User | null; onEdit: () => void }) {
   const renderDetail = (label: string, value?: string | number | boolean | string[] | Author[]) => {
     if (!value && value !== 0 && value !== false) return null;
 
@@ -336,6 +337,10 @@ function ReviewDetails({ data, onEdit }: { data: ResearchPaperFormValues; onEdit
         {renderDetail("PU Student Names", data.puStudentNames)}
         {renderDetail("SDGs", data.sdgGoals)}
         {renderDetail("Publication Proof", fileList)}
+
+        <div className="mt-8 pt-4 border-t">
+          <IncentiveCalculationBreakdown claimData={data as any} user={user} />
+        </div>
       </CardContent>
     </Card>
   );
@@ -851,7 +856,7 @@ export function ResearchPaperForm() {
       <Card>
         <form onSubmit={form.handleSubmit(onFinalSubmit)}>
           <CardContent className="pt-6">
-            <ReviewDetails data={form.getValues()} onEdit={() => setCurrentStep(1)} />
+            <ReviewDetails data={form.getValues()} user={user} onEdit={() => setCurrentStep(1)} />
           </CardContent>
           <CardFooter>
             <Button type="submit" disabled={isSubmitting || bankDetailsMissing || orcidOrMisIdMissing}>
@@ -1424,21 +1429,10 @@ export function ResearchPaperForm() {
                 />
 
                 {calculatedIncentive !== null && (
-                  <div className={`p-4 rounded-md ${calculatedIncentive === 0 ? 'bg-yellow-100 dark:bg-yellow-900/30' : 'bg-secondary'}`}>
-                    <p className="text-sm font-medium">Tentative Eligible Incentive Amount: <span className="font-bold text-lg text-primary">₹{calculatedIncentive.toLocaleString('en-IN')}</span></p>
-                    {calculatedIncentive === 0 && formValues.authorPosition && ['6th', '7th', '8th', '9th', '10th'].includes(formValues.authorPosition) && (
-                      (() => {
-                        const userRole = formValues.authors.find(a => a.email.toLowerCase() === user?.email.toLowerCase())?.role;
-                        if (userRole === 'Co-Author') {
-                          return <p className="text-xs text-yellow-700 dark:text-yellow-300 mt-2">As a co-author beyond the 5th position, this claim qualifies for ARPS score but not monetary incentive.</p>;
-                        }
-                        return null;
-                      })()
-                    )}
-                    {!(calculatedIncentive === 0 && formValues.authorPosition && ['6th', '7th', '8th', '9th', '10th'].includes(formValues.authorPosition) && formValues.authors.find(a => a.email.toLowerCase() === user?.email.toLowerCase())?.role === 'Co-Author') && (
-                      <p className="text-xs text-muted-foreground">This is your individual share based on the policy, publication type, and author roles.</p>
-                    )}
-                  </div>
+                  <IncentiveCalculationBreakdown 
+                    claimData={{ ...formValues, claimType: 'Research Papers' } as any} 
+                    user={user} 
+                  />
                 )}
 
                 <FormField

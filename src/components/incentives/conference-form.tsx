@@ -46,6 +46,7 @@ import { submitIncentiveClaimViaApi } from '@/lib/incentive-claim-client';
 import { parseISO, addYears, format } from 'date-fns';
 import { calculateConferenceIncentive } from '@/app/incentive-calculation';
 import { WorkshopForm } from '@/components/incentives/workshop-form';
+import { IncentiveCalculationBreakdown } from './calculation-breakdown';
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
 
@@ -132,7 +133,7 @@ const conferenceVenueOptions = {
 const authorCountOptions = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10+'];
 const authorTypeOptions = ['First Author', 'Corresponding Author', 'Co-Author'];
 
-function ReviewDetails({ data, onEdit }: { data: ConferenceFormValues; onEdit: () => void }) {
+function ReviewDetails({ data, user, onEdit }: { data: ConferenceFormValues; user: User | null; onEdit: () => void }) {
   const renderDetail = (label: string, value?: string | number | boolean) => {
     if (!value && value !== 0 && value !== false) return null;
     return (
@@ -177,6 +178,10 @@ function ReviewDetails({ data, onEdit }: { data: ConferenceFormValues; onEdit: (
         {renderDetail('PU Name in Paper?', data.isPuNamePresent ? 'Yes' : 'No')}
         {renderDetail('Won a Prize?', data.wonPrize ? 'Yes' : 'No')}
         {renderDetail('Prize Details', data.prizeDetails)}
+
+        <div className="mt-8 pt-4 border-t">
+          <IncentiveCalculationBreakdown claimData={{ ...data, claimType: 'Conference Presentations' } as any} user={user} />
+        </div>
       </CardContent>
     </Card>
   );
@@ -544,7 +549,7 @@ function ConferenceFormContent({ onEventTypeChange }: ConferenceFormContentProps
       <Card>
         <form onSubmit={form.handleSubmit(onFinalSubmit)}>
           <CardContent className="pt-6">
-            <ReviewDetails data={form.getValues()} onEdit={() => setCurrentStep(1)} />
+            <ReviewDetails data={form.getValues()} user={user} onEdit={() => setCurrentStep(1)} />
           </CardContent>
           <CardFooter>
             <Button type="submit" disabled={isFormDisabled || bankDetailsMissing || orcidOrMisIdMissing}>
@@ -1144,21 +1149,11 @@ function ConferenceFormContent({ onEventTypeChange }: ConferenceFormContentProps
               </div>
             </div>
 
-            <div className="p-4 bg-secondary rounded-md space-y-2 mt-6">
-              <p className="text-sm font-medium">Tentative Eligible Reimbursement Amount:</p>
-              {calculatedIncentive !== null ? (
-                <>
-                  <p className="font-bold text-2xl text-primary">₹{calculatedIncentive.toLocaleString('en-IN')}</p>
-                  {calculationBreakdown && (
-                    <div className="text-xs text-muted-foreground">
-                      <div>Eligible expenses: ₹{(calculationBreakdown.eligibleExpenses ?? 0).toLocaleString('en-IN')}</div>
-                      <div>Policy cap: ₹{(calculationBreakdown.maxReimbursement ?? 0).toLocaleString('en-IN')}</div>
-                    </div>
-                  )}
-                </>
-              ) : (
-                <p className="text-muted-foreground">Fill out the form to see an estimate.</p>
-              )}
+            <div className="mt-6">
+              <IncentiveCalculationBreakdown 
+                  claimData={{ ...form.getValues(), claimType: 'Conference Presentations' } as any} 
+                  user={user} 
+              />
             </div>
           </CardContent>
           <CardFooter className="flex justify-between">

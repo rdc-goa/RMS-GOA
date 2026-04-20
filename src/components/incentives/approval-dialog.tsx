@@ -18,6 +18,7 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage, FormDescription } from '@/components/ui/form';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
@@ -27,6 +28,7 @@ import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
 import Link from 'next/link';
 import { Tooltip, TooltipProvider, TooltipTrigger, TooltipContent } from '../ui/tooltip';
+import { IncentiveCalculationBreakdown } from './calculation-breakdown';
 
 interface ApprovalDialogProps {
   claim: IncentiveClaim;
@@ -414,94 +416,7 @@ function ResearchPaperClaimDetails({
         );
     };
 
-    // Calculate incentive breakdown for display
-    const calculateIncentiveBreakdown = () => {
-        try {
-            const { journalClassification, publicationType, wasApcPaidByUniversity, isPuNameInPublication, authors = [] } = claim;
-            const internalAuthors = authors.filter(a => !a.isExternal);
-            const mainAuthors = internalAuthors.filter(a => ['First Author', 'Corresponding Author', 'First & Corresponding Author'].includes(a.role));
-            const coAuthors = internalAuthors.filter(a => a.role === 'Co-Author');
-
-            // Base incentive
-            let baseAmount = 0;
-            switch (journalClassification) {
-                case 'Nature/Science/Lancet': baseAmount = 50000; break;
-                case 'Top 1% Journals': baseAmount = 25000; break;
-                case 'Q1': baseAmount = 15000; break;
-                case 'Q2': baseAmount = 10000; break;
-                case 'Q3': baseAmount = 6000; break;
-                case 'Q4': baseAmount = 4000; break;
-            }
-
-            // Apply publication type adjustment
-            let adjustedAmount = baseAmount;
-            if (publicationType === 'Case Reports/Short Surveys') {
-                adjustedAmount = baseAmount * 0.9;
-            } else if (publicationType === 'Review Articles' && ['Q3', 'Q4'].includes(journalClassification || '')) {
-                adjustedAmount = baseAmount * 0.8;
-            } else if (publicationType === 'Letter to the Editor/Editorial') {
-                adjustedAmount = 2500;
-            }
-
-            // Apply university-level deductions
-            let deductedAmount = adjustedAmount;
-            const deductions = [];
-            
-            if (wasApcPaidByUniversity) {
-                deductedAmount /= 2;
-                deductions.push('APC Paid by University (÷2)');
-            }
-            if (isPuNameInPublication === false) {
-                deductedAmount /= 2;
-                deductions.push('PU Name Not in Publication (÷2)');
-            }
-
-            // Calculate share based on author composition
-            let finalAmount = 0;
-            let authorShare = 'N/A';
-
-            if (internalAuthors.length === 0) {
-                finalAmount = 0;
-                authorShare = 'No internal authors';
-            } else if (internalAuthors.length === 1) {
-                if (mainAuthors.length === 1) {
-                    finalAmount = deductedAmount;
-                    authorShare = 'Sole main author (100%)';
-                } else if (coAuthors.length === 1) {
-                    finalAmount = deductedAmount * 0.8;
-                    authorShare = 'Sole co-author (80%)';
-                }
-            } else if (mainAuthors.length > 0 && coAuthors.length > 0) {
-                const mainShare = (deductedAmount * 0.7) / mainAuthors.length;
-                const coShare = (deductedAmount * 0.3) / coAuthors.length;
-                finalAmount = mainAuthors.length > 0 ? mainShare : coShare;
-                authorShare = `Mixed: Main (70% ÷ ${mainAuthors.length}), Co-Author (30% ÷ ${coAuthors.length})`;
-            } else if (mainAuthors.length === 0 && coAuthors.length > 1) {
-                finalAmount = (deductedAmount * 0.8) / coAuthors.length;
-                authorShare = `Multiple co-authors (80% ÷ ${coAuthors.length})`;
-            } else if (mainAuthors.length > 0) {
-                finalAmount = deductedAmount / mainAuthors.length;
-                authorShare = `Multiple main authors (÷ ${mainAuthors.length})`;
-            }
-
-            return {
-                baseAmount,
-                publicationTypeAdjustment: publicationType === 'Case Reports/Short Surveys' ? '0.9×' : publicationType === 'Review Articles' && ['Q3', 'Q4'].includes(journalClassification || '') ? '0.8×' : '1.0×',
-                adjustedAmount: Math.round(adjustedAmount),
-                deductions,
-                deductedAmount: Math.round(deductedAmount),
-                internalAuthorsCount: internalAuthors.length,
-                mainAuthorsCount: mainAuthors.length,
-                coAuthorsCount: coAuthors.length,
-                authorShare,
-                finalAmount: Math.round(finalAmount),
-            };
-        } catch (error) {
-            return null;
-        }
-    };
-
-    const breakdown = calculateIncentiveBreakdown();
+    const breakdown = true; // Use the component's internal logic
     
     const claimWithUserData = {
         ...claim,
@@ -535,54 +450,10 @@ function ResearchPaperClaimDetails({
                     </div>
                 </>
             )}
-            {breakdown && !isChecklistEnabled && (
+            {breakdown && claim.claimType && ['Research Papers', 'Patents', 'Books', 'Conference Presentations'].includes(claim.claimType) && (
                 <>
                     <Separator />
-                    <div className="space-y-2 bg-blue-50 dark:bg-blue-950 rounded-lg p-3 border border-blue-200 dark:border-blue-800">
-                        <h5 className="text-sm font-semibold text-blue-900 dark:text-blue-100">Incentive Calculation Breakdown</h5>
-                        <div className="space-y-1.5 text-xs">
-                            <div className="grid grid-cols-2 gap-2">
-                                <span className="text-blue-700 dark:text-blue-300">1. Base Amount (Q-Rating):</span>
-                                <span className="font-medium text-right">₹{breakdown.baseAmount.toLocaleString('en-IN')}</span>
-                            </div>
-                            <div className="grid grid-cols-2 gap-2">
-                                <span className="text-blue-700 dark:text-blue-300">2. Publication Type Adjustment:</span>
-                                <span className="font-medium text-right">×{breakdown.publicationTypeAdjustment}</span>
-                            </div>
-                            <div className="grid grid-cols-2 gap-2">
-                                <span className="text-blue-700 dark:text-blue-300">3. After Adjustment:</span>
-                                <span className="font-medium text-right">₹{breakdown.adjustedAmount.toLocaleString('en-IN')}</span>
-                            </div>
-                            {breakdown.deductions.length > 0 && (
-                                <>
-                                    <div className="border-t border-blue-200 dark:border-blue-800 pt-1.5 mt-1.5">
-                                        <p className="text-blue-700 dark:text-blue-300 font-medium mb-1">University-level Deductions:</p>
-                                        {breakdown.deductions.map((deduction, i) => (
-                                            <div key={i} className="grid grid-cols-2 gap-2 ml-2">
-                                                <span className="text-blue-600 dark:text-blue-400">• {deduction}</span>
-                                            </div>
-                                        ))}
-                                    </div>
-                                    <div className="grid grid-cols-2 gap-2 font-semibold border-t border-blue-200 dark:border-blue-800 pt-1.5 mt-1.5">
-                                        <span className="text-blue-900 dark:text-blue-100">After All Deductions:</span>
-                                        <span className="text-right text-blue-900 dark:text-blue-100">₹{breakdown.deductedAmount.toLocaleString('en-IN')}</span>
-                                    </div>
-                                </>
-                            )}
-                            <div className="border-t border-blue-200 dark:border-blue-800 pt-1.5 mt-1.5">
-                                <p className="text-blue-700 dark:text-blue-300 font-medium mb-1">Author Distribution:</p>
-                                <div className="ml-2 space-y-0.5">
-                                    <div className="text-blue-600 dark:text-blue-400">Internal Authors: {breakdown.internalAuthorsCount}</div>
-                                    <div className="text-blue-600 dark:text-blue-400">Main Authors: {breakdown.mainAuthorsCount}, Co-Authors: {breakdown.coAuthorsCount}</div>
-                                    <div className="text-blue-600 dark:text-blue-400 text-xs italic">{breakdown.authorShare}</div>
-                                </div>
-                            </div>
-                            <div className="grid grid-cols-2 gap-2 font-bold border-t border-blue-200 dark:border-blue-800 pt-1.5 mt-1.5 bg-blue-100 dark:bg-blue-900 p-2 rounded">
-                                <span className="text-blue-900 dark:text-blue-50">Final Incentive per Author:</span>
-                                <span className="text-right text-green-700 dark:text-green-400">₹{breakdown.finalAmount.toLocaleString('en-IN')}</span>
-                            </div>
-                        </div>
-                    </div>
+                    <IncentiveCalculationBreakdown claimData={claim} user={claimant} />
                 </>
             )}
             {isChecklistEnabled && <FormMessage>{form.formState.errors.verifiedFields?.message}</FormMessage>}
@@ -773,34 +644,6 @@ export function ApprovalDialog({ claim, approver, claimant, stageIndex, isOpen, 
                 </DialogHeader>
                 
                 <div className="max-h-[60vh] overflow-y-auto pr-4 space-y-4">
-                    {isViewerAdminOrApprover && previousApprovals.length > 0 && (
-                        <div className="space-y-4">
-                            <h4 className="font-semibold text-sm">Previous Approval History</h4>
-                            {previousApprovals.map((approval, index) => (
-                                approval && (
-                                <div key={index} className="p-4 border rounded-lg bg-muted/50 space-y-2 text-sm">
-                                    <div className="flex justify-between items-center">
-                                        <p className="font-semibold">Stage {approval.stage}: {approval.approverName}</p>
-                                        <p className={`font-semibold ${approval.status === 'Approved' ? 'text-green-600' : 'text-red-600'}`}>{approval.status}</p>
-                                    </div>
-                                      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between">
-                                          <p>
-                                            <strong className="text-muted-foreground">Comments:</strong>{' '}
-                                            {approval.comments || 'N/A'}
-                                          </p>
-                                          {approval.status === 'Approved' && (
-                                            <p className="mt-1 sm:mt-0">
-                                              <strong className="text-muted-foreground">Approved Amount:</strong>{' '}
-                                              ₹{approval.approvedAmount.toLocaleString('en-IN')}
-                                            </p>
-                                          )}
-                                      </div>
-                                </div>
-                                )
-                            ))}
-                            <Separator />
-                        </div>
-                    )}
                     
                     {stageIndex === 0 && claim.calculatedIncentive !== undefined && claim.calculatedIncentive !== null && (
                         <div className={`p-4 rounded-md text-center ${isEligibleForFinancialDisbursement(claim) ? 'bg-blue-100 dark:bg-blue-900/30' : 'bg-yellow-100 dark:bg-yellow-900/30'}`}>
@@ -821,6 +664,35 @@ export function ApprovalDialog({ claim, approver, claimant, stageIndex, isOpen, 
 
 
                         <form id="approval-form" onSubmit={form.handleSubmit(handleSubmit)} className="space-y-4">
+                            {isViewerAdminOrApprover && previousApprovals.length > 0 && (
+                                <div className="space-y-4 mb-6">
+                                    <h4 className="font-semibold text-sm">Previous Approval History</h4>
+                                    {previousApprovals.map((approval, index) => (
+                                        approval && (
+                                        <div key={index} className="p-4 border rounded-lg bg-muted/50 space-y-2 text-sm">
+                                            <div className="flex justify-between items-center">
+                                                <p className="font-semibold text-primary">Stage {approval.stage}: {approval.approverName}</p>
+                                                <Badge variant={approval.status === 'Approved' ? 'success' : 'destructive'} className="h-5">
+                                                    {approval.status}
+                                                </Badge>
+                                            </div>
+                                            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                                                <p className="text-muted-foreground italic">
+                                                    "{approval.comments || 'No comments'}"
+                                                </p>
+                                                {approval.status === 'Approved' && (
+                                                    <Badge variant="secondary" className="font-mono">
+                                                        ₹{approval.approvedAmount.toLocaleString('en-IN')}
+                                                    </Badge>
+                                                )}
+                                            </div>
+                                        </div>
+                                        )
+                                    ))}
+                                    <Separator />
+                                </div>
+                            )}
+
                             {showActionButtons && (
                                 <FormField
                                     name="action"

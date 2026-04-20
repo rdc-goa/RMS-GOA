@@ -39,6 +39,7 @@ import {
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { calculatePatentIncentive } from '@/app/incentive-calculation';
 import { Table, TableBody, TableCell, TableHeader, TableHead, TableRow } from '../ui/table';
+import { IncentiveCalculationBreakdown } from './calculation-breakdown';
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
 
@@ -98,7 +99,7 @@ const patentSchema = z
 
 type PatentFormValues = z.infer<typeof patentSchema>;
 
-function ReviewDetails({ data, onEdit }: { data: PatentFormValues; onEdit: () => void }) {
+function ReviewDetails({ data, user, onEdit }: { data: PatentFormValues; user: User | null; onEdit: () => void }) {
   const renderDetail = (label: string, value?: string | number | boolean | string[] | PatentInventor[]) => {
     if (!value && value !== 0 && value !== false) return null;
 
@@ -181,6 +182,10 @@ function ReviewDetails({ data, onEdit }: { data: PatentFormValues; onEdit: () =>
         {renderDetail("Form 1 Proof", form1File?.name)}
         {renderDetail("Approval Proof", approvalProofFile?.name)}
         {renderDetail("Govt. Receipt", govtReceiptFile?.name)}
+
+        <div className="mt-8 pt-4 border-t">
+          <IncentiveCalculationBreakdown claimData={{ ...data, claimType: 'Patents' } as any} user={user} />
+        </div>
       </CardContent>
     </Card>
   );
@@ -476,7 +481,7 @@ export function PatentForm() {
       <Card>
         <form onSubmit={form.handleSubmit(onFinalSubmit)}>
           <CardContent className="pt-6">
-            <ReviewDetails data={form.getValues()} onEdit={() => setCurrentStep(1)} />
+            <ReviewDetails data={form.getValues()} user={user} onEdit={() => setCurrentStep(1)} />
           </CardContent>
           <CardFooter>
             <Button type="submit" disabled={isSubmitting || bankDetailsMissing || orcidOrMisIdMissing}>
@@ -628,10 +633,10 @@ export function PatentForm() {
               </div>
 
               {calculatedIncentive !== null && (
-                <div className="p-4 bg-secondary rounded-md">
-                  <p className="text-sm font-medium">Tentative Eligible Incentive Amount: <span className="font-bold text-lg text-primary">₹{calculatedIncentive.toLocaleString('en-IN')}</span></p>
-                  <p className="text-xs text-muted-foreground">This is your individual share based on the policy and number of inventors.</p>
-                </div>
+                <IncentiveCalculationBreakdown 
+                  claimData={{ ...formValues, claimType: 'Patents' } as any} 
+                  user={user} 
+                />
               )}
 
               <FormField name="patentForm1" control={form.control} render={({ field: { value, onChange, ...fieldProps } }) => (<FormItem><FormLabel>Attach Proof (Form 1) (PDF)</FormLabel><FormControl><Input {...fieldProps} type="file" onChange={(e) => onChange(e.target.files)} accept="application/pdf" /></FormControl><FormMessage /></FormItem>)} />
