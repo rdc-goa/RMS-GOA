@@ -229,6 +229,7 @@ export type IncentiveClaim = {
   status: "Pending" | "Accepted" | "Rejected" | "Draft" | "Pending Stage 1 Approval" | "Pending Stage 2 Approval" | "Pending Stage 3 Approval" | "Pending Stage 4 Approval" | "Pending Stage 5 Approval" | "Submitted to Accounts" | "Payment Completed";
   submissionDate: string // ISO String
   faculty: string
+  institute?: string
   bankDetails?: UserBankDetails
   originalClaimId?: string // Link to the primary author's claim
   misId?: string
@@ -567,6 +568,7 @@ export type SystemSettings = {
   allowedDomains?: string[]
   croAssignments?: CroAssignment[]
   incentiveApprovers?: ApproverSetting[];
+  institutePrincipals?: Record<string, string>; // institute name -> principal email
   incentiveApprovalWorkflows?: Record<string, number[]>;
   iqacEmail?: string;
   enabledIncentiveTypes?: Record<string, boolean>;

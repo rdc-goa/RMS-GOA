@@ -540,50 +540,71 @@ export default function SettingsPage() {
     await handleSystemSettingsSave({ ...systemSettings, croAssignments: currentAssignments.filter(c => c.email !== emailToRemove) });
   };
 
+  const syncIncentivePermissions = async (email: string, settings: SystemSettings) => {
+    if (!email) return;
+    const usersRef = collection(db, 'users');
+    const q = query(usersRef, where("email", "==", email.toLowerCase()));
+    const snapshot = await getDocs(q);
+    
+    if (snapshot.empty) return;
+    
+    const userDoc = snapshot.docs[0];
+    const userData = userDoc.data() as User;
+    let allowedModules = userData.allowedModules || [];
+    
+    // Remove all incentive-related modules first to recalculate
+    allowedModules = allowedModules.filter(m => !m.startsWith('incentive-approver-') && m !== 'incentive-approvals');
+    
+    const relevantStages = new Set<number>();
+    
+    // Check if this user is a global approver for any stage
+    settings.incentiveApprovers?.forEach(a => {
+      if (a.email.toLowerCase() === email.toLowerCase()) {
+        relevantStages.add(a.stage);
+      }
+    });
+    
+    // Check if this user is a Principal for any institute (Stage 1 access)
+    if (settings.institutePrincipals) {
+      const isPrincipal = Object.values(settings.institutePrincipals).some(
+        pEmail => pEmail.toLowerCase() === email.toLowerCase()
+      );
+      if (isPrincipal) {
+        relevantStages.add(1);
+      }
+    }
+    
+    if (relevantStages.size > 0) {
+      allowedModules.push('incentive-approvals');
+      relevantStages.forEach(stage => {
+        allowedModules.push(`incentive-approver-${stage}`);
+      });
+    }
+    
+    await updateDoc(userDoc.ref, { allowedModules: [...new Set(allowedModules)] });
+  };
+
   const handleApproverChange = async (stage: 1 | 2 | 3 | 4 | 5, email: string) => {
     if (!systemSettings) return;
     const approvers = systemSettings.incentiveApprovers || [];
+    const previousApproverEmail = approvers.find(a => a.stage === stage)?.email;
+    
     const otherApprovers = approvers.filter(a => a.stage !== stage);
     const newApprovers: ApproverSetting[] = [...otherApprovers];
-
-    // Find the previous approver for this stage to remove their access
-    const previousApproverEmail = approvers.find(a => a.stage === stage)?.email;
-
     if (email) {
-      newApprovers.push({ stage, email });
+      newApprovers.push({ stage, email: email.toLowerCase() });
     }
     newApprovers.sort((a, b) => a.stage - b.stage);
 
-    await handleSystemSettingsSave({ ...systemSettings, incentiveApprovers: newApprovers });
+    const newSettings = { ...systemSettings, incentiveApprovers: newApprovers };
+    await handleSystemSettingsSave(newSettings);
 
-    // After saving, update user permissions
-    const usersRef = collection(db, 'users');
-
-    // Remove permissions from old approver
+    // Sync permissions for both old and new approvers
     if (previousApproverEmail) {
-      const oldApproverQuery = query(usersRef, where("email", "==", previousApproverEmail));
-      const oldApproverSnapshot = await getDocs(oldApproverQuery);
-      if (!oldApproverSnapshot.empty) {
-        const userDoc = oldApproverSnapshot.docs[0];
-        const userData = userDoc.data() as User;
-        const updatedModules = (userData.allowedModules || []).filter(m => !m.startsWith('incentive-approver-') && m !== 'incentive-approvals');
-        await updateDoc(userDoc.ref, { allowedModules: updatedModules });
-      }
+      await syncIncentivePermissions(previousApproverEmail, newSettings);
     }
-
-    // Add permissions to new approver
     if (email) {
-      const newApproverQuery = query(usersRef, where("email", "==", email));
-      const newApproverSnapshot = await getDocs(newApproverQuery);
-      if (!newApproverSnapshot.empty) {
-        const userDoc = newApproverSnapshot.docs[0];
-        const userData = userDoc.data() as User;
-        const approverModule = `incentive-approver-${stage}`;
-        let updatedModules = userData.allowedModules || [];
-        if (!updatedModules.includes(approverModule)) updatedModules.push(approverModule);
-        if (!updatedModules.includes('incentive-approvals')) updatedModules.push('incentive-approvals');
-        await updateDoc(userDoc.ref, { allowedModules: updatedModules });
-      }
+      await syncIncentivePermissions(email, newSettings);
     }
   };
 
@@ -639,6 +660,30 @@ export default function SettingsPage() {
     { key: 'INCENTIVE_PAYMENT_SHEET', label: 'Incentive Payment Sheet' },
     { key: 'IMR_SANCTION_ORDER', label: 'IMR Sanction Order' },
   ];
+
+  const handlePrincipalChange = async (institute: string, email: string) => {
+    if (!systemSettings) return;
+    const currentPrincipals = systemSettings.institutePrincipals || {};
+    const previousPrincipalEmail = currentPrincipals[institute];
+    
+    const newPrincipals = { ...currentPrincipals };
+    if (email) {
+      newPrincipals[institute] = email.toLowerCase();
+    } else {
+      delete newPrincipals[institute];
+    }
+    
+    const newSettings = { ...systemSettings, institutePrincipals: newPrincipals };
+    await handleSystemSettingsSave(newSettings);
+
+    // Sync permissions for both old and new principals
+    if (previousPrincipalEmail) {
+      await syncIncentivePermissions(previousPrincipalEmail, newSettings);
+    }
+    if (email) {
+      await syncIncentivePermissions(email, newSettings);
+    }
+  };
 
 
   const isAcademicInfoLocked = isCro || isPrincipal
@@ -742,12 +787,35 @@ export default function SettingsPage() {
                   <Label className="text-base">Incentive Approval Workflow</Label>
                   <p className="text-sm text-muted-foreground">Define the email addresses for the four stages of incentive claim approval.</p>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    {[1, 2, 3, 4, 5].map(stage => {
+                    {[2, 3, 4, 5].map(stage => {
                       const approver = systemSettings?.incentiveApprovers?.find(a => a.stage === stage);
                       return (<div key={stage} className="p-4 border rounded-lg space-y-3"><FormItem><FormLabel>Stage {stage} Approver Email</FormLabel><Input type="email" placeholder={`approver.stage${stage}@paruluniversity.ac.in`} value={approver?.email || ''} onChange={(e) => handleApproverChange(stage as 1 | 2 | 3 | 4 | 5, e.target.value)} disabled={isSavingSettings} /></FormItem></div>);
                     })}
                   </div>
                 </Form>
+              </div>
+              <Separator />
+              <div className="space-y-4">
+                <Label className="text-base">Institute-wise Stage 1 Approvers (Principals)</Label>
+                <p className="text-sm text-muted-foreground">
+                  Overwrite the global Stage 1 approver for specific institutes. If an institute is not listed here, it will fall back to the global Stage 1 approver.
+                </p>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {institutes.map(inst => (
+                    <div key={inst} className="p-4 border rounded-lg space-y-3">
+                      <div className="space-y-1">
+                        <Label>{inst} Principal Email</Label>
+                        <Input 
+                          type="email" 
+                          placeholder="principal@paruluniversity.ac.in" 
+                          value={systemSettings?.institutePrincipals?.[inst] || ''} 
+                          onChange={(e) => handlePrincipalChange(inst, e.target.value)} 
+                          disabled={isSavingSettings} 
+                        />
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
             </CardContent>
           </Card>

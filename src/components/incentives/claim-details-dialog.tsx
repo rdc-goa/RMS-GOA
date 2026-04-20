@@ -28,11 +28,20 @@ export function ClaimDetailsDialog({ claim, open, onOpenChange, currentUser, cla
     const { toast } = useToast();
     const [isPrinting, setIsPrinting] = useState(false);
 
-    // Check if amount hasn't been changed by any approver
-    const isAmountUnchanged = useMemo(() => {
-        if (claim && claim.claimType === 'Research Papers' && claim.calculatedIncentive && claim.finalApprovedAmount) {
-            return claim.calculatedIncentive === claim.finalApprovedAmount;
+    // Decides whether to show the calculation breakdown
+    const shouldShowBreakdown = useMemo(() => {
+        if (!claim || !claim.claimType) return false;
+        const supportedTypes = ['Research Papers', 'Patents', 'Books', 'Conference Presentations'];
+        if (!supportedTypes.includes(claim.claimType)) return false;
+
+        // If pending, always show it as a guideline
+        if (claim.status?.startsWith('Pending')) return true;
+
+        // If accepted, show if the final amount matches the calculated one
+        if (claim.calculatedIncentive !== undefined && claim.finalApprovedAmount !== undefined) {
+            return Math.abs(claim.calculatedIncentive - claim.finalApprovedAmount) < 1;
         }
+
         return false;
     }, [claim]);
     
@@ -380,7 +389,7 @@ a.href = url;
                         </>
                     )}
 
-                    {isAmountUnchanged && claim.claimType && ['Research Papers', 'Patents', 'Books', 'Conference Presentations'].includes(claim.claimType) && (
+                    {shouldShowBreakdown && (
                         <>
                             <hr className="my-4" />
                              <IncentiveCalculationBreakdown claimData={claim} user={claimant || currentUser} />

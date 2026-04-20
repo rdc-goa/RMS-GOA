@@ -212,6 +212,7 @@ export function MembershipForm() {
             userName: user.name,
             userEmail: user.email,
             faculty: user.faculty,
+            institute: user.institute || undefined,
             status,
             submissionDate: new Date().toISOString(),
             bankDetails: user.bankDetails || null,

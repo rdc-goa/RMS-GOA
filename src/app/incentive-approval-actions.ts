@@ -129,8 +129,12 @@ export async function submitIncentiveClaim(claimData: Omit<IncentiveClaim, 'id'>
             initialStatus = `Pending Stage ${firstStage} Approval` as IncentiveClaim['status'];
         }
 
+        const userDoc = await adminDb.collection('users').doc(claimData.uid).get();
+        const userInstitute = userDoc.exists ? (userDoc.data() as User).institute : undefined;
+
         const finalClaimData: Omit<IncentiveClaim, 'id'> = {
             ...claimData,
+            institute: claimData.institute || userInstitute,
             claimId: standardizedClaimId || claimData.claimId,
             status: claimData.status === 'Draft' ? 'Draft' : initialStatus,
             authors: claimData.authors || [],
@@ -349,7 +353,21 @@ export async function processIncentiveClaimAction(
         const settings = await getSystemSettings();
 
         const currentStageApprover = (settings.incentiveApprovers || []).find(a => a.stage === stageIndex + 1);
-        if (!currentStageApprover || approver.email?.toLowerCase() !== currentStageApprover.email.toLowerCase()) {
+        
+        let isAuthorized = false;
+        if (stageIndex === 0 && claim.institute) {
+            const principalEmail = settings.institutePrincipals?.[claim.institute];
+            if (principalEmail && approver.email?.toLowerCase() === principalEmail.toLowerCase()) {
+                isAuthorized = true;
+            }
+        }
+        
+        // Fallback to global approver if not explicitly authorized by principal logic
+        if (!isAuthorized && currentStageApprover && approver.email?.toLowerCase() === currentStageApprover.email.toLowerCase()) {
+            isAuthorized = true;
+        }
+
+        if (!isAuthorized) {
             return { success: false, error: 'You are not authorized to perform this action for this stage.' };
         }
 

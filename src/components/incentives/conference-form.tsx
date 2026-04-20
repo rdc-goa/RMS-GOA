@@ -500,6 +500,7 @@ function ConferenceFormContent({ onEventTypeChange }: ConferenceFormContentProps
         userName: user.name,
         userEmail: user.email,
         faculty: user.faculty,
+        institute: user.institute ?? undefined,
         status,
         submissionDate: new Date().toISOString(),
         authorType: data.authorType,

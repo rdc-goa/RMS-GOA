@@ -254,8 +254,8 @@ export function AwardForm() {
       const draftClaim: Partial<IncentiveClaim> = {
         uid: user.uid,
         userName: user.name || '',
-        userEmail: user.email || '',
         faculty: user.faculty || '',
+        institute: user.institute || undefined,
         claimType: 'Award',
         benefitMode: 'Incentive',
         status: 'Draft',
@@ -325,6 +325,7 @@ export function AwardForm() {
         userName: user.name || '',
         userEmail: user.email || '',
         faculty: user.faculty || '',
+        institute: user.institute || undefined,
         claimType: 'Award',
         benefitMode: 'Incentive',
         status: 'Pending',

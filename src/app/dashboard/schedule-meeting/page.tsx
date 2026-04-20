@@ -420,7 +420,18 @@ export default function ScheduleMeetingPage() {
       }
   }, [meetingToEdit, form]);
 
-  const evaluators = allUsers.filter(u => ['CRO', 'admin', 'Super-admin'].includes(u.role));
+  const evaluators = useMemo(() => {
+    const principalEmails = systemSettings?.institutePrincipals 
+      ? Object.values(systemSettings.institutePrincipals).map(e => e.toLowerCase()) 
+      : [];
+    
+    return allUsers
+      .filter(u => 
+        ['CRO', 'admin', 'Super-admin'].includes(u.role) || 
+        principalEmails.includes(u.email.toLowerCase())
+      )
+      .sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+  }, [allUsers, systemSettings]);
   
   const newSubmissions = allProjects.filter(p => p.status === 'Submitted');
   

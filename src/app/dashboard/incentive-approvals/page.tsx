@@ -379,28 +379,32 @@ export default function IncentiveApprovalsPage() {
                                     ))}
                                 </SelectContent>
                             </Select>
-                            <Select value={facultyFilter} onValueChange={setFacultyFilter}>
-                                <SelectTrigger className="w-full sm:w-[200px]">
-                                    <SelectValue placeholder="Filter by faculty" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="all">All Faculties</SelectItem>
-                                    {uniqueFaculties.map(faculty => (
-                                        <SelectItem key={faculty} value={faculty}>{faculty}</SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
-                            <Select value={instituteFilter} onValueChange={setInstituteFilter}>
-                                <SelectTrigger className="w-full sm:w-[200px]">
-                                    <SelectValue placeholder="Filter by institute" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="all">All Institutes</SelectItem>
-                                    {uniqueInstitutes.map(institute => (
-                                        <SelectItem key={institute} value={institute}>{institute}</SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
+                            {approvalStage !== 0 && (
+                                <Select value={facultyFilter} onValueChange={setFacultyFilter}>
+                                    <SelectTrigger className="w-full sm:w-[200px]">
+                                        <SelectValue placeholder="Filter by faculty" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="all">All Faculties</SelectItem>
+                                        {uniqueFaculties.map(faculty => (
+                                            <SelectItem key={faculty} value={faculty}>{faculty}</SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            )}
+                            {approvalStage !== 0 && (
+                                <Select value={instituteFilter} onValueChange={setInstituteFilter}>
+                                    <SelectTrigger className="w-full sm:w-[200px]">
+                                        <SelectValue placeholder="Filter by institute" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="all">All Institutes</SelectItem>
+                                        {uniqueInstitutes.map(institute => (
+                                            <SelectItem key={institute} value={institute}>{institute}</SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            )}
                         </>
                     )}
                     {selectedClaimIds.size > 0 && (
