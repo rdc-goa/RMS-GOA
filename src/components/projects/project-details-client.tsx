@@ -126,32 +126,32 @@ const revisionCommentSchema = z.object({
 type RevisionCommentFormData = z.infer<typeof revisionCommentSchema>
 
 const awardGrantSchema = z.object({
-    sanctionNumber: z.string().min(1, "Sanction number is required."),
-    totalAmount: z.coerce.number().positive("Total amount must be a positive number."),
-    phases: z.array(z.object({
-        name: z.string(),
-        amount: z.coerce.number().positive('Phase amount must be positive.'),
-    })).min(1, 'At least one phase is required.'),
+  sanctionNumber: z.string().min(1, "Sanction number is required."),
+  totalAmount: z.coerce.number().positive("Total amount must be a positive number."),
+  phases: z.array(z.object({
+    name: z.string(),
+    amount: z.coerce.number().positive('Phase amount must be positive.'),
+  })).min(1, 'At least one phase is required.'),
 }).refine(data => {
-    const totalPhaseAmount = data.phases.reduce((sum, phase) => sum + phase.amount, 0);
-    return Math.abs(totalPhaseAmount - data.totalAmount) < 0.01; // Allow for floating point inaccuracies
+  const totalPhaseAmount = data.phases.reduce((sum, phase) => sum + phase.amount, 0);
+  return Math.abs(totalPhaseAmount - data.totalAmount) < 0.01; // Allow for floating point inaccuracies
 }, {
-    message: "The sum of phase amounts must equal the total sanctioned amount.",
-    path: ["totalAmount"],
+  message: "The sum of phase amounts must equal the total sanctioned amount.",
+  path: ["totalAmount"],
 });
 
 
 const notingFormSchema = z.object({
-    projectDuration: z.string().min(3, 'Project duration is required.'),
-    phases: z.array(z.object({
-        name: z.string().min(1, 'Phase name is required.'),
-        amount: z.coerce.number().positive('Amount must be a positive number.'),
-    })).min(1, 'At least one funding phase is required.')
+  projectDuration: z.string().min(3, 'Project duration is required.'),
+  phases: z.array(z.object({
+    name: z.string().min(1, 'Phase name is required.'),
+    amount: z.coerce.number().positive('Amount must be a positive number.'),
+  })).min(1, 'At least one funding phase is required.')
 });
 type NotingFormData = z.infer<typeof notingFormSchema>
 
 const deleteProjectSchema = z.object({
-    reason: z.string().min(10, "A reason for deletion is required."),
+  reason: z.string().min(10, "A reason for deletion is required."),
 });
 type DeleteProjectFormData = z.infer<typeof deleteProjectSchema>;
 
@@ -160,7 +160,7 @@ const attendanceSchema = z.object({
   absentEvaluatorUids: z.array(z.string()),
 });
 
-const venues = ["RDC Committee Room, PIMSR"]
+const venues = ["VC Office"]
 
 const fileToDataUrl = (file: File): Promise<string> => {
   return new Promise((resolve, reject) => {
@@ -172,116 +172,116 @@ const fileToDataUrl = (file: File): Promise<string> => {
 }
 
 function AttendanceDialog({ isOpen, onOpenChange, project, allUsers, onUpdate }: {
-    isOpen: boolean;
-    onOpenChange: (open: boolean) => void;
-    project: Project;
-    allUsers: User[];
-    onUpdate: () => void;
+  isOpen: boolean;
+  onOpenChange: (open: boolean) => void;
+  project: Project;
+  allUsers: User[];
+  onUpdate: () => void;
 }) {
-    const { toast } = useToast();
-    const [isSubmitting, setIsSubmitting] = useState(false);
-    const form = useForm<z.infer<typeof attendanceSchema>>({
-        resolver: zodResolver(attendanceSchema),
-        defaultValues: {
-            absentPiUids: [],
-            absentEvaluatorUids: project.meetingDetails?.absentEvaluators || [],
-        },
-    });
+  const { toast } = useToast();
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const form = useForm<z.infer<typeof attendanceSchema>>({
+    resolver: zodResolver(attendanceSchema),
+    defaultValues: {
+      absentPiUids: [],
+      absentEvaluatorUids: project.meetingDetails?.absentEvaluators || [],
+    },
+  });
 
-    const assignedEvaluators = allUsers.filter(u => project.meetingDetails?.assignedEvaluators?.includes(u.uid));
+  const assignedEvaluators = allUsers.filter(u => project.meetingDetails?.assignedEvaluators?.includes(u.uid));
 
-    const handleSubmit = async (values: z.infer<typeof attendanceSchema>) => {
-        setIsSubmitting(true);
-        try {
-            const result = await markImrAttendance(
-                [{ projectId: project.id, piUid: project.pi_uid }],
-                values.absentPiUids,
-                values.absentEvaluatorUids,
-                project.meetingDetails // Pass meeting details to find other projects in the same meeting
-            );
-            if (result.success) {
-                toast({ title: 'Success', description: 'Attendance has been marked.' });
-                onUpdate();
-                onOpenChange(false);
-            } else {
-                throw new Error(result.error);
-            }
-        } catch (error: any) {
-            toast({ variant: 'destructive', title: 'Update Failed', description: error.message || 'An unexpected error occurred.' });
-        } finally {
-            setIsSubmitting(false);
-        }
-    };
+  const handleSubmit = async (values: z.infer<typeof attendanceSchema>) => {
+    setIsSubmitting(true);
+    try {
+      const result = await markImrAttendance(
+        [{ projectId: project.id, piUid: project.pi_uid }],
+        values.absentPiUids,
+        values.absentEvaluatorUids,
+        project.meetingDetails // Pass meeting details to find other projects in the same meeting
+      );
+      if (result.success) {
+        toast({ title: 'Success', description: 'Attendance has been marked.' });
+        onUpdate();
+        onOpenChange(false);
+      } else {
+        throw new Error(result.error);
+      }
+    } catch (error: any) {
+      toast({ variant: 'destructive', title: 'Update Failed', description: error.message || 'An unexpected error occurred.' });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
 
-    return (
-        <Dialog open={isOpen} onOpenChange={onOpenChange}>
-            <DialogContent className="sm:max-w-md">
-                <DialogHeader>
-                    <DialogTitle>Mark Meeting Attendance</DialogTitle>
-                    <DialogDescription>Select any applicants or evaluators who were absent from the meeting.</DialogDescription>
-                </DialogHeader>
-                <Form {...form}>
-                    <form id="attendance-form" onSubmit={form.handleSubmit(handleSubmit)} className="space-y-6 py-4 max-h-[60vh] overflow-y-auto pr-4">
-                        <div>
-                            <h4 className="font-semibold mb-2">Principal Investigator</h4>
-                            <FormField
-                                control={form.control}
-                                name="absentPiUids"
-                                render={({ field }) => (
-                                    <FormItem className="flex items-center space-x-3 space-y-0 p-2 border rounded-md">
-                                        <FormControl>
-                                            <Checkbox
-                                                checked={field.value?.includes(project.pi_uid)}
-                                                onCheckedChange={(checked) => {
-                                                    return checked
-                                                        ? field.onChange([project.pi_uid])
-                                                        : field.onChange([]);
-                                                }}
-                                            />
-                                        </FormControl>
-                                        <FormLabel className="font-normal">{project.pi}</FormLabel>
-                                    </FormItem>
-                                )}
-                            />
-                        </div>
-                        <div>
-                            <h4 className="font-semibold mb-2">Evaluators ({assignedEvaluators.length})</h4>
-                            <div className="space-y-2">
-                                {assignedEvaluators.map(evaluator => (
-                                     <FormField
-                                        key={evaluator.uid}
-                                        control={form.control}
-                                        name="absentEvaluatorUids"
-                                        render={({ field }) => (
-                                            <FormItem className="flex items-center space-x-3 space-y-0 p-2 border rounded-md">
-                                                <FormControl>
-                                                    <Checkbox
-                                                        checked={field.value?.includes(evaluator.uid)}
-                                                        onCheckedChange={(checked) => {
-                                                            return checked
-                                                                ? field.onChange([...(field.value || []), evaluator.uid])
-                                                                : field.onChange(field.value?.filter(id => id !== evaluator.uid));
-                                                        }}
-                                                    />
-                                                </FormControl>
-                                                <FormLabel className="font-normal">{evaluator.name}</FormLabel>
-                                            </FormItem>
-                                        )}
-                                    />
-                                ))}
-                            </div>
-                        </div>
-                    </form>
-                </Form>
-                <DialogFooter>
-                    <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
-                    <Button type="submit" form="attendance-form" disabled={isSubmitting}>
-                        {isSubmitting ? 'Saving...' : 'Save Attendance'}
-                    </Button>
-                </DialogFooter>
-            </DialogContent>
-        </Dialog>
-    );
+  return (
+    <Dialog open={isOpen} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Mark Meeting Attendance</DialogTitle>
+          <DialogDescription>Select any applicants or evaluators who were absent from the meeting.</DialogDescription>
+        </DialogHeader>
+        <Form {...form}>
+          <form id="attendance-form" onSubmit={form.handleSubmit(handleSubmit)} className="space-y-6 py-4 max-h-[60vh] overflow-y-auto pr-4">
+            <div>
+              <h4 className="font-semibold mb-2">Principal Investigator</h4>
+              <FormField
+                control={form.control}
+                name="absentPiUids"
+                render={({ field }) => (
+                  <FormItem className="flex items-center space-x-3 space-y-0 p-2 border rounded-md">
+                    <FormControl>
+                      <Checkbox
+                        checked={field.value?.includes(project.pi_uid)}
+                        onCheckedChange={(checked) => {
+                          return checked
+                            ? field.onChange([project.pi_uid])
+                            : field.onChange([]);
+                        }}
+                      />
+                    </FormControl>
+                    <FormLabel className="font-normal">{project.pi}</FormLabel>
+                  </FormItem>
+                )}
+              />
+            </div>
+            <div>
+              <h4 className="font-semibold mb-2">Evaluators ({assignedEvaluators.length})</h4>
+              <div className="space-y-2">
+                {assignedEvaluators.map(evaluator => (
+                  <FormField
+                    key={evaluator.uid}
+                    control={form.control}
+                    name="absentEvaluatorUids"
+                    render={({ field }) => (
+                      <FormItem className="flex items-center space-x-3 space-y-0 p-2 border rounded-md">
+                        <FormControl>
+                          <Checkbox
+                            checked={field.value?.includes(evaluator.uid)}
+                            onCheckedChange={(checked) => {
+                              return checked
+                                ? field.onChange([...(field.value || []), evaluator.uid])
+                                : field.onChange(field.value?.filter(id => id !== evaluator.uid));
+                            }}
+                          />
+                        </FormControl>
+                        <FormLabel className="font-normal">{evaluator.name}</FormLabel>
+                      </FormItem>
+                    )}
+                  />
+                ))}
+              </div>
+            </div>
+          </form>
+        </Form>
+        <DialogFooter>
+          <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
+          <Button type="submit" form="attendance-form" disabled={isSubmitting}>
+            {isSubmitting ? 'Saving...' : 'Save Attendance'}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
 }
 
 export function ProjectDetailsClient({ project: initialProject, allUsers, piUser, onProjectUpdate, isEvaluationPeriodActive }: ProjectDetailsClientProps) {
@@ -324,7 +324,7 @@ export function ProjectDetailsClient({ project: initialProject, allUsers, piUser
 
   const awardGrantForm = useForm<z.infer<typeof awardGrantSchema>>({
     resolver: zodResolver(awardGrantSchema),
-     defaultValues: {
+    defaultValues: {
       sanctionNumber: "",
       totalAmount: 0,
       phases: [{ name: "Phase 1", amount: 0 }],
@@ -349,25 +349,25 @@ export function ProjectDetailsClient({ project: initialProject, allUsers, piUser
     defaultValues: { reason: "" },
   })
 
-    const notingForm = useForm<NotingFormData>({
-        resolver: zodResolver(notingFormSchema),
-        defaultValues: {
-            projectDuration: project.projectDuration || '',
-            phases: project.phases || [{ name: 'Phase 1', amount: 0 }],
-        }
-    });
+  const notingForm = useForm<NotingFormData>({
+    resolver: zodResolver(notingFormSchema),
+    defaultValues: {
+      projectDuration: project.projectDuration || '',
+      phases: project.phases || [{ name: 'Phase 1', amount: 0 }],
+    }
+  });
 
   const refetchProject = useCallback(async () => {
     try {
-        const projectRef = doc(db, 'projects', initialProject.id);
-        const projectSnap = await getDoc(projectRef);
-        if (projectSnap.exists()) {
-            const updatedProject = { id: projectSnap.id, ...projectSnap.data() } as Project;
-            setProject(updatedProject);
-            onProjectUpdate(updatedProject);
-        }
+      const projectRef = doc(db, 'projects', initialProject.id);
+      const projectSnap = await getDoc(projectRef);
+      if (projectSnap.exists()) {
+        const updatedProject = { id: projectSnap.id, ...projectSnap.data() } as Project;
+        setProject(updatedProject);
+        onProjectUpdate(updatedProject);
+      }
     } catch (error) {
-        toast({ variant: 'destructive', title: 'Error', description: 'Could not refresh project data.' });
+      toast({ variant: 'destructive', title: 'Error', description: 'Could not refresh project data.' });
     }
   }, [initialProject.id, toast, onProjectUpdate]);
 
@@ -397,8 +397,8 @@ export function ProjectDetailsClient({ project: initialProject, allUsers, piUser
       setUser(JSON.parse(storedUser))
     }
     const fetchSettings = async () => {
-        const settings = await getSystemSettings();
-        setSystemSettings(settings);
+      const settings = await getSystemSettings();
+      setSystemSettings(settings);
     };
     fetchSettings();
   }, [])
@@ -448,7 +448,7 @@ export function ProjectDetailsClient({ project: initialProject, allUsers, piUser
     }
     return false
   }, [user, isSuperAdmin, isAssignedEvaluator, project.meetingDetails, systemSettings])
-  
+
   const showEvaluationForm = user && isAssignedEvaluator && project.status === 'Under Review';
 
   const assignedEvaluatorsCount = project.meetingDetails?.assignedEvaluators?.length ?? 0;
@@ -512,7 +512,7 @@ export function ProjectDetailsClient({ project: initialProject, allUsers, piUser
     try {
       const result = await findUserByMisId(coPiSearchTerm)
       if (result.success && result.users && result.users.length > 0) {
-        setFoundCoPi({uid: result.users[0].uid!, name: result.users[0].name})
+        setFoundCoPi({ uid: result.users[0].uid!, name: result.users[0].name })
       } else {
         toast({ variant: "destructive", title: "User Not Found", description: result.error })
       }
@@ -555,75 +555,75 @@ export function ProjectDetailsClient({ project: initialProject, allUsers, piUser
   const handleAwardGrantAndDownload = async (values: z.infer<typeof awardGrantSchema>) => {
     setIsAwarding(true)
     try {
-        const result = await awardInitialGrant(
-            project.id,
-            values,
-            { uid: project.pi_uid, name: project.pi, email: project.pi_email, campus: piUser?.campus },
-            project.title
-        );
+      const result = await awardInitialGrant(
+        project.id,
+        values,
+        { uid: project.pi_uid, name: project.pi, email: project.pi_email, campus: piUser?.campus },
+        project.title
+      );
 
-        if (!result.success || !result.updatedProject) {
-            throw new Error(result.error || "Failed to award grant.");
-        }
-        
-        onProjectUpdate(result.updatedProject);
-        toast({ title: "Grant Awarded!", description: `The grant has been created with all phases.` });
-        
-        const printResult = await generateRecommendationForm(project.id);
-        if (printResult.success && printResult.fileData) {
-            const byteCharacters = atob(printResult.fileData);
-            const byteNumbers = new Array(byteCharacters.length);
-            for (let i = 0; i < byteCharacters.length; i++) { byteNumbers[i] = byteCharacters.charCodeAt(i); }
-            const byteArray = new Uint8Array(byteNumbers);
-            const blob = new Blob([byteArray], { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
-            const url = window.URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = `IMR_Recommendation_${project.pi.replace(/\s/g, '_')}.docx`;
-            document.body.appendChild(a);
-            a.click();
-            a.remove();
-            window.URL.revokeObjectURL(url);
-        } else {
-            throw new Error(printResult.error || "Failed to generate recommendation form.");
-        }
+      if (!result.success || !result.updatedProject) {
+        throw new Error(result.error || "Failed to award grant.");
+      }
 
-        setIsDialogOpen(false);
+      onProjectUpdate(result.updatedProject);
+      toast({ title: "Grant Awarded!", description: `The grant has been created with all phases.` });
+
+      const printResult = await generateRecommendationForm(project.id);
+      if (printResult.success && printResult.fileData) {
+        const byteCharacters = atob(printResult.fileData);
+        const byteNumbers = new Array(byteCharacters.length);
+        for (let i = 0; i < byteCharacters.length; i++) { byteNumbers[i] = byteCharacters.charCodeAt(i); }
+        const byteArray = new Uint8Array(byteNumbers);
+        const blob = new Blob([byteArray], { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `IMR_Recommendation_${project.pi.replace(/\s/g, '_')}.docx`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        window.URL.revokeObjectURL(url);
+      } else {
+        throw new Error(printResult.error || "Failed to generate recommendation form.");
+      }
+
+      setIsDialogOpen(false);
     } catch (error: any) {
-        console.error("Error in award and download process:", error);
-        toast({ variant: "destructive", title: "Error", description: error.message });
+      console.error("Error in award and download process:", error);
+      toast({ variant: "destructive", title: "Error", description: error.message });
     } finally {
-        setIsAwarding(false);
+      setIsAwarding(false);
     }
   };
 
   const handleDirectDownload = async () => {
     setIsAwarding(true); // Re-use the same loading state
     try {
-        const printResult = await generateRecommendationForm(project.id);
-        if (printResult.success && printResult.fileData) {
-            const byteCharacters = atob(printResult.fileData);
-            const byteNumbers = new Array(byteCharacters.length);
-            for (let i = 0; i < byteCharacters.length; i++) { byteNumbers[i] = byteCharacters.charCodeAt(i); }
-            const byteArray = new Uint8Array(byteNumbers);
-            const blob = new Blob([byteArray], { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
-            const url = window.URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = `IMR_Recommendation_${project.pi.replace(/\s/g, '_')}.docx`;
-            document.body.appendChild(a);
-            a.click();
-            a.remove();
-            window.URL.revokeObjectURL(url);
-        } else {
-            throw new Error(printResult.error || "Failed to generate recommendation form.");
-        }
+      const printResult = await generateRecommendationForm(project.id);
+      if (printResult.success && printResult.fileData) {
+        const byteCharacters = atob(printResult.fileData);
+        const byteNumbers = new Array(byteCharacters.length);
+        for (let i = 0; i < byteCharacters.length; i++) { byteNumbers[i] = byteCharacters.charCodeAt(i); }
+        const byteArray = new Uint8Array(byteNumbers);
+        const blob = new Blob([byteArray], { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `IMR_Recommendation_${project.pi.replace(/\s/g, '_')}.docx`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        window.URL.revokeObjectURL(url);
+      } else {
+        throw new Error(printResult.error || "Failed to generate recommendation form.");
+      }
     } catch (error: any) {
-        toast({ variant: "destructive", title: "Error", description: error.message });
+      toast({ variant: "destructive", title: "Error", description: error.message });
     } finally {
-        setIsAwarding(false);
+      setIsAwarding(false);
     }
-};
+  };
 
   const handleCompletionFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
@@ -803,10 +803,10 @@ export function ProjectDetailsClient({ project: initialProject, allUsers, piUser
 
   const handleApprovalClick = (status: "Recommended" | "Not Recommended" | "Revision Needed") => {
     if (status === "Revision Needed" || status === "Not Recommended") {
-        revisionCommentForm.setValue("statusToSet", status);
-        setIsRevisionCommentDialogOpen(true);
+      revisionCommentForm.setValue("statusToSet", status);
+      setIsRevisionCommentDialogOpen(true);
     } else {
-        handleStatusUpdate(status);
+      handleStatusUpdate(status);
     }
   };
 
@@ -821,7 +821,7 @@ export function ProjectDetailsClient({ project: initialProject, allUsers, piUser
       const byteCharacters = atob(result.fileData);
       const byteNumbers = new Array(byteCharacters.length);
       for (let i = 0; i < byteCharacters.length; i++) {
-          byteNumbers[i] = byteCharacters.charCodeAt(i);
+        byteNumbers[i] = byteCharacters.charCodeAt(i);
       }
       const byteArray = new Uint8Array(byteNumbers);
       const blob = new Blob([byteArray], { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
@@ -842,71 +842,71 @@ export function ProjectDetailsClient({ project: initialProject, allUsers, piUser
     }
     setIsPrinting(false);
   };
-  
+
   const handleDownloadSanctionOrder = async () => {
     setIsDownloadingSanctionOrder(true);
     const result = await generateSanctionOrder(project.id);
     if (result.success && result.fileData) {
-        const byteCharacters = atob(result.fileData);
-        const byteNumbers = new Array(byteCharacters.length);
-        for (let i = 0; i < byteCharacters.length; i++) { byteNumbers[i] = byteCharacters.charCodeAt(i); }
-        const byteArray = new Uint8Array(byteNumbers);
-        const blob = new Blob([byteArray], { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
+      const byteCharacters = atob(result.fileData);
+      const byteNumbers = new Array(byteCharacters.length);
+      for (let i = 0; i < byteCharacters.length; i++) { byteNumbers[i] = byteCharacters.charCodeAt(i); }
+      const byteArray = new Uint8Array(byteNumbers);
+      const blob = new Blob([byteArray], { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
 
-        const url = window.URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `Sanction_Order_${project.pi.replace(/\s/g, '_')}.docx`;
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
-        window.URL.revokeObjectURL(url);
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `Sanction_Order_${project.pi.replace(/\s/g, '_')}.docx`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
     } else {
-        toast({ variant: 'destructive', title: 'Download Failed', description: result.error });
+      toast({ variant: 'destructive', title: 'Download Failed', description: result.error });
     }
     setIsDownloadingSanctionOrder(false);
   };
 
   const handleOpenNotingDialog = () => {
     notingForm.reset({
-        projectDuration: project.projectDuration || '',
-        phases: project.phases || [{ name: 'Phase 1', amount: 0 }],
+      projectDuration: project.projectDuration || '',
+      phases: project.phases || [{ name: 'Phase 1', amount: 0 }],
     });
     setIsNotingDialogOpen(true);
   };
-  
+
   const handleDeleteProject = async (values: DeleteProjectFormData) => {
     setIsUpdating(true);
     const result = await deleteImrProject(project.id, values.reason, user?.name || 'Unknown Admin');
     if (result.success) {
-        toast({ title: "Project Deleted", description: "The project and all its associated data have been removed." });
-        router.push('/dashboard/all-projects');
+      toast({ title: "Project Deleted", description: "The project and all its associated data have been removed." });
+      router.push('/dashboard/all-projects');
     } else {
-        toast({ variant: "destructive", title: "Deletion Failed", description: result.error });
-        setIsUpdating(false);
+      toast({ variant: "destructive", title: "Deletion Failed", description: result.error });
+      setIsUpdating(false);
     }
   };
-  
+
   const handleProposalUpload = async () => {
     if (!proposalFile) {
-        toast({ variant: 'destructive', title: 'File Missing', description: 'Please select a proposal file to upload.' });
-        return;
+      toast({ variant: 'destructive', title: 'File Missing', description: 'Please select a proposal file to upload.' });
+      return;
     }
     setIsUpdating(true);
     try {
-        const dataUrl = await fileToDataUrl(proposalFile);
-        const result = await adminUploadProposal(project.id, dataUrl, proposalFile.name);
-        if (result.success) {
-            toast({ title: 'Success', description: 'Proposal has been uploaded to the draft.' });
-            refetchProject();
-            setIsProposalUploadOpen(false);
-        } else {
-            throw new Error(result.error);
-        }
+      const dataUrl = await fileToDataUrl(proposalFile);
+      const result = await adminUploadProposal(project.id, dataUrl, proposalFile.name);
+      if (result.success) {
+        toast({ title: 'Success', description: 'Proposal has been uploaded to the draft.' });
+        refetchProject();
+        setIsProposalUploadOpen(false);
+      } else {
+        throw new Error(result.error);
+      }
     } catch (error: any) {
-        toast({ variant: 'destructive', title: 'Upload Failed', description: error.message });
+      toast({ variant: 'destructive', title: 'Upload Failed', description: error.message });
     } finally {
-        setIsUpdating(false);
+      setIsUpdating(false);
     }
   };
 
@@ -927,129 +927,129 @@ export function ProjectDetailsClient({ project: initialProject, allUsers, piUser
       <div className="flex items-center justify-between mb-4">
         <div>
           {isAdmin && project.status === 'Draft' && (
-              <Dialog open={isProposalUploadOpen} onOpenChange={setIsProposalUploadOpen}>
-                  <DialogTrigger asChild>
-                      <Button variant="outline">
-                          <Upload className="mr-2 h-4 w-4"/> Upload Proposal PDF
-                      </Button>
-                  </DialogTrigger>
-                   <DialogContent>
-                      <DialogHeader>
-                          <DialogTitle>Upload Proposal for Draft</DialogTitle>
-                          <DialogDescription>As an admin, you can upload a proposal file to this draft project on behalf of the PI.</DialogDescription>
-                      </DialogHeader>
-                      <div className="py-4 space-y-2">
-                          <Label htmlFor="admin-proposal-upload">Proposal PDF</Label>
-                          <Input id="admin-proposal-upload" type="file" accept=".pdf" onChange={(e) => setProposalFile(e.target.files?.[0] || null)} />
-                      </div>
-                      <DialogFooter>
-                           <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
-                           <Button onClick={handleProposalUpload} disabled={isUpdating || !proposalFile}>
-                              {isUpdating ? <Loader2 className="h-4 w-4 animate-spin"/> : null} Upload
-                           </Button>
-                      </DialogFooter>
-                  </DialogContent>
-              </Dialog>
+            <Dialog open={isProposalUploadOpen} onOpenChange={setIsProposalUploadOpen}>
+              <DialogTrigger asChild>
+                <Button variant="outline">
+                  <Upload className="mr-2 h-4 w-4" /> Upload Proposal PDF
+                </Button>
+              </DialogTrigger>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Upload Proposal for Draft</DialogTitle>
+                  <DialogDescription>As an admin, you can upload a proposal file to this draft project on behalf of the PI.</DialogDescription>
+                </DialogHeader>
+                <div className="py-4 space-y-2">
+                  <Label htmlFor="admin-proposal-upload">Proposal PDF</Label>
+                  <Input id="admin-proposal-upload" type="file" accept=".pdf" onChange={(e) => setProposalFile(e.target.files?.[0] || null)} />
+                </div>
+                <DialogFooter>
+                  <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
+                  <Button onClick={handleProposalUpload} disabled={isUpdating || !proposalFile}>
+                    {isUpdating ? <Loader2 className="h-4 w-4 animate-spin" /> : null} Upload
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
           )}
         </div>
         <div className="flex items-center gap-2">
-            {showDownloadButton && (
-                <TooltipProvider>
-                    <Tooltip>
-                        <TooltipTrigger asChild>
-                            <div tabIndex={isDurationSet ? undefined : -1}>
-                                {isGrantAwarded ? (
-                                    <Button onClick={handleDirectDownload} disabled={isAwarding}>
-                                        {isAwarding ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4" />}
-                                        Download Recommendation Form
-                                    </Button>
-                                ) : (
-                                    <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-                                        <DialogTrigger asChild>
-                                            <Button disabled={!isDurationSet}>
-                                                <Download className="mr-2 h-4 w-4" /> Award Grant & Download
-                                            </Button>
-                                        </DialogTrigger>
-                                        <DialogContent>
-                                            <DialogHeader>
-                                                <DialogTitle>Award Grant & Download</DialogTitle>
-                                                <DialogDescription>
-                                                    To download the recommendation form, first confirm the grant details. This will update the project status and save the grant information.
-                                                </DialogDescription>
-                                            </DialogHeader>
-                                            <AwardGrantForm
-                                                form={awardGrantForm}
-                                                onSubmit={handleAwardGrantAndDownload}
-                                                isAwarding={isAwarding}
-                                            />
-                                        </DialogContent>
-                                    </Dialog>
-                                )}
-                            </div>
-                        </TooltipTrigger>
-                        {!isDurationSet && (
-                            <TooltipContent>
-                                <p>Set project duration first.</p>
-                            </TooltipContent>
-                        )}
-                    </Tooltip>
-                </TooltipProvider>
-            )}
-            {showSanctionOrderButton && (
-                 <Button onClick={handleDownloadSanctionOrder} disabled={isDownloadingSanctionOrder}>
-                    {isDownloadingSanctionOrder ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4" />}
-                    Download Sanction Order
-                </Button>
-            )}
-             {showAdminActions && (
-                <Dialog open={isDurationDialogOpen} onOpenChange={setIsDurationDialogOpen}>
-                  <DialogTrigger asChild>
-                    <Button variant="outline">
-                      <CalendarIcon className="mr-2 h-4 w-4" />
-                      {project.projectStartDate ? "Update Duration" : "Set Duration"}
-                    </Button>
-                  </DialogTrigger>
-                  <DialogContent onPointerDownOutside={(e) => e.preventDefault()} onInteractOutside={(e) => e.preventDefault()}>
-                    <DialogHeader>
-                      <DialogTitle>Set Project Duration</DialogTitle>
-                      <DialogDescription>Define the start and end dates for this project.</DialogDescription>
-                    </DialogHeader>
-                    <Form {...durationForm}>
-                      <form
-                        id="duration-form"
-                        onSubmit={durationForm.handleSubmit(handleDurationSubmit)}
-                        className="space-y-4 py-4"
-                      >
-                         <FormField name="startDate" control={durationForm.control} render={({ field }) => ( 
-                           <FormItem className="flex flex-col">
-                             <FormLabel>Start Date</FormLabel>
-                             <Popover><PopoverTrigger asChild><FormControl><Button variant={"outline"} className={cn("pl-3 text-left font-normal w-full", !field.value && "text-muted-foreground")}>{field.value ? format(field.value, "PPP") : (<span>Pick a date</span>)}<CalendarIcon className="ml-auto h-4 w-4 opacity-50" /></Button></FormControl></PopoverTrigger><PopoverContent className="w-auto p-0" align="start"><Calendar captionLayout="dropdown-buttons" fromYear={2010} toYear={new Date().getFullYear() + 5} mode="single" selected={field.value} onSelect={field.onChange} initialFocus defaultMonth={field.value} /></PopoverContent></Popover>
-                             <FormMessage />
-                           </FormItem> 
-                         )} />
-                         <FormField name="endDate" control={durationForm.control} render={({ field }) => ( 
-                          <FormItem className="flex flex-col">
-                            <FormLabel>End Date</FormLabel>
-                              <Popover><PopoverTrigger asChild><FormControl><Button variant={"outline"} className={cn("pl-3 text-left font-normal w-full", !field.value && "text-muted-foreground")}>{field.value ? format(field.value, "PPP") : (<span>Pick a date</span>)}<CalendarIcon className="ml-auto h-4 w-4 opacity-50" /></Button></FormControl></PopoverTrigger><PopoverContent className="w-auto p-0" align="start"><Calendar captionLayout="dropdown-buttons" fromYear={2010} toYear={new Date().getFullYear() + 5} mode="single" selected={field.value} onSelect={field.onChange} initialFocus defaultMonth={field.value} /></PopoverContent></Popover>
-                            <FormMessage />
-                          </FormItem> 
-                         )} />
-                      </form>
-                    </Form>
-                    <DialogFooter>
-                       <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
-                      <Button type="submit" form="duration-form" disabled={isUpdating}>
-                        {isUpdating ? "Saving..." : "Save Duration"}
+          {showDownloadButton && (
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <div tabIndex={isDurationSet ? undefined : -1}>
+                    {isGrantAwarded ? (
+                      <Button onClick={handleDirectDownload} disabled={isAwarding}>
+                        {isAwarding ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4" />}
+                        Download Recommendation Form
                       </Button>
-                    </DialogFooter>
-                  </DialogContent>
-                </Dialog>
-              )}
-             {isSuperAdmin && (
-                <Button variant="destructive" onClick={() => setIsDeleteDialogOpen(true)}>
-                    <Trash2 className="mr-2 h-4 w-4" /> Delete Project
+                    ) : (
+                      <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+                        <DialogTrigger asChild>
+                          <Button disabled={!isDurationSet}>
+                            <Download className="mr-2 h-4 w-4" /> Award Grant & Download
+                          </Button>
+                        </DialogTrigger>
+                        <DialogContent>
+                          <DialogHeader>
+                            <DialogTitle>Award Grant & Download</DialogTitle>
+                            <DialogDescription>
+                              To download the recommendation form, first confirm the grant details. This will update the project status and save the grant information.
+                            </DialogDescription>
+                          </DialogHeader>
+                          <AwardGrantForm
+                            form={awardGrantForm}
+                            onSubmit={handleAwardGrantAndDownload}
+                            isAwarding={isAwarding}
+                          />
+                        </DialogContent>
+                      </Dialog>
+                    )}
+                  </div>
+                </TooltipTrigger>
+                {!isDurationSet && (
+                  <TooltipContent>
+                    <p>Set project duration first.</p>
+                  </TooltipContent>
+                )}
+              </Tooltip>
+            </TooltipProvider>
+          )}
+          {showSanctionOrderButton && (
+            <Button onClick={handleDownloadSanctionOrder} disabled={isDownloadingSanctionOrder}>
+              {isDownloadingSanctionOrder ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4" />}
+              Download Sanction Order
+            </Button>
+          )}
+          {showAdminActions && (
+            <Dialog open={isDurationDialogOpen} onOpenChange={setIsDurationDialogOpen}>
+              <DialogTrigger asChild>
+                <Button variant="outline">
+                  <CalendarIcon className="mr-2 h-4 w-4" />
+                  {project.projectStartDate ? "Update Duration" : "Set Duration"}
                 </Button>
-            )}
+              </DialogTrigger>
+              <DialogContent onPointerDownOutside={(e) => e.preventDefault()} onInteractOutside={(e) => e.preventDefault()}>
+                <DialogHeader>
+                  <DialogTitle>Set Project Duration</DialogTitle>
+                  <DialogDescription>Define the start and end dates for this project.</DialogDescription>
+                </DialogHeader>
+                <Form {...durationForm}>
+                  <form
+                    id="duration-form"
+                    onSubmit={durationForm.handleSubmit(handleDurationSubmit)}
+                    className="space-y-4 py-4"
+                  >
+                    <FormField name="startDate" control={durationForm.control} render={({ field }) => (
+                      <FormItem className="flex flex-col">
+                        <FormLabel>Start Date</FormLabel>
+                        <Popover><PopoverTrigger asChild><FormControl><Button variant={"outline"} className={cn("pl-3 text-left font-normal w-full", !field.value && "text-muted-foreground")}>{field.value ? format(field.value, "PPP") : (<span>Pick a date</span>)}<CalendarIcon className="ml-auto h-4 w-4 opacity-50" /></Button></FormControl></PopoverTrigger><PopoverContent className="w-auto p-0" align="start"><Calendar captionLayout="dropdown-buttons" fromYear={2010} toYear={new Date().getFullYear() + 5} mode="single" selected={field.value} onSelect={field.onChange} initialFocus defaultMonth={field.value} /></PopoverContent></Popover>
+                        <FormMessage />
+                      </FormItem>
+                    )} />
+                    <FormField name="endDate" control={durationForm.control} render={({ field }) => (
+                      <FormItem className="flex flex-col">
+                        <FormLabel>End Date</FormLabel>
+                        <Popover><PopoverTrigger asChild><FormControl><Button variant={"outline"} className={cn("pl-3 text-left font-normal w-full", !field.value && "text-muted-foreground")}>{field.value ? format(field.value, "PPP") : (<span>Pick a date</span>)}<CalendarIcon className="ml-auto h-4 w-4 opacity-50" /></Button></FormControl></PopoverTrigger><PopoverContent className="w-auto p-0" align="start"><Calendar captionLayout="dropdown-buttons" fromYear={2010} toYear={new Date().getFullYear() + 5} mode="single" selected={field.value} onSelect={field.onChange} initialFocus defaultMonth={field.value} /></PopoverContent></Popover>
+                        <FormMessage />
+                      </FormItem>
+                    )} />
+                  </form>
+                </Form>
+                <DialogFooter>
+                  <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
+                  <Button type="submit" form="duration-form" disabled={isUpdating}>
+                    {isUpdating ? "Saving..." : "Save Duration"}
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
+          )}
+          {isSuperAdmin && (
+            <Button variant="destructive" onClick={() => setIsDeleteDialogOpen(true)}>
+              <Trash2 className="mr-2 h-4 w-4" /> Delete Project
+            </Button>
+          )}
         </div>
       </div>
 
@@ -1071,7 +1071,7 @@ export function ProjectDetailsClient({ project: initialProject, allUsers, piUser
                 {project.status}
               </Badge>
               {isAdmin && project.status === "Under Review" && (
-                 <TooltipProvider>
+                <TooltipProvider>
                   <DropdownMenu>
                     <Tooltip>
                       <TooltipTrigger asChild>
@@ -1083,10 +1083,10 @@ export function ProjectDetailsClient({ project: initialProject, allUsers, piUser
                       </TooltipTrigger>
                     </Tooltip>
                     <DropdownMenuContent align="end">
-                       <DropdownMenuItem 
-                          onClick={() => handleApprovalClick("Recommended")}
-                       >
-                          <Check className="mr-2 h-4 w-4" /> Recommended
+                      <DropdownMenuItem
+                        onClick={() => handleApprovalClick("Recommended")}
+                      >
+                        <Check className="mr-2 h-4 w-4" /> Recommended
                       </DropdownMenuItem>
                       <DropdownMenuItem onSelect={() => handleApprovalClick("Not Recommended")}>
                         <X className="mr-2 h-4 w-4 text-destructive" />{" "}
@@ -1112,8 +1112,8 @@ export function ProjectDetailsClient({ project: initialProject, allUsers, piUser
                       <DialogTitle>Submit Revised Proposal</DialogTitle>
                       <DialogDescription>
                         {isSuperAdmin && !isPI
-                            ? "As an admin, you are uploading a revised proposal on behalf of the PI."
-                            : "Upload your revised proposal based on the feedback from the IMR evaluation meeting."}
+                          ? "As an admin, you are uploading a revised proposal on behalf of the PI."
+                          : "Upload your revised proposal based on the feedback from the IMR evaluation meeting."}
                       </DialogDescription>
                     </DialogHeader>
                     <div className="grid gap-4 py-4">
@@ -1142,7 +1142,7 @@ export function ProjectDetailsClient({ project: initialProject, allUsers, piUser
                   </DialogContent>
                 </Dialog>
               )}
-              
+
               {canRequestClosure && (
                 <Dialog open={isCompletionDialogOpen} onOpenChange={setIsCompletionDialogOpen}>
                   <DialogTrigger asChild>
@@ -1160,18 +1160,18 @@ export function ProjectDetailsClient({ project: initialProject, allUsers, piUser
                     </DialogHeader>
                     <div className="space-y-6 py-4">
                       <div className="flex flex-col sm:flex-row items-center justify-center gap-4 flex-wrap">
-                          <Button variant="secondary" asChild>
-                              <a href="/templates/COMPLETION_REPORT_TEMPLATE.docx" download>
-                                  <Download className="mr-2 h-4 w-4" />
-                                  Completion Report Template
-                              </a>
-                          </Button>
-                           <Button variant="secondary" asChild>
-                              <a href="/templates/UTILIZATION_CERTIFICATE_TEMPLATE.docx" download>
-                                  <Download className="mr-2 h-4 w-4" />
-                                  Utilization Certificate Template
-                              </a>
-                          </Button>
+                        <Button variant="secondary" asChild>
+                          <a href="/templates/COMPLETION_REPORT_TEMPLATE.docx" download>
+                            <Download className="mr-2 h-4 w-4" />
+                            Completion Report Template
+                          </a>
+                        </Button>
+                        <Button variant="secondary" asChild>
+                          <a href="/templates/UTILIZATION_CERTIFICATE_TEMPLATE.docx" download>
+                            <Download className="mr-2 h-4 w-4" />
+                            Utilization Certificate Template
+                          </a>
+                        </Button>
                       </div>
                       <div className="grid gap-4">
                         <div className="grid grid-cols-4 items-center gap-4">
@@ -1217,22 +1217,22 @@ export function ProjectDetailsClient({ project: initialProject, allUsers, piUser
         </CardHeader>
         <CardContent className="space-y-6">
           {project.wasAbsent && !project.meetingDetails && (
-              <Alert variant="destructive">
-                  <AlertCircle className="h-4 w-4" />
-                  <AlertTitle>PI Was Absent</AlertTitle>
-                  <AlertDescription>
-                      The Principal Investigator was marked as absent for the scheduled evaluation meeting. This project will need to be rescheduled.
-                  </AlertDescription>
-              </Alert>
+            <Alert variant="destructive">
+              <AlertCircle className="h-4 w-4" />
+              <AlertTitle>PI Was Absent</AlertTitle>
+              <AlertDescription>
+                The Principal Investigator was marked as absent for the scheduled evaluation meeting. This project will need to be rescheduled.
+              </AlertDescription>
+            </Alert>
           )}
-           {isMeetingScheduled && (
+          {isMeetingScheduled && (
             <>
               <div className="space-y-2 p-4 border rounded-lg bg-secondary/50">
                 <div className="flex justify-between items-start flex-wrap gap-2">
                   <h3 className="font-semibold text-lg">IMR Evaluation Meeting Details</h3>
-                   {isSuperAdmin && project.status === 'Under Review' && (
+                  {isSuperAdmin && project.status === 'Under Review' && (
                     <Button variant="outline" size="sm" onClick={() => setIsAttendanceDialogOpen(true)}>
-                        <UserCheck className="mr-2 h-4 w-4" /> Mark Attendance
+                      <UserCheck className="mr-2 h-4 w-4" /> Mark Attendance
                     </Button>
                   )}
                 </div>
@@ -1316,13 +1316,13 @@ export function ProjectDetailsClient({ project: initialProject, allUsers, piUser
               <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
                 <dt className="font-medium text-muted-foreground">Principal Investigator</dt>
                 <dd>
-                    {piUser?.misId ? (
-                        <Link href={`/profile/${piUser.misId}`} className="text-primary hover:underline" target="_blank">
-                            {project.pi}
-                        </Link>
-                    ) : (
-                        project.pi
-                    )}
+                  {piUser?.misId ? (
+                    <Link href={`/profile/${piUser.misId}`} className="text-primary hover:underline" target="_blank">
+                      {project.pi}
+                    </Link>
+                  ) : (
+                    project.pi
+                  )}
                 </dd>
                 <dt className="font-medium text-muted-foreground">Email</dt>
                 <dd className="break-all">{project.pi_email || "N/A"}</dd>
@@ -1334,7 +1334,7 @@ export function ProjectDetailsClient({ project: initialProject, allUsers, piUser
                 <dd>{project.institute}</dd>
                 <dt className="font-medium text-muted-foreground">Department</dt>
                 <dd>{project.departmentName}</dd>
-                 <dt className="font-medium text-muted-foreground">Campus</dt>
+                <dt className="font-medium text-muted-foreground">Campus</dt>
                 <dd>{piUser?.campus || 'N/A'}</dd>
                 {(isAdmin || isSuperAdmin) && project.piCvUrl && (
                   <>
@@ -1352,102 +1352,102 @@ export function ProjectDetailsClient({ project: initialProject, allUsers, piUser
             </div>
           </div>
           {showBankDetails && piUser?.bankDetails && (
-              <>
-                <Separator />
-                <div className="space-y-4">
-                  <h3 className="font-semibold text-lg flex items-center gap-2"><Banknote className="h-5 w-5" />Bank Details</h3>
-                  <dl className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-2 text-sm">
-                    <div className="grid grid-cols-2"><dt className="font-medium text-muted-foreground">Beneficiary Name</dt><dd>{piUser.bankDetails.beneficiaryName}</dd></div>
-                    <div className="grid grid-cols-2"><dt className="font-medium text-muted-foreground">Account Number</dt><dd>{piUser.bankDetails.accountNumber}</dd></div>
-                    <div className="grid grid-cols-2"><dt className="font-medium text-muted-foreground">Bank Name</dt><dd>{piUser.bankDetails.bankName}</dd></div>
-                    <div className="grid grid-cols-2"><dt className="font-medium text-muted-foreground">IFSC Code</dt><dd>{piUser.bankDetails.ifscCode}</dd></div>
-                    <div className="grid grid-cols-2"><dt className="font-medium text-muted-foreground">Branch</dt><dd>{piUser.bankDetails.branchName}</dd></div>
-                  </dl>
-                </div>
-              </>
+            <>
+              <Separator />
+              <div className="space-y-4">
+                <h3 className="font-semibold text-lg flex items-center gap-2"><Banknote className="h-5 w-5" />Bank Details</h3>
+                <dl className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-2 text-sm">
+                  <div className="grid grid-cols-2"><dt className="font-medium text-muted-foreground">Beneficiary Name</dt><dd>{piUser.bankDetails.beneficiaryName}</dd></div>
+                  <div className="grid grid-cols-2"><dt className="font-medium text-muted-foreground">Account Number</dt><dd>{piUser.bankDetails.accountNumber}</dd></div>
+                  <div className="grid grid-cols-2"><dt className="font-medium text-muted-foreground">Bank Name</dt><dd>{piUser.bankDetails.bankName}</dd></div>
+                  <div className="grid grid-cols-2"><dt className="font-medium text-muted-foreground">IFSC Code</dt><dd>{piUser.bankDetails.ifscCode}</dd></div>
+                  <div className="grid grid-cols-2"><dt className="font-medium text-muted-foreground">Branch</dt><dd>{piUser.bankDetails.branchName}</dd></div>
+                </dl>
+              </div>
+            </>
           )}
           <Separator />
           {(project.teamInfo || (project.coPiDetails && project.coPiDetails.length > 0) || canManageCoPi) && (
             <>
               <div className="space-y-4">
-                  <h3 className="font-semibold text-lg flex items-center gap-2">
-                      <Users className="h-5 w-5" />
-                      Team Information
-                  </h3>
-                  {canManageCoPi && project.status !== 'Not Recommended' && (
-                      <Card className="bg-muted/50">
-                          <CardHeader>
-                              <CardTitle className="text-base">Manage Co-Investigators</CardTitle>
-                              <CardDescription>Add or remove Co-PIs for this project.</CardDescription>
-                          </CardHeader>
-                          <CardContent className="space-y-4">
-                              <div className="space-y-2">
-                                  <Label>Search & Add Co-PI by MIS ID</Label>
-                                  <div className="flex items-center gap-2">
-                                      <Input placeholder="Search by Co-PI's MIS ID" value={coPiSearchTerm} onChange={(e) => setCoPiSearchTerm(e.target.value)} />
-                                      <Button type="button" onClick={handleSearchCoPi} disabled={isSearching}>{isSearching ? <Loader2 className="h-4 w-4 animate-spin" /> : "Search"}</Button>
-                                  </div>
-                                  {foundCoPi && (
-                                      <div className="flex items-center justify-between p-2 border rounded-md">
-                                          <p>{foundCoPi.name}</p>
-                                          <Button type="button" size="sm" onClick={handleAddCoPi}>Add</Button>
-                                      </div>
-                                  )}
-                              </div>
-                              <div className="space-y-2">
-                                  <Label>Current Co-PI(s)</Label>
-                                  {coPiList.length > 0 ? (
-                                      coPiList.map((coPi) => (
-                                          <div key={coPi.uid} className="flex items-center justify-between p-2 bg-background rounded-md">
-                                              <p className="text-sm font-medium">{coPi.name}</p>
-                                              <Button type="button" variant="ghost" size="sm" onClick={() => handleRemoveCoPi(coPi.uid)}>Remove</Button>
-                                          </div>
-                                      ))
-                                  ) : (
-                                      <p className="text-sm text-muted-foreground">No Co-PIs added.</p>
-                                  )}
-                              </div>
-                              <Button onClick={handleSaveCoPis} disabled={isSavingCoPis}>
-                                  {isSavingCoPis && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                                  Save Co-PI List
-                              </Button>
-                          </CardContent>
-                      </Card>
-                  )}
-                   {project.coPiDetails && project.coPiDetails.length > 0 && (
+                <h3 className="font-semibold text-lg flex items-center gap-2">
+                  <Users className="h-5 w-5" />
+                  Team Information
+                </h3>
+                {canManageCoPi && project.status !== 'Not Recommended' && (
+                  <Card className="bg-muted/50">
+                    <CardHeader>
+                      <CardTitle className="text-base">Manage Co-Investigators</CardTitle>
+                      <CardDescription>Add or remove Co-PIs for this project.</CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
                       <div className="space-y-2">
-                          <h4 className="font-semibold text-base">Co-Principal Investigators:</h4>
-                          <div className="space-y-2">
-                              {project.coPiDetails.map((coPi, index) => {
-                                  const coPiUser = coPiUsers.find(u => u.uid === coPi.uid);
-                                  return (
-                                      <div key={index} className="flex items-center justify-between p-2 bg-muted/30 rounded-md">
-                                          <div className="flex items-center gap-2">
-                                              <span className="text-sm font-medium">
-                                                  {coPiUser?.misId ? (
-                                                      <Link href={`/profile/${coPiUser.misId}`} className="text-primary hover:underline" target="_blank">
-                                                          {coPi.name}
-                                                      </Link>
-                                                  ) : (
-                                                      coPi.name
-                                                  )}
-                                              </span>
-                                          </div>
-                                          {canViewCoPiCVs && coPi.cvUrl && (
-                                              <Button variant="outline" size="sm" asChild>
-                                                  <a href={coPi.cvUrl} target="_blank" rel="noopener noreferrer">
-                                                      <FileText className="mr-2 h-4 w-4" />
-                                                      View CV
-                                                  </a>
-                                              </Button>
-                                          )}
-                                      </div>
-                                  );
-                              })}
+                        <Label>Search & Add Co-PI by MIS ID</Label>
+                        <div className="flex items-center gap-2">
+                          <Input placeholder="Search by Co-PI's MIS ID" value={coPiSearchTerm} onChange={(e) => setCoPiSearchTerm(e.target.value)} />
+                          <Button type="button" onClick={handleSearchCoPi} disabled={isSearching}>{isSearching ? <Loader2 className="h-4 w-4 animate-spin" /> : "Search"}</Button>
+                        </div>
+                        {foundCoPi && (
+                          <div className="flex items-center justify-between p-2 border rounded-md">
+                            <p>{foundCoPi.name}</p>
+                            <Button type="button" size="sm" onClick={handleAddCoPi}>Add</Button>
                           </div>
+                        )}
                       </div>
-                  )}
-                  {project.teamInfo && <p className="text-muted-foreground whitespace-pre-wrap">{project.teamInfo}</p>}
+                      <div className="space-y-2">
+                        <Label>Current Co-PI(s)</Label>
+                        {coPiList.length > 0 ? (
+                          coPiList.map((coPi) => (
+                            <div key={coPi.uid} className="flex items-center justify-between p-2 bg-background rounded-md">
+                              <p className="text-sm font-medium">{coPi.name}</p>
+                              <Button type="button" variant="ghost" size="sm" onClick={() => handleRemoveCoPi(coPi.uid)}>Remove</Button>
+                            </div>
+                          ))
+                        ) : (
+                          <p className="text-sm text-muted-foreground">No Co-PIs added.</p>
+                        )}
+                      </div>
+                      <Button onClick={handleSaveCoPis} disabled={isSavingCoPis}>
+                        {isSavingCoPis && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                        Save Co-PI List
+                      </Button>
+                    </CardContent>
+                  </Card>
+                )}
+                {project.coPiDetails && project.coPiDetails.length > 0 && (
+                  <div className="space-y-2">
+                    <h4 className="font-semibold text-base">Co-Principal Investigators:</h4>
+                    <div className="space-y-2">
+                      {project.coPiDetails.map((coPi, index) => {
+                        const coPiUser = coPiUsers.find(u => u.uid === coPi.uid);
+                        return (
+                          <div key={index} className="flex items-center justify-between p-2 bg-muted/30 rounded-md">
+                            <div className="flex items-center gap-2">
+                              <span className="text-sm font-medium">
+                                {coPiUser?.misId ? (
+                                  <Link href={`/profile/${coPiUser.misId}`} className="text-primary hover:underline" target="_blank">
+                                    {coPi.name}
+                                  </Link>
+                                ) : (
+                                  coPi.name
+                                )}
+                              </span>
+                            </div>
+                            {canViewCoPiCVs && coPi.cvUrl && (
+                              <Button variant="outline" size="sm" asChild>
+                                <a href={coPi.cvUrl} target="_blank" rel="noopener noreferrer">
+                                  <FileText className="mr-2 h-4 w-4" />
+                                  View CV
+                                </a>
+                              </Button>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+                {project.teamInfo && <p className="text-muted-foreground whitespace-pre-wrap">{project.teamInfo}</p>}
               </div>
               <Separator />
             </>
@@ -1541,14 +1541,14 @@ export function ProjectDetailsClient({ project: initialProject, allUsers, piUser
       </Card>
 
       {canViewEvaluations && evaluations.length > 0 && user && (
-          <EvaluationsSummary project={project} evaluations={evaluations} currentUser={user} />
+        <EvaluationsSummary project={project} evaluations={evaluations} currentUser={user} />
       )}
-      
+
       {showEvaluationForm && user && (
-        <EvaluationForm 
-          project={project} 
-          user={user} 
-          onEvaluationSubmitted={refetchEvaluations} 
+        <EvaluationForm
+          project={project}
+          user={user}
+          onEvaluationSubmitted={refetchEvaluations}
           isEvaluationPeriodActive={isEvaluationPeriodActive}
         />
       )}
@@ -1598,54 +1598,54 @@ export function ProjectDetailsClient({ project: initialProject, allUsers, piUser
           </DialogFooter>
         </DialogContent>
       </Dialog>
-      <OfficeNotingDialog 
+      <OfficeNotingDialog
         isOpen={isNotingDialogOpen}
         onOpenChange={setIsNotingDialogOpen}
         onSubmit={handlePrint}
         isPrinting={isPrinting}
         form={notingForm}
       />
-       <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
-          <AlertDialogContent>
-            <Form {...deleteProjectForm}>
-              <form id="delete-project-form" onSubmit={deleteProjectForm.handleSubmit(handleDeleteProject)}>
-                <AlertDialogHeader>
-                    <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
-                    <AlertDialogDescription>
-                      This action cannot be undone. This will permanently delete the project and all its associated data, including evaluations and uploaded files. Please provide a reason for deletion.
-                    </AlertDialogDescription>
-                </AlertDialogHeader>
-                <div className="py-4">
-                  <FormField
-                    control={deleteProjectForm.control}
-                    name="reason"
-                    render={({ field }) => (
-                      <FormItem>
-                          <FormLabel>Reason for Deletion</FormLabel>
-                          <FormControl><Textarea {...field} /></FormControl>
-                          <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </div>
-                <AlertDialogFooter>
-                    <AlertDialogCancel>Cancel</AlertDialogCancel>
-                    <Button type="submit" variant="destructive" disabled={isUpdating}>
-                      {isUpdating && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                      Confirm & Delete
-                    </Button>
-                </AlertDialogFooter>
-              </form>
-            </Form>
-          </AlertDialogContent>
+      <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+        <AlertDialogContent>
+          <Form {...deleteProjectForm}>
+            <form id="delete-project-form" onSubmit={deleteProjectForm.handleSubmit(handleDeleteProject)}>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  This action cannot be undone. This will permanently delete the project and all its associated data, including evaluations and uploaded files. Please provide a reason for deletion.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <div className="py-4">
+                <FormField
+                  control={deleteProjectForm.control}
+                  name="reason"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Reason for Deletion</FormLabel>
+                      <FormControl><Textarea {...field} /></FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                <Button type="submit" variant="destructive" disabled={isUpdating}>
+                  {isUpdating && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                  Confirm & Delete
+                </Button>
+              </AlertDialogFooter>
+            </form>
+          </Form>
+        </AlertDialogContent>
       </AlertDialog>
-       {isSuperAdmin && project.meetingDetails && (
+      {isSuperAdmin && project.meetingDetails && (
         <AttendanceDialog
-            isOpen={isAttendanceDialogOpen}
-            onOpenChange={setIsAttendanceDialogOpen}
-            project={project}
-            allUsers={allUsers}
-            onUpdate={refetchProject}
+          isOpen={isAttendanceDialogOpen}
+          onOpenChange={setIsAttendanceDialogOpen}
+          project={project}
+          allUsers={allUsers}
+          onUpdate={refetchProject}
         />
       )}
     </React.Fragment>
@@ -1653,89 +1653,89 @@ export function ProjectDetailsClient({ project: initialProject, allUsers, piUser
 }
 
 function AwardGrantForm({ form, onSubmit, isAwarding }: { form: any, onSubmit: (values: z.infer<typeof awardGrantSchema>) => void, isAwarding: boolean }) {
-    const { fields, append, remove } = useFieldArray({
-        control: form.control,
-        name: "phases",
-    });
+  const { fields, append, remove } = useFieldArray({
+    control: form.control,
+    name: "phases",
+  });
 
-    return (
-        <Form {...form}>
-            <form id="award-grant-form" onSubmit={form.handleSubmit(onSubmit)} className="space-y-4 py-4 max-h-[60vh] overflow-y-auto pr-4">
-                <FormField name="sanctionNumber" control={form.control} render={({ field }) => ( <FormItem><FormLabel>Project Sanction Number</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem> )} />
-                <FormField name="totalAmount" control={form.control} render={({ field }) => ( <FormItem><FormLabel>Total Sanctioned Amount (₹)</FormLabel><FormControl><Input type="number" {...field} min="0" onWheel={(e) => (e.target as HTMLElement).blur()} /></FormControl><FormMessage /></FormItem> )} />
-                
-                <Separator />
-                <Label>Phase-wise Grant Amounts</Label>
+  return (
+    <Form {...form}>
+      <form id="award-grant-form" onSubmit={form.handleSubmit(onSubmit)} className="space-y-4 py-4 max-h-[60vh] overflow-y-auto pr-4">
+        <FormField name="sanctionNumber" control={form.control} render={({ field }) => (<FormItem><FormLabel>Project Sanction Number</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>)} />
+        <FormField name="totalAmount" control={form.control} render={({ field }) => (<FormItem><FormLabel>Total Sanctioned Amount (₹)</FormLabel><FormControl><Input type="number" {...field} min="0" onWheel={(e) => (e.target as HTMLElement).blur()} /></FormControl><FormMessage /></FormItem>)} />
 
-                {fields.map((field, index) => (
-                    <div key={field.id} className="p-3 border rounded-md space-y-3">
-                         <h4 className="font-semibold text-sm">{form.getValues(`phases.${index}.name`)}</h4>
-                         <FormField control={form.control} name={`phases.${index}.amount`} render={({ field }) => ( <FormItem><FormLabel>Amount (₹)</FormLabel><FormControl><Input type="number" {...field} min="0" onWheel={(e) => (e.target as HTMLElement).blur()} /></FormControl><FormMessage /></FormItem> )} />
-                         {fields.length > 1 && (<Button type="button" variant="destructive" size="sm" onClick={() => remove(index)}>Remove Phase</Button>)}
-                    </div>
-                ))}
-                 {fields.length < 5 && (
-                    <Button type="button" variant="outline" size="sm" className="mt-2" onClick={() => append({ name: `Phase ${fields.length + 1}`, amount: 0 })}>
-                        <Plus className="mr-2 h-4 w-4" /> Add Phase
-                    </Button>
-                )}
-            </form>
-             <DialogFooter className="mt-4">
-                <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
-                <Button type="submit" form="award-grant-form" disabled={isAwarding}>
-                    {isAwarding ? 'Processing...' : 'Save & Download'}
-                </Button>
-            </DialogFooter>
-        </Form>
-    );
+        <Separator />
+        <Label>Phase-wise Grant Amounts</Label>
+
+        {fields.map((field, index) => (
+          <div key={field.id} className="p-3 border rounded-md space-y-3">
+            <h4 className="font-semibold text-sm">{form.getValues(`phases.${index}.name`)}</h4>
+            <FormField control={form.control} name={`phases.${index}.amount`} render={({ field }) => (<FormItem><FormLabel>Amount (₹)</FormLabel><FormControl><Input type="number" {...field} min="0" onWheel={(e) => (e.target as HTMLElement).blur()} /></FormControl><FormMessage /></FormItem>)} />
+            {fields.length > 1 && (<Button type="button" variant="destructive" size="sm" onClick={() => remove(index)}>Remove Phase</Button>)}
+          </div>
+        ))}
+        {fields.length < 5 && (
+          <Button type="button" variant="outline" size="sm" className="mt-2" onClick={() => append({ name: `Phase ${fields.length + 1}`, amount: 0 })}>
+            <Plus className="mr-2 h-4 w-4" /> Add Phase
+          </Button>
+        )}
+      </form>
+      <DialogFooter className="mt-4">
+        <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
+        <Button type="submit" form="award-grant-form" disabled={isAwarding}>
+          {isAwarding ? 'Processing...' : 'Save & Download'}
+        </Button>
+      </DialogFooter>
+    </Form>
+  );
 }
 
 
 function OfficeNotingDialog({ isOpen, onOpenChange, onSubmit, isPrinting, form }: { isOpen: boolean, onOpenChange: (open: boolean) => void, onSubmit: (data: NotingFormData) => void, isPrinting: boolean, form: any }) {
-    const { fields, append, remove } = useFieldArray({
-        control: form.control,
-        name: "phases",
-    });
+  const { fields, append, remove } = useFieldArray({
+    control: form.control,
+    name: "phases",
+  });
 
-    return (
-        <Dialog open={isOpen} onOpenChange={onOpenChange}>
-            <DialogContent className="sm:max-w-lg">
-                <DialogHeader>
-                    <DialogTitle>Generate Office Notings Form</DialogTitle>
-                    <DialogDescription>Please provide the project duration and phase-wise grant amounts before downloading.</DialogDescription>
-                </DialogHeader>
-                <Form {...form}>
-                    <form id="noting-form" onSubmit={form.handleSubmit(onSubmit)} className="space-y-4 py-4 max-h-[60vh] overflow-y-auto pr-4">
-                        <FormField control={form.control} name="projectDuration" render={({ field }) => (
-                            <FormItem><FormLabel>Project Duration</FormLabel><FormControl><Input {...field} placeholder="e.g., 2 Years" /></FormControl><FormMessage /></FormItem>
-                        )} />
-                        <div>
-                            <Label>Phase-wise Grant Amount</Label>
-                            <div className="space-y-2 mt-2">
-                                {fields.map((field: any, index: number) => (
-                                    <div key={field.id} className="flex items-center gap-2">
-                                        <FormField control={form.control} name={`phases.${index}.name`} render={({ field }) => ( <FormItem className="flex-1"><FormControl><Input {...field} placeholder={`Phase ${index + 1} Name`} /></FormControl><FormMessage /></FormItem> )} />
-                                        <FormField control={form.control} name={`phases.${index}.amount`} render={({ field }) => ( <FormItem className="flex-1"><FormControl><Input type="number" {...field} min="0" onWheel={(e) => (e.target as HTMLElement).blur()} placeholder="Amount" /></FormControl><FormMessage /></FormItem> )} />
-                                        {fields.length > 1 && (<Button type="button" variant="destructive" size="icon" onClick={() => remove(index)}><X className="h-4 w-4" /></Button>)}
-                                    </div>
-                                ))}
-                            </div>
-                            {fields.length < 5 && (
-                                <Button type="button" variant="outline" size="sm" className="mt-2" onClick={() => append({ name: `Phase ${fields.length + 1}`, amount: 0 })}>
-                                    <Plus className="mr-2 h-4 w-4" /> Add Phase
-                                </Button>
-                            )}
-                        </div>
-                    </form>
-                </Form>
-                <DialogFooter>
-                    <Button variant="ghost" onClick={() => onOpenChange(false)}>Cancel</Button>
-                    <Button type="submit" form="noting-form" disabled={isPrinting}>
-                        {isPrinting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4" />}
-                        Save & Download
-                    </Button>
-                </DialogFooter>
-            </DialogContent>
-        </Dialog>
-    );
+  return (
+    <Dialog open={isOpen} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Generate Office Notings Form</DialogTitle>
+          <DialogDescription>Please provide the project duration and phase-wise grant amounts before downloading.</DialogDescription>
+        </DialogHeader>
+        <Form {...form}>
+          <form id="noting-form" onSubmit={form.handleSubmit(onSubmit)} className="space-y-4 py-4 max-h-[60vh] overflow-y-auto pr-4">
+            <FormField control={form.control} name="projectDuration" render={({ field }) => (
+              <FormItem><FormLabel>Project Duration</FormLabel><FormControl><Input {...field} placeholder="e.g., 2 Years" /></FormControl><FormMessage /></FormItem>
+            )} />
+            <div>
+              <Label>Phase-wise Grant Amount</Label>
+              <div className="space-y-2 mt-2">
+                {fields.map((field: any, index: number) => (
+                  <div key={field.id} className="flex items-center gap-2">
+                    <FormField control={form.control} name={`phases.${index}.name`} render={({ field }) => (<FormItem className="flex-1"><FormControl><Input {...field} placeholder={`Phase ${index + 1} Name`} /></FormControl><FormMessage /></FormItem>)} />
+                    <FormField control={form.control} name={`phases.${index}.amount`} render={({ field }) => (<FormItem className="flex-1"><FormControl><Input type="number" {...field} min="0" onWheel={(e) => (e.target as HTMLElement).blur()} placeholder="Amount" /></FormControl><FormMessage /></FormItem>)} />
+                    {fields.length > 1 && (<Button type="button" variant="destructive" size="icon" onClick={() => remove(index)}><X className="h-4 w-4" /></Button>)}
+                  </div>
+                ))}
+              </div>
+              {fields.length < 5 && (
+                <Button type="button" variant="outline" size="sm" className="mt-2" onClick={() => append({ name: `Phase ${fields.length + 1}`, amount: 0 })}>
+                  <Plus className="mr-2 h-4 w-4" /> Add Phase
+                </Button>
+              )}
+            </div>
+          </form>
+        </Form>
+        <DialogFooter>
+          <Button variant="ghost" onClick={() => onOpenChange(false)}>Cancel</Button>
+          <Button type="submit" form="noting-form" disabled={isPrinting}>
+            {isPrinting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4" />}
+            Save & Download
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
 }

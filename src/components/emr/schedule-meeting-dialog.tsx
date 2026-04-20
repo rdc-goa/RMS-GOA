@@ -1,4 +1,4 @@
-    
+
 // src/components/emr/schedule-meeting-dialog.tsx
 'use client';
 
@@ -34,12 +34,12 @@ interface ScheduleMeetingDialogProps {
 }
 
 const scheduleSchema = z.object({
-  date: z.date({ required_error: 'A meeting date is required.' }).min(startOfToday(), "Meeting date cannot be in the past."),
-  time: z.string().min(1, "Time is required."),
-  pptDeadline: z.date({ required_error: 'A presentation deadline is required.'}),
-  evaluatorUids: z.array(z.string()).min(1, 'Please select at least one evaluator.'),
-  mode: z.enum(['Offline', 'Online'], { required_error: 'Please select a meeting mode.' }),
-  venue: z.string().optional(),
+    date: z.date({ required_error: 'A meeting date is required.' }).min(startOfToday(), "Meeting date cannot be in the past."),
+    time: z.string().min(1, "Time is required."),
+    pptDeadline: z.date({ required_error: 'A presentation deadline is required.' }),
+    evaluatorUids: z.array(z.string()).min(1, 'Please select at least one evaluator.'),
+    mode: z.enum(['Offline', 'Online'], { required_error: 'Please select a meeting mode.' }),
+    venue: z.string().optional(),
 }).refine(data => {
     if (data.mode === 'Offline') {
         return data.venue && data.venue.length > 0;
@@ -78,7 +78,7 @@ export function ScheduleMeetingDialog({ call, interests, allUsers, currentUser, 
     const scheduleForm = useForm<z.infer<typeof scheduleSchema>>({
         resolver: zodResolver(scheduleSchema),
         defaultValues: {
-            venue: 'RDC Committee Room, PIMSR',
+            venue: 'VC Office',
             evaluatorUids: call.meetingDetails?.assignedEvaluators || [],
             date: call.meetingDetails?.date ? parseISO(call.meetingDetails.date) : undefined,
             time: call.meetingDetails?.time || '',
@@ -99,19 +99,19 @@ export function ScheduleMeetingDialog({ call, interests, allUsers, currentUser, 
 
     const meetingMode = scheduleForm.watch('mode');
 
-    
+
     useEffect(() => {
         if (meetingMode === 'Online') {
             scheduleForm.setValue('venue', '');
         } else {
-            scheduleForm.setValue('venue', 'RDC Committee Room, PIMSR');
+            scheduleForm.setValue('venue', 'VC Office');
         }
     }, [meetingMode, scheduleForm]);
 
     useEffect(() => {
         if (isOpen) {
             scheduleForm.reset({
-                venue: 'RDC Committee Room, PIMSR',
+                venue: 'VC Office',
                 evaluatorUids: call.meetingDetails?.assignedEvaluators || [],
                 date: call.meetingDetails?.date ? parseISO(call.meetingDetails.date) : undefined,
                 time: call.meetingDetails?.time || '',
@@ -157,16 +157,16 @@ export function ScheduleMeetingDialog({ call, interests, allUsers, currentUser, 
             setIsSubmitting(false);
         }
     };
-    
+
     const usersWithInterest = interests.filter(i => i.callId === call.id && !i.meetingSlot && !i.wasAbsent);
     const availableEvaluators = allUsers.filter(u => {
         const isAdminRole = ['Super-admin', 'admin', 'CRO'].includes(u.role);
         const isNotAnApplicant = !usersWithInterest.some(interest => interest.userId === u.uid);
-        
+
         if (currentUser?.designation === 'Head of Goa Campus') {
             return isAdminRole && isNotAnApplicant && u.campus === 'Goa';
         }
-        
+
         return isAdminRole && isNotAnApplicant;
     });
 
@@ -197,34 +197,35 @@ export function ScheduleMeetingDialog({ call, interests, allUsers, currentUser, 
                                         {usersWithInterest.map(interest => {
                                             const interestedUser = allUsers.find(u => u.uid === interest.userId);
                                             return (
-                                            <FormField
-                                                key={interest.id}
-                                                control={applicantsForm.control}
-                                                name="applicantUids"
-                                                render={({ field }) => (
-                                                    <FormItem className="flex items-center space-x-3 p-3 border-b">
-                                                        <FormControl>
-                                                            <Checkbox
-                                                                checked={field.value?.includes(interest.userId)}
-                                                                onCheckedChange={(checked) => {
-                                                                    return checked
-                                                                        ? field.onChange([...(field.value || []), interest.userId])
-                                                                        : field.onChange(field.value?.filter(id => id !== interest.userId));
-                                                                }}
-                                                            />
-                                                        </FormControl>
-                                                        <FormLabel className="font-normal w-full space-y-1">
-                                                            <div>{interest.userName}</div>
-                                                            {interestedUser && (
-                                                                <div className="text-xs text-muted-foreground">
-                                                                    {interestedUser.institute}{interestedUser.campus && interestedUser.campus !== 'Vadodara' && ` (${interestedUser.campus})`}
-                                                                </div>
-                                                            )}
-                                                        </FormLabel>
-                                                    </FormItem>
-                                                )}
-                                            />
-                                        )})}
+                                                <FormField
+                                                    key={interest.id}
+                                                    control={applicantsForm.control}
+                                                    name="applicantUids"
+                                                    render={({ field }) => (
+                                                        <FormItem className="flex items-center space-x-3 p-3 border-b">
+                                                            <FormControl>
+                                                                <Checkbox
+                                                                    checked={field.value?.includes(interest.userId)}
+                                                                    onCheckedChange={(checked) => {
+                                                                        return checked
+                                                                            ? field.onChange([...(field.value || []), interest.userId])
+                                                                            : field.onChange(field.value?.filter(id => id !== interest.userId));
+                                                                    }}
+                                                                />
+                                                            </FormControl>
+                                                            <FormLabel className="font-normal w-full space-y-1">
+                                                                <div>{interest.userName}</div>
+                                                                {interestedUser && (
+                                                                    <div className="text-xs text-muted-foreground">
+                                                                        {interestedUser.institute}{interestedUser.campus && interestedUser.campus !== 'Vadodara' && ` (${interestedUser.campus})`}
+                                                                    </div>
+                                                                )}
+                                                            </FormLabel>
+                                                        </FormItem>
+                                                    )}
+                                                />
+                                            )
+                                        })}
                                         <FormMessage />
                                     </FormItem>
                                 )}
@@ -233,15 +234,15 @@ export function ScheduleMeetingDialog({ call, interests, allUsers, currentUser, 
                     </Form>
                     <Form {...scheduleForm}>
                         <form id="schedule-form" onSubmit={scheduleForm.handleSubmit(handleScheduleSubmit)} className="space-y-4">
-                             <FormField name="date" control={scheduleForm.control} render={({ field }) => ( 
+                            <FormField name="date" control={scheduleForm.control} render={({ field }) => (
                                 <FormItem className="flex flex-col">
                                     <FormLabel>Meeting Date</FormLabel>
                                     <Popover><PopoverTrigger asChild><FormControl><Button variant={"outline"} className={cn("pl-3 text-left font-normal w-full", !field.value && "text-muted-foreground")}>{field.value ? format(field.value, "PPP") : (<span>Pick a date</span>)}<Calendar className="ml-auto h-4 w-4 opacity-50" /></Button></FormControl></PopoverTrigger><PopoverContent className="w-auto p-0" align="start"><CalendarPicker captionLayout="dropdown-buttons" fromYear={new Date().getFullYear()} toYear={new Date().getFullYear() + 5} mode="single" selected={field.value} onSelect={field.onChange} disabled={(date) => date < startOfToday()} initialFocus /></PopoverContent></Popover>
                                     <FormMessage />
-                                </FormItem> 
+                                </FormItem>
                             )} />
-                             <FormField name="time" control={scheduleForm.control} render={({ field }) => ( <FormItem><FormLabel>Meeting Time</FormLabel><FormControl><Input type="time" {...field} /></FormControl><FormMessage /></FormItem> )} />
-                             <FormField name="mode" control={scheduleForm.control} render={({ field }) => (
+                            <FormField name="time" control={scheduleForm.control} render={({ field }) => (<FormItem><FormLabel>Meeting Time</FormLabel><FormControl><Input type="time" {...field} /></FormControl><FormMessage /></FormItem>)} />
+                            <FormField name="mode" control={scheduleForm.control} render={({ field }) => (
                                 <FormItem className="space-y-3">
                                     <FormLabel>Meeting Mode</FormLabel>
                                     <FormControl>
@@ -252,66 +253,66 @@ export function ScheduleMeetingDialog({ call, interests, allUsers, currentUser, 
                                     </FormControl>
                                     <FormMessage />
                                 </FormItem>
-                             )} />
-                             <FormField name="venue" control={scheduleForm.control} render={({ field }) => ( 
+                            )} />
+                            <FormField name="venue" control={scheduleForm.control} render={({ field }) => (
                                 <FormItem>
                                     <FormLabel>{meetingMode === 'Online' ? 'Meeting Link' : 'Venue'}</FormLabel>
                                     <FormControl>
-                                        <Input {...field} placeholder={meetingMode === 'Online' ? 'https://meet.google.com/...' : 'Enter physical venue'}/>
+                                        <Input {...field} placeholder={meetingMode === 'Online' ? 'https://meet.google.com/...' : 'Enter physical venue'} />
                                     </FormControl>
                                     <FormMessage />
-                                </FormItem> 
-                             )} />
+                                </FormItem>
+                            )} />
 
-                             <FormField name="pptDeadline" control={scheduleForm.control} render={({ field }) => ( 
+                            <FormField name="pptDeadline" control={scheduleForm.control} render={({ field }) => (
                                 <FormItem className="flex flex-col">
                                     <FormLabel>Presentation Upload Deadline</FormLabel>
-                                    <Popover><PopoverTrigger asChild><FormControl><Button variant={"outline"} className={cn("pl-3 text-left font-normal w-full", !field.value && "text-muted-foreground")}>{field.value ? format(field.value, "PPp") : (<span>Pick date and time</span>)}<Calendar className="ml-auto h-4 w-4 opacity-50" /></Button></FormControl></PopoverTrigger><PopoverContent className="w-auto p-0" align="start"><CalendarPicker captionLayout="dropdown-buttons" fromYear={new Date().getFullYear()} toYear={new Date().getFullYear() + 5} mode="single" selected={field.value} onSelect={field.onChange} disabled={(date) => date < startOfToday()} initialFocus /><div className="p-2 border-t"><Input type="time" onChange={e => {const time = e.target.value; field.onChange(currentDate => setHours(setMinutes(currentDate || new Date(), parseInt(time.split(':')[1])), parseInt(time.split(':')[0])))}}/></div></PopoverContent></Popover>
+                                    <Popover><PopoverTrigger asChild><FormControl><Button variant={"outline"} className={cn("pl-3 text-left font-normal w-full", !field.value && "text-muted-foreground")}>{field.value ? format(field.value, "PPp") : (<span>Pick date and time</span>)}<Calendar className="ml-auto h-4 w-4 opacity-50" /></Button></FormControl></PopoverTrigger><PopoverContent className="w-auto p-0" align="start"><CalendarPicker captionLayout="dropdown-buttons" fromYear={new Date().getFullYear()} toYear={new Date().getFullYear() + 5} mode="single" selected={field.value} onSelect={field.onChange} disabled={(date) => date < startOfToday()} initialFocus /><div className="p-2 border-t"><Input type="time" onChange={e => { const time = e.target.value; field.onChange(currentDate => setHours(setMinutes(currentDate || new Date(), parseInt(time.split(':')[1])), parseInt(time.split(':')[0]))) }} /></div></PopoverContent></Popover>
                                     <FormMessage />
-                                </FormItem> 
+                                </FormItem>
                             )} />
-                             <FormField
+                            <FormField
                                 control={scheduleForm.control}
                                 name="evaluatorUids"
                                 render={({ field }) => (
                                     <FormItem className="flex flex-col">
-                                    <FormLabel>Assign Evaluators</FormLabel>
-                                    <DropdownMenu>
-                                        <DropdownMenuTrigger asChild>
-                                        <Button variant="outline" className="w-full justify-between">
-                                            {field.value?.length > 0 ? `${field.value.length} selected` : "Select evaluators"}
-                                            <ChevronDown className="h-4 w-4 opacity-50" />
-                                        </Button>
-                                        </DropdownMenuTrigger>
-                                        <DropdownMenuContent className="w-[--radix-popover-trigger-width]">
-                                        <DropdownMenuLabel>Available Staff</DropdownMenuLabel>
-                                        <DropdownMenuSeparator />
-                                        {availableEvaluators.map((evaluator) => (
-                                            <DropdownMenuCheckboxItem
-                                                key={evaluator.uid}
-                                                checked={field.value?.includes(evaluator.uid)}
-                                                onCheckedChange={(checked) => {
-                                                    return checked
-                                                    ? field.onChange([...(field.value || []), evaluator.uid])
-                                                    : field.onChange(field.value?.filter((id) => id !== evaluator.uid));
-                                                }}
-                                            >
-                                            {evaluator.name}
-                                            </DropdownMenuCheckboxItem>
-                                        ))}
-                                        </DropdownMenuContent>
-                                    </DropdownMenu>
-                                    <FormMessage />
+                                        <FormLabel>Assign Evaluators</FormLabel>
+                                        <DropdownMenu>
+                                            <DropdownMenuTrigger asChild>
+                                                <Button variant="outline" className="w-full justify-between">
+                                                    {field.value?.length > 0 ? `${field.value.length} selected` : "Select evaluators"}
+                                                    <ChevronDown className="h-4 w-4 opacity-50" />
+                                                </Button>
+                                            </DropdownMenuTrigger>
+                                            <DropdownMenuContent className="w-[--radix-popover-trigger-width]">
+                                                <DropdownMenuLabel>Available Staff</DropdownMenuLabel>
+                                                <DropdownMenuSeparator />
+                                                {availableEvaluators.map((evaluator) => (
+                                                    <DropdownMenuCheckboxItem
+                                                        key={evaluator.uid}
+                                                        checked={field.value?.includes(evaluator.uid)}
+                                                        onCheckedChange={(checked) => {
+                                                            return checked
+                                                                ? field.onChange([...(field.value || []), evaluator.uid])
+                                                                : field.onChange(field.value?.filter((id) => id !== evaluator.uid));
+                                                        }}
+                                                    >
+                                                        {evaluator.name}
+                                                    </DropdownMenuCheckboxItem>
+                                                ))}
+                                            </DropdownMenuContent>
+                                        </DropdownMenu>
+                                        <FormMessage />
                                     </FormItem>
                                 )}
-                             />
+                            />
                         </form>
                     </Form>
                 </div>
                 <DialogFooter>
                     <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
                     <Button type="submit" form="schedule-form" disabled={isSubmitting}>
-                      {isSubmitting ? <><Loader2 className="mr-2 h-4 w-4 animate-spin"/> Scheduling...</> : 'Confirm & Schedule'}
+                        {isSubmitting ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Scheduling...</> : 'Confirm & Schedule'}
                     </Button>
                 </DialogFooter>
             </DialogContent>
