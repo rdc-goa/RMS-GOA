@@ -539,9 +539,6 @@ export function EmrManagementClient({ call, allUsers, currentUser, onActionCompl
 
     const [interests, setInterests] = useState<EmrInterest[]>([]);
     const [loadingInterests, setLoadingInterests] = useState(false);
-    const [lastVisibleDoc, setLastVisibleDoc] = useState<QueryDocumentSnapshot<DocumentData> | null>(null);
-    const [hasMore, setHasMore] = useState(true);
-    const pageSize = 10;
 
     const [isDeleting, setIsDeleting] = useState(false);
     const [interestToUpdate, setInterestToUpdate] = useState<EmrInterest | null>(null);
@@ -559,32 +556,19 @@ export function EmrManagementClient({ call, allUsers, currentUser, onActionCompl
     const [isSendingReminders, setIsSendingReminders] = useState(false);
 
 
-    const fetchInterests = useCallback(async (isLoadMore = false) => {
-        if (loadingInterests || (!hasMore && isLoadMore)) return;
+    const fetchInterests = useCallback(async () => {
         setLoadingInterests(true);
         try {
-            let interestsQuery = query(
+            const interestsQuery = query(
                 collection(db, 'emrInterests'),
                 where('callId', '==', call.id),
-                orderBy('userName', 'asc'),
-                limit(pageSize)
+                orderBy('userName', 'asc')
             );
-
-            if (isLoadMore && lastVisibleDoc) {
-                interestsQuery = query(interestsQuery, startAfter(lastVisibleDoc));
-            }
 
             const snapshot = await getDocs(interestsQuery);
             const newInterests = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as EmrInterest));
 
-            if (isLoadMore) {
-                setInterests(prev => [...prev, ...newInterests]);
-            } else {
-                setInterests(newInterests);
-            }
-
-            setLastVisibleDoc(snapshot.docs[snapshot.docs.length - 1] || null);
-            setHasMore(snapshot.docs.length === pageSize);
+            setInterests(newInterests);
         } catch (error) {
             console.error("Error fetching interests:", error);
             reportSystemError(error, currentUser);
@@ -592,11 +576,13 @@ export function EmrManagementClient({ call, allUsers, currentUser, onActionCompl
         } finally {
             setLoadingInterests(false);
         }
-    }, [call.id, hasMore, lastVisibleDoc, loadingInterests, toast]);
+    }, [call.id, currentUser, toast]);
 
     useEffect(() => {
+        // We only want to fetch once on mount or when call.id changes.
         fetchInterests();
-    }, [fetchInterests]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [call.id]);
 
 
     const deleteForm = useForm<z.infer<typeof deleteRegistrationSchema>>({
@@ -780,7 +766,7 @@ export function EmrManagementClient({ call, allUsers, currentUser, onActionCompl
                     <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
                         <div>
                             <CardTitle>
-                                Applicant Registrations ({interests.length}{hasMore ? '+' : ''})
+                                Applicant Registrations ({interests.length})
                             </CardTitle>
                             <CardDescription>
                                 Review and manage all applicants for this call.
@@ -788,7 +774,7 @@ export function EmrManagementClient({ call, allUsers, currentUser, onActionCompl
                         </div>
 
                         <div className="flex flex-wrap items-center gap-2">
-                            {unscheduledApplicantsExist && currentUser.designation !== 'Head of Goa Campus' && (
+                            {!meetingIsScheduled && currentUser.designation !== 'Head of Goa Campus' && (
                                 <Button onClick={() => setIsScheduleDialogOpen(true)}>
                                     <CalendarClock className="mr-2 h-4 w-4" />
                                     Schedule Meeting
@@ -1044,14 +1030,6 @@ export function EmrManagementClient({ call, allUsers, currentUser, onActionCompl
                             </TableBody>
                         </Table>
                     </div>
-                    {hasMore && (
-                        <div className="flex justify-center py-4">
-                            <Button variant="outline" size="sm" onClick={() => fetchInterests(true)} disabled={loadingInterests}>
-                                {loadingInterests ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <ChevronRight className="h-4 w-4 mr-2 rotate-90" />}
-                                Load More
-                            </Button>
-                        </div>
-                    )}
                 </CardContent>
 
                 <ScheduleMeetingDialog

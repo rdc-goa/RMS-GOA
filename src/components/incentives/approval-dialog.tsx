@@ -187,7 +187,7 @@ function ConferenceClaimDetails({
                 <div className="col-span-3 flex justify-end gap-1">
                     {stageIndex > 0 && (
                         <div className="w-7 h-7 flex items-center justify-center">
-                            <TooltipProvider><Tooltip><TooltipTrigger>{getVerificationMark(approval1, field.id)}</TooltipTrigger><TooltipContent><p>Approver 1 Verification</p></TooltipContent></Tooltip></TooltipProvider>
+                            <TooltipProvider><Tooltip><TooltipTrigger asChild><span>{getVerificationMark(approval1, field.id)}</span></TooltipTrigger><TooltipContent><p>Approver 1 Verification</p></TooltipContent></Tooltip></TooltipProvider>
                         </div>
                     )}
                     {isChecklistEnabled && (
@@ -198,7 +198,7 @@ function ConferenceClaimDetails({
                                 <FormItem>
                                     <FormControl>
                                         <div className="flex items-center gap-1">
-                                            <Button type="button" size="icon" variant="ghost" className={`h-7 w-7 ${formField.value === true ? 'bg-red-600 hover:bg-green-700 text-white' : ''}`} onClick={() => formField.onChange(formField.value === true ? undefined : true)}><Check className="h-4 w-4" /></Button>
+                                            <Button type="button" size="icon" variant="ghost" className={`h-7 w-7 ${formField.value === true ? 'bg-red-600 hover:bg-red-700 text-white' : ''}`} onClick={() => formField.onChange(formField.value === true ? undefined : true)}><Check className="h-4 w-4" /></Button>
                                             <Button type="button" size="icon" variant={formField.value === false ? 'destructive' : 'ghost'} className="h-7 w-7" onClick={() => formField.onChange(formField.value === false ? undefined : false)}><X className="h-4 w-4" /></Button>
                                         </div>
                                     </FormControl>
@@ -352,12 +352,12 @@ function ResearchPaperClaimDetails({
                 <div className="col-span-3 flex justify-end gap-1">
                     {stageIndex > 0 && (
                         <div className="w-7 h-7 flex items-center justify-center">
-                            <TooltipProvider><Tooltip><TooltipTrigger>{getVerificationMark(approval1, field.id)}</TooltipTrigger><TooltipContent><p>Approver 1 Verification</p></TooltipContent></Tooltip></TooltipProvider>
+                            <TooltipProvider><Tooltip><TooltipTrigger asChild><span>{getVerificationMark(approval1, field.id)}</span></TooltipTrigger><TooltipContent><p>Approver 1 Verification</p></TooltipContent></Tooltip></TooltipProvider>
                         </div>
                     )}
                     {stageIndex > 1 && (
                         <div className="w-7 h-7 flex items-center justify-center">
-                            <TooltipProvider><Tooltip><TooltipTrigger>{getVerificationMark(approval2, field.id)}</TooltipTrigger><TooltipContent><p>Approver 2 Verification</p></TooltipContent></Tooltip></TooltipProvider>
+                            <TooltipProvider><Tooltip><TooltipTrigger asChild><span>{getVerificationMark(approval2, field.id)}</span></TooltipTrigger><TooltipContent><p>Approver 2 Verification</p></TooltipContent></Tooltip></TooltipProvider>
                         </div>
                     )}
                     {isChecklistEnabled && (
@@ -368,7 +368,7 @@ function ResearchPaperClaimDetails({
                                 <FormItem>
                                     <FormControl>
                                         <div className="flex items-center gap-1">
-                                            <Button type="button" size="icon" variant="ghost" className={`h-7 w-7 ${formField.value === true ? 'bg-red-600 hover:bg-green-700 text-white' : ''}`} onClick={() => formField.onChange(formField.value === true ? undefined : true)}>
+                                            <Button type="button" size="icon" variant="ghost" className={`h-7 w-7 ${formField.value === true ? 'bg-red-600 hover:bg-red-700 text-white' : ''}`} onClick={() => formField.onChange(formField.value === true ? undefined : true)}>
                                                 <Check className="h-4 w-4" />
                                             </Button>
                                             <Button type="button" size="icon" variant={formField.value === false ? 'destructive' : 'ghost'} className="h-7 w-7" onClick={() => formField.onChange(formField.value === false ? undefined : false)}>

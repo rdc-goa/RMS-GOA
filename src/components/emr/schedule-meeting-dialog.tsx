@@ -15,11 +15,12 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Calendar as CalendarPicker } from '@/components/ui/calendar';
 import { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Checkbox } from '@/components/ui/checkbox';
-import type { FundingCall, User, EmrInterest } from '@/types';
+import type { FundingCall, User, EmrInterest, SystemSettings } from '@/types';
 import { format, parseISO, startOfToday, isToday, parse, setHours, setMinutes } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { Calendar, ChevronDown, Loader2, Info } from 'lucide-react';
 import { scheduleEmrMeeting } from '@/app/emr-actions';
+import { getSystemSettings } from '@/app/actions';
 import { RadioGroup, RadioGroupItem } from '../ui/radio-group';
 import { Alert, AlertDescription, AlertTitle } from '../ui/alert';
 
@@ -74,6 +75,7 @@ const applicantsSchema = z.object({
 export function ScheduleMeetingDialog({ call, interests, allUsers, currentUser, isOpen, onOpenChange, onActionComplete }: ScheduleMeetingDialogProps) {
     const { toast } = useToast();
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const [systemSettings, setSystemSettings] = useState<SystemSettings | null>(null);
 
     const scheduleForm = useForm<z.infer<typeof scheduleSchema>>({
         resolver: zodResolver(scheduleSchema),
@@ -110,6 +112,8 @@ export function ScheduleMeetingDialog({ call, interests, allUsers, currentUser, 
 
     useEffect(() => {
         if (isOpen) {
+            getSystemSettings().then(setSystemSettings).catch(console.error);
+
             scheduleForm.reset({
                 venue: 'VC Office',
                 evaluatorUids: call.meetingDetails?.assignedEvaluators || [],
@@ -159,16 +163,17 @@ export function ScheduleMeetingDialog({ call, interests, allUsers, currentUser, 
     };
 
     const usersWithInterest = interests.filter(i => i.callId === call.id && !i.meetingSlot && !i.wasAbsent);
-    const availableEvaluators = allUsers.filter(u => {
-        const isAdminRole = ['Super-admin', 'admin', 'CRO'].includes(u.role);
-        const isNotAnApplicant = !usersWithInterest.some(interest => interest.userId === u.uid);
-
-        if (currentUser?.designation === 'Head of Goa Campus') {
-            return isAdminRole && isNotAnApplicant && u.campus === 'Goa';
-        }
-
-        return isAdminRole && isNotAnApplicant;
-    });
+    
+    const availableEvaluators = useMemo(() => {
+        const principalEmails = systemSettings?.institutePrincipals
+            ? Object.values(systemSettings.institutePrincipals).map(e => e.toLowerCase())
+            : [];
+            
+        return allUsers.filter(u => 
+            ['CRO', 'admin', 'Super-admin'].includes(u.role) || 
+            principalEmails.includes(u.email.toLowerCase())
+        ).sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+    }, [allUsers, systemSettings]);
 
     return (
         <Dialog open={isOpen} onOpenChange={onOpenChange}>

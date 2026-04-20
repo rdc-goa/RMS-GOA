@@ -1202,7 +1202,7 @@ export async function announceEmrCall(callId: string): Promise<{ success: boolea
 
     emailHtml += `
         <p style="margin-top: 20px; text-align: center; display: flex; justify-content: center; align-items: center; gap: 10px;">
-          <a href="https://rndprojects.paruluniversity.ac.in/login" style="background-color: #64B5F6; color: white; padding: 10px 15px; text-decoration: none; border-radius: 5px;">
+          <a href="https://rndprojects.goa.paruluniversity.ac.in/login" style="background-color: #64B5F6; color: white; padding: 10px 15px; text-decoration: none; border-radius: 5px;">
             Register Interest on the Portal
           </a>
     `
@@ -1284,7 +1284,7 @@ export async function notifyDeadlineChangeToStaff(
 
     emailHtml += `
         <p style="margin-top: 20px; text-align: center; display: flex; justify-content: center; align-items: center; gap: 10px;">
-          <a href="https://rndprojects.paruluniversity.ac.in/login" style="background-color: #64B5F6; color: white; padding: 10px 15px; text-decoration: none; border-radius: 5px;">
+          <a href="https://rndprojects.goa.paruluniversity.ac.in/login" style="background-color: #64B5F6; color: white; padding: 10px 15px; text-decoration: none; border-radius: 5px;">
             Register Interest on the Portal
           </a>
     `
