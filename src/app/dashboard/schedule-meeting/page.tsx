@@ -348,20 +348,9 @@ export default function ScheduleMeetingPage() {
   
   const selectedPids = useMemo(() => new Set(selectedProjects), [selectedProjects]);
 
-  const hasGoaCampusPi = useMemo(() => {
-    return allProjects.some(p => 
-        selectedPids.has(p.id) && 
-        allUsers.find(u => u.uid === p.pi_uid)?.campus === 'Goa'
-    );
-  }, [selectedPids, allProjects, allUsers]);
 
   const meetingMode = form.watch('mode');
 
-  useEffect(() => {
-      if (hasGoaCampusPi) {
-          form.setValue('mode', 'Online');
-      }
-  }, [hasGoaCampusPi, form]);
   
   useEffect(() => {
     if (meetingMode === 'Online') {
@@ -617,7 +606,7 @@ export default function ScheduleMeetingPage() {
                   <form onSubmit={form.handleSubmit(onSubmit)} id="schedule-form" className="space-y-6">
                       <FormField name="date" control={form.control} render={({ field }) => ( <FormItem className="flex flex-col"><FormLabel>Meeting Date</FormLabel><Popover><PopoverTrigger asChild><FormControl><Button variant={"outline"} className={cn("pl-3 text-left font-normal w-full", !field.value && "text-muted-foreground")}>{field.value ? format(field.value, "PPP") : (<span>Pick a date</span>)}<CalendarIcon className="ml-auto h-4 w-4 opacity-50" /></Button></FormControl></PopoverTrigger><PopoverContent className="w-auto p-0" align="start"><Calendar captionLayout="dropdown-buttons" fromYear={new Date().getFullYear()} toYear={new Date().getFullYear() + 5} mode="single" selected={field.value} onSelect={field.onChange} disabled={(date) => date < startOfToday()} initialFocus /></PopoverContent></Popover><FormMessage /></FormItem> )} />
                       <FormField name="time" control={form.control} render={({ field }) => ( <FormItem><FormLabel>Meeting Time</FormLabel><FormControl><Input type="time" {...field} /></FormControl><FormMessage /></FormItem> )} />
-                      <FormField name="mode" control={form.control} render={({ field }) => ( <FormItem className="space-y-3"><FormLabel>Meeting Mode</FormLabel>{hasGoaCampusPi && (<Alert variant="default" className="bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-700"><Info className="h-4 w-4 text-blue-600" /><AlertTitle>Online Mode Enforced</AlertTitle><AlertDescription className="text-blue-700 dark:text-blue-300">An online meeting is required as one or more selected PIs are from the Goa campus.</AlertDescription></Alert>)}<FormControl><RadioGroup onValueChange={field.onChange} value={field.value} className="flex space-x-4"><FormItem className="flex items-center space-x-2"><FormControl><RadioGroupItem value="Offline" disabled={hasGoaCampusPi} /></FormControl><FormLabel className="font-normal">Offline</FormLabel></FormItem><FormItem className="flex items-center space-x-2"><FormControl><RadioGroupItem value="Online" /></FormControl><FormLabel className="font-normal">Online</FormLabel></FormItem></RadioGroup></FormControl><FormMessage /></FormItem> )} />
+                      <FormField name="mode" control={form.control} render={({ field }) => ( <FormItem className="space-y-3"><FormLabel>Meeting Mode</FormLabel><FormControl><RadioGroup onValueChange={field.onChange} value={field.value} className="flex space-x-4"><FormItem className="flex items-center space-x-2"><FormControl><RadioGroupItem value="Offline" /></FormControl><FormLabel className="font-normal">Offline</FormLabel></FormItem><FormItem className="flex items-center space-x-2"><FormControl><RadioGroupItem value="Online" /></FormControl><FormLabel className="font-normal">Online</FormLabel></FormItem></RadioGroup></FormControl><FormMessage /></FormItem> )} />
                       <FormField name="venue" control={form.control} render={({ field }) => ( <FormItem><FormLabel>{meetingMode === 'Online' ? 'Meeting Link' : 'Venue'}</FormLabel><FormControl><Input {...field} placeholder={meetingMode === 'Online' ? 'https://meet.google.com/...' : 'Enter physical venue'} /></FormControl><FormMessage /></FormItem> )} />
                       <FormField control={form.control} name="evaluatorUids" render={({ field }) => ( <FormItem className="flex flex-col"><FormLabel>Assign Evaluators</FormLabel><DropdownMenu><DropdownMenuTrigger asChild><Button variant="outline" className="w-full justify-between">{field.value?.length > 0 ? `${field.value.length} selected` : "Select evaluators"}<ChevronDown className="h-4 w-4 opacity-50" /></Button></DropdownMenuTrigger><DropdownMenuContent className="w-[--radix-popover-trigger-width]"><DropdownMenuLabel>Available Staff</DropdownMenuLabel><DropdownMenuSeparator />{evaluators.map((evaluator) => (<DropdownMenuCheckboxItem key={evaluator.uid} checked={field.value?.includes(evaluator.uid)} onCheckedChange={(checked) => { return checked ? field.onChange([...(field.value || []), evaluator.uid]) : field.onChange(field.value?.filter((id) => id !== evaluator.uid)); }}>{evaluator.name}</DropdownMenuCheckboxItem>))}</DropdownMenuContent></DropdownMenu><FormMessage /></FormItem> )} />
                   </form>
