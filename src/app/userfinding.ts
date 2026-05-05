@@ -1,8 +1,8 @@
-
 'use server';
 
 import { adminDb } from '@/lib/admin';
 import type { User, FoundUser } from '@/types';
+import { readStaffDataFromUrl, GOA_STAFF_DATA_URL, formatUserRecord } from '@/lib/staff-data';
 
 async function logActivity(level: 'INFO' | 'WARNING' | 'ERROR', message: string, context: Record<string, any> = {}) {
     try {
@@ -57,9 +57,9 @@ export async function findUserByMisId(
         const userData = doc.data() as User;
         const userResult: FoundUser = {
             uid: doc.id,
-            name: userData.name,
-            email: userData.email,
-            misId: userData.misId!,
+            name: userData.name || 'Unknown',
+            email: userData.email || '',
+            misId: userData.misId || String(searchTerm),
             campus: userData.campus || 'Goa',
         };
         if(userResult.email) {
@@ -71,9 +71,9 @@ export async function findUserByMisId(
         const userData = doc.data() as User;
         const userResult: FoundUser = {
             uid: doc.id,
-            name: userData.name,
-            email: userData.email,
-            misId: userData.misId!,
+            name: userData.name || 'Unknown',
+            email: userData.email || '',
+            misId: userData.misId || 'N/A',
             campus: userData.campus || 'Goa',
         };
         if(userResult.email && !allFound.has(userResult.email.toLowerCase())) {
@@ -81,41 +81,53 @@ export async function findUserByMisId(
         }
       });
   
-      // 2. Search staff data files via API by MIS ID
-      const baseUrl = process.env.BASE_URL || 'http://localhost:9002';
-      const staffResponse = await fetch(`${baseUrl}/api/get-staff-data?misId=${encodeURIComponent(searchTerm)}&fetchAll=true`);
-      
-      if (staffResponse.ok) {
-        const staffResult = await staffResponse.json();
-        if (staffResult.success && Array.isArray(staffResult.data)) {
-          staffResult.data.forEach((staff: any) => {
-            if (staff.email && !allFound.has(staff.email.toLowerCase())) {
-                allFound.set(staff.email.toLowerCase(), {
-                    uid: null, // No UID for staff not yet registered
-                    name: staff.name,
-                    email: staff.email,
-                    misId: staff.misId,
-                    campus: staff.campus,
+      // 2. Search staff data files directly by MIS ID
+      try {
+        const staffData = await readStaffDataFromUrl(GOA_STAFF_DATA_URL);
+        
+        staffData.forEach((staff) => {
+            const staffMisId = staff['MIS ID'] ? String(staff['MIS ID']).toLowerCase() : '';
+            const isMatch = (staffMisId === searchTerm.toLowerCase());
+            
+            if (isMatch && staff.Email && !allFound.has(staff.Email.toLowerCase())) {
+                const formatted = formatUserRecord(staff, 'Goa');
+                allFound.set(staff.Email.toLowerCase(), {
+                    uid: null,
+                    name: formatted.name || 'Unknown',
+                    email: formatted.email.toLowerCase(),
+                    misId: formatted.misId || staffMisId,
+                    campus: formatted.campus || 'Goa',
                 });
             }
-          });
-        }
-      } else {
-        console.warn(`API call to get-staff-data failed with status: ${staffResponse.status}`);
+        });
+      } catch (staffError) {
+        console.error("Error fetching staff data directly:", staffError);
       }
 
-      // 3. If no results yet, search by name in API
+      // 3. If no results yet, search by name directly in Firestore (partial match)
       if (allFound.size === 0) {
-        const nameSearchResponse = await fetch(`${baseUrl}/api/find-users-by-name?name=${encodeURIComponent(searchTerm)}`);
-        if (nameSearchResponse.ok) {
-            const nameSearchResult = await nameSearchResponse.json();
-            if (nameSearchResult.success && Array.isArray(nameSearchResult.users)) {
-                 nameSearchResult.users.forEach((user: any) => {
-                    if (user.email && !allFound.has(user.email.toLowerCase())) {
-                        allFound.set(user.email.toLowerCase(), user);
+        try {
+            const lowercasedName = searchTerm.toLowerCase();
+            // Note: This matches the previous API route logic for partial name search
+            const nameSearchSnapshot = await usersRef.orderBy('name').get();
+            
+            nameSearchSnapshot.docs.forEach((doc) => {
+                const userData = doc.data() as User;
+                const userName = userData.name || '';
+                if (userName.toLowerCase().includes(lowercasedName)) {
+                    if (userData.email && !allFound.has(userData.email.toLowerCase())) {
+                        allFound.set(userData.email.toLowerCase(), {
+                            uid: doc.id,
+                            name: userName,
+                            email: userData.email,
+                            misId: userData.misId || 'N/A',
+                            campus: userData.campus || 'Goa',
+                        });
                     }
-                 });
-            }
+                }
+            });
+        } catch (nameError) {
+            console.error("Error searching by name directly:", nameError);
         }
       }
   
