@@ -338,7 +338,7 @@ export function AddEditCallDialog({
                       <div className="space-y-0.5">
                         <FormLabel>Notify Deadline Change</FormLabel>
                         <FormDescription>
-                          Send an email notification to all staff about the updated interest registration deadline.
+                          Send an email notification to all staff about the updated registration deadlines (Interest and/or Agency).
                         </FormDescription>
                       </div>
                       <FormControl>

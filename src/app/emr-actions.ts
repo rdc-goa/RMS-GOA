@@ -1091,14 +1091,24 @@ export async function updateFundingCall(
     const existingCall = callSnap.data() as FundingCall
     const oldInterestDeadline = existingCall.interestDeadline
     const newInterestDeadline = callData.interestDeadline.toISOString()
+    const oldApplyDeadline = existingCall.applyDeadline
+    const newApplyDeadline = callData.applyDeadline.toISOString()
 
-    // Check if interest deadline has changed
-    const deadlineChanged = oldInterestDeadline !== newInterestDeadline
+    // Check if deadlines have changed
+    const interestDeadlineChanged = oldInterestDeadline !== newInterestDeadline
+    const applyDeadlineChanged = oldApplyDeadline !== newApplyDeadline
+    const deadlineChanged = interestDeadlineChanged || applyDeadlineChanged
 
-    if (deadlineChanged) {
+    if (interestDeadlineChanged) {
       console.log(`⏰ Interest deadline changed for call: ${callData.title} (ID: ${callId})`)
       console.log(`   Old deadline: ${oldInterestDeadline}`)
       console.log(`   New deadline: ${newInterestDeadline}`)
+    }
+
+    if (applyDeadlineChanged) {
+      console.log(`📅 Agency deadline changed for call: ${callData.title} (ID: ${callId})`)
+      console.log(`   Old deadline: ${oldApplyDeadline}`)
+      console.log(`   New deadline: ${newApplyDeadline}`)
     }
 
     const attachments: { name: string; url: string }[] = existingCall.attachments || []
@@ -1135,7 +1145,12 @@ export async function updateFundingCall(
 
     if (deadlineChanged && notifyDeadlineChange) {
       console.log(`📧 Sending deadline change notification for call: ${callData.title} (ID: ${callId})`)
-      const notificationResult = await notifyDeadlineChangeToStaff(callId, existingCall, newInterestDeadline)
+      const notificationResult = await notifyDeadlineChangeToStaff(
+        callId, 
+        existingCall, 
+        interestDeadlineChanged ? newInterestDeadline : undefined,
+        applyDeadlineChanged ? newApplyDeadline : undefined
+      )
       if (!notificationResult.success) {
         throw new Error(notificationResult.error || "Funding call updated, but failed to send deadline change notification.")
       }
@@ -1244,7 +1259,8 @@ export async function announceEmrCall(callId: string): Promise<{ success: boolea
 export async function notifyDeadlineChangeToStaff(
   callId: string,
   call: FundingCall,
-  newInterestDeadline: string
+  newInterestDeadline?: string,
+  newApplyDeadline?: string
 ): Promise<{ success: boolean; error?: string }> {
   try {
     const vadodaraEmail = process.env.ALL_STAFF_EMAIL;
@@ -1263,8 +1279,8 @@ export async function notifyDeadlineChangeToStaff(
     let emailHtml = `
       <div ${EMAIL_STYLES.background}>
         ${EMAIL_STYLES.logo}
-        <h2 style="color: #ffffff; text-align: center;">Updated Interest Registration Deadline</h2>
-        <p style="color:#e0e0e0;">The interest registration deadline for the funding call <strong style="color:#ffffff;">"${call.title}"</strong> from <strong style="color:#ffffff;">${call.agency}</strong> has been updated.</p>
+        <h2 style="color: #ffffff; text-align: center;">Updated Deadlines for Funding Call</h2>
+        <p style="color:#e0e0e0;">The registration deadlines for the funding call <strong style="color:#ffffff;">"${call.title}"</strong> from <strong style="color:#ffffff;">${call.agency}</strong> have been updated.</p>
         
           <div style="padding: 15px; border: 1px solid #ff9800; border-radius: 8px; margin-top: 20px; background-color:#2c3e50;">
           <p style="color:#ff9800; font-weight: bold; font-size: 14px;">Important Notice:</p>
@@ -1273,8 +1289,27 @@ export async function notifyDeadlineChangeToStaff(
         </div>
         <div style="padding: 15px; border: 1px solid #4f5b62; border-radius: 8px; margin-top: 20px; background-color:#2c3e50;">
           <div style="color:#e0e0e0;" class="prose prose-sm">${call.description || "No description provided."}</div>
-          <p style="color:#e0e0e0; font-weight: bold; font-size: 14px;"><strong>New Interest Registration Deadline:</strong> ${formatInTimeZone(newInterestDeadline, timeZone, "PPpp (z)")}</p>
-          <p style="color:#e0e0e0;"><strong>Agency Application Deadline:</strong> ${formatInTimeZone(call.applyDeadline, timeZone, "PP (z)")}</p>
+          <div style="margin-top: 15px; space-y: 5px;">
+            ${newInterestDeadline ? `
+              <p style="color:#64B5F6; font-weight: bold; font-size: 14px; margin-bottom: 5px;">
+                <strong>NEW Interest Registration Deadline:</strong> ${formatInTimeZone(newInterestDeadline, timeZone, "PPpp (z)")}
+              </p>
+            ` : `
+              <p style="color:#e0e0e0; font-size: 14px; margin-bottom: 5px;">
+                <strong>Interest Registration Deadline:</strong> ${formatInTimeZone(call.interestDeadline, timeZone, "PPpp (z)")}
+              </p>
+            `}
+            
+            ${newApplyDeadline ? `
+              <p style="color:#64B5F6; font-weight: bold; font-size: 14px;">
+                <strong>NEW Agency Application Deadline:</strong> ${formatInTimeZone(newApplyDeadline, timeZone, "PP (z)")}
+              </p>
+            ` : `
+              <p style="color:#e0e0e0; font-size: 14px;">
+                <strong>Agency Application Deadline:</strong> ${formatInTimeZone(call.applyDeadline, timeZone, "PP (z)")}
+              </p>
+            `}
+          </div>
         </div>
     `
 
@@ -1305,7 +1340,7 @@ export async function notifyDeadlineChangeToStaff(
 
     await sendEmailUtility({
       to: vadodaraEmail,
-      subject: `Updated Interest Registration Deadline: ${call.title}`,
+      subject: `Deadline Updated: ${call.title}`,
       from: "rdc",
       attachments: emailAttachments,
       html: emailHtml,
