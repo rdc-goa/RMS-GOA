@@ -415,7 +415,9 @@ export function ApprovalDialog({ claim, approver, claimant, stageIndex, isOpen, 
         return allPossibleResearchPaperFields
             .filter(field => {
                 const value = (claimWithUserData as any)[field.id];
-                return value !== undefined && value !== null && value !== '' && (!Array.isArray(value) || value.length > 0);
+                if (value === undefined || value === null || value === '') return false;
+                if (Array.isArray(value) && value.length === 0) return false;
+                return true;
             })
             .map(field => field.id);
     };
