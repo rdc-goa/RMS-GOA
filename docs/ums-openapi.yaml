@@ -1,0 +1,180 @@
+openapi: 3.1.0
+info:
+  title: UMS Integration API
+  description: |
+    API contract expected by the Research Management Portal (Next.js + Node.js).
+    This contract is designed to match the portal's `umsService` usage.
+  version: 1.0.0
+servers:
+  - url: https://ums-api.university.edu
+    description: Production UMS base URL (update per environment)
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    FacultyProfile:
+      type: object
+      properties:
+        id:
+          type: string
+          description: Employee / faculty ID
+        fullName:
+          type: string
+        email:
+          type: string
+          format: email
+        departmentName:
+          type: string
+        designation:
+          type: string
+        institute:
+          type: string
+        phone:
+          type: string
+        campus:
+          type: string
+      required:
+        - id
+        - fullName
+        - email
+
+paths:
+  /faculty:
+    get:
+      summary: Get faculty profile by email
+      description: |
+        Returns a single faculty profile record matching the provided email.
+        This is used by the portal to auto-fill profiles during signup and profile lookup.
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: email
+          in: query
+          required: true
+          schema:
+            type: string
+            format: email
+      responses:
+        '200':
+          description: Faculty profile
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FacultyProfile'
+        '400':
+          description: Missing or invalid query parameter
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+        '401':
+          description: Unauthorized (token missing/invalid)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+        '404':
+          description: Faculty not found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+  /faculty/{employeeId}:
+    get:
+      summary: Get faculty profile by employee ID
+      description: Returns a faculty profile record using an employee/MIS identifier.
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: employeeId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Faculty profile
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FacultyProfile'
+        '400':
+          description: Missing or invalid ID
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+        '401':
+          description: Unauthorized (token missing/invalid)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+        '404':
+          description: Faculty not found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+  /departments:
+    get:
+      summary: List departments (optional)
+      description: |
+        Returns a list of department names. Optional `campus` query parameter can filter results.
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: campus
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Department list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: string
+        '401':
+          description: Unauthorized (token missing/invalid)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string

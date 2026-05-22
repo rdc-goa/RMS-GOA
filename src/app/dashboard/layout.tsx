@@ -38,6 +38,9 @@ import {
   BookOpenCheck,
   Building,
   Calculator,
+  FileText,
+  Beaker,
+  TestTubes,
 } from "lucide-react"
 
 import {
@@ -58,12 +61,14 @@ import { Logo } from "@/components/logo"
 import type { User, SystemSettings, Project, EmrInterest } from "@/types"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Button } from "@/components/ui/button"
-import { auth, db } from "@/lib/config"
-import { signOut, onAuthStateChanged, type User as FirebaseUser } from "firebase/auth"
+import { auth, db, db_rtdb } from "@/lib/config"
+import { ref, onValue } from "firebase/database"
+import { signOut, onIdTokenChanged, type User as FirebaseUser } from "firebase/auth"
 import { useToast } from "@/hooks/use-toast"
 import { collection, onSnapshot, query, where, doc, getDoc } from "firebase/firestore"
 import { getDefaultModulesForRole } from "@/lib/modules"
-import { saveSidebarOrder, getSystemSettings } from "@/app/actions"
+import { saveSidebarOrder, getSystemSettings, setSession, fetchPendingIncentiveApprovalsCountAction } from "@/app/actions"
+
 import { HelpDialog } from "@/components/help-dialog"
 import {
   AlertDialog,
@@ -85,6 +90,7 @@ interface NavItem {
   icon: React.ElementType
   label: string
   badge?: number
+  tag?: string
   condition?: boolean
 }
 
@@ -112,6 +118,11 @@ const SortableSidebarMenuItem = ({ item }: { item: NavItem }) => {
             {item.badge}
           </span>
         )}
+        {item.tag && (
+          <span className="ml-auto inline-flex items-center rounded-full bg-destructive px-2 py-0.5 text-[10px] font-bold text-destructive-foreground uppercase tracking-wider animate-pulse">
+            {item.tag}
+          </span>
+        )}
       </SidebarMenuButton>
     </SidebarMenuItem>
   )
@@ -125,6 +136,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const [pendingIncentiveApprovalsCount, setPendingIncentiveApprovalsCount] = useState(0)
   const [pendingBankClaimsCount, setPendingBankClaimsCount] = useState(0)
   const [pendingEvaluationsCount, setPendingEvaluationsCount] = useState(0);
+  const [pendingLabConsumablesCount, setPendingLabConsumablesCount] = useState(0);
+  const [pendingArpsApprovalsCount, setPendingArpsApprovalsCount] = useState(0);
   const [menuItems, setMenuItems] = useState<NavItem[]>([])
   const [isDirty, setIsDirty] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
@@ -182,6 +195,29 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         tooltip: "ARPS Calculator",
         icon: Calculator,
         label: "ARPS Calculator",
+      },
+      {
+        id: "arps-submission",
+        href: "/dashboard/arps-submission",
+        tooltip: "ARPS Submission Portal",
+        icon: NotebookPen,
+        label: "ARPS Submissions",
+        tag: "new!",
+      },
+      {
+        id: "arps-approvals",
+        href: "/dashboard/arps-approvals",
+        tooltip: "ARPS Verification & Approvals",
+        icon: ClipboardCheck,
+        label: "ARPS Approvals",
+        badge: pendingArpsApprovalsCount,
+      },
+      {
+        id: "manage-arps-submissions",
+        href: "/dashboard/manage-arps-submissions",
+        tooltip: "Manage ARPS Cycle & Submissions",
+        icon: ShieldCheck,
+        label: "Manage ARPS",
       },
       {
         id: "incentive-approvals",
@@ -309,6 +345,21 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         label: "Module Management",
       },
       {
+        id: "lab-consumables",
+        href: "/dashboard/lab-consumables",
+        tooltip: "Lab Consumables",
+        icon: Beaker,
+        label: "Lab Consumables",
+      },
+      {
+        id: "manage-lab-consumables",
+        href: "/dashboard/manage-lab-consumables",
+        tooltip: "Manage Lab Consumables",
+        icon: TestTubes,
+        label: "Manage Lab Consumables",
+        badge: pendingLabConsumablesCount,
+      },
+      {
         id: "notifications",
         href: "/dashboard/notifications",
         tooltip: "Notifications",
@@ -325,8 +376,16 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         label: "Settings",
         condition: true,
       },
+      {
+        id: "logs",
+        href: "/dashboard/logs",
+        tooltip: "System Logs",
+        icon: FileText,
+        label: "System Logs",
+        condition: user?.role === "Super-admin",
+      },
     ],
-    [unreadCount, pendingMeetingsCount, pendingIncentiveApprovalsCount, pendingBankClaimsCount, pendingEvaluationsCount],
+    [unreadCount, pendingMeetingsCount, pendingIncentiveApprovalsCount, pendingBankClaimsCount, pendingEvaluationsCount, pendingLabConsumablesCount, pendingArpsApprovalsCount],
   )
 
   useEffect(() => {
@@ -340,8 +399,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       if (userDocSnap.exists()) {
         const appUser = { uid: firebaseUser.uid, ...userDocSnap.data() } as User
 
-        if (!appUser.profileComplete) {
-          router.replace("/profile-setup")
+        // Robust check for mandatory fields: MIS ID, Faculty, Institute, Designation
+        const isProfileIncomplete = !appUser.profileComplete || !appUser.misId || !appUser.faculty || !appUser.institute || !appUser.designation;
+
+        if (isProfileIncomplete) {
+          router.replace("/profile-setup?redirected=true")
+          setLoading(false)
           return
         }
 
@@ -388,12 +451,23 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       }
     }
 
-    const unsubscribeAuth = onAuthStateChanged(auth, (firebaseUser: FirebaseUser | null) => {
+    const unsubscribeAuth = onIdTokenChanged(auth, (firebaseUser: FirebaseUser | null) => {
       if (unsubscribeProfile) unsubscribeProfile()
       clearTimeout(retryTimeout)
 
       if (firebaseUser) {
-        fetchUserProfile(firebaseUser)
+        // Refresh the Firebase ID token to keep the server-side session cookie current.
+        // ID tokens expire after 1 hour; we use an IIFE to handle the async calls
+        // without making the parent callback async (which can cause build issues).
+        (async () => {
+          try {
+            const freshToken = await firebaseUser.getIdToken(true); // force refresh
+            await setSession(freshToken);
+          } catch (tokenError) {
+            console.warn('Could not refresh session token:', tokenError);
+          }
+          fetchUserProfile(firebaseUser);
+        })();
       } else {
         // This is the key change: ensure all state is reset on logout
         setUser(null)
@@ -401,7 +475,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         setUnreadCount(0)
         setPendingMeetingsCount(0)
         setPendingIncentiveApprovalsCount(0)
+        setPendingIncentiveApprovalsCount(0)
         setPendingBankClaimsCount(0)
+        setPendingEvaluationsCount(0)
+        setPendingLabConsumablesCount(0)
+        setPendingArpsApprovalsCount(0)
         localStorage.removeItem("user")
         sessionStorage.clear()
         router.replace("/login")
@@ -445,10 +523,13 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     // Notifications listener
     const notificationsQuery = query(collection(db, "notifications"), where("uid", "==", user.uid))
     unsubscribes.push(
-      onSnapshot(notificationsQuery, (snapshot) => {
-        const unread = snapshot.docs.filter((doc) => !doc.data().isRead).length
-        setUnreadCount(unread)
-      }),
+      onSnapshot(notificationsQuery,
+        (snapshot) => {
+          const unread = snapshot.docs.filter((doc) => !doc.data().isRead).length
+          setUnreadCount(unread)
+        },
+        (error) => console.warn("Notifications listener failed:", error)
+      ),
     )
 
     // Pending Meetings listener (for admins)
@@ -478,25 +559,34 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           setPendingMeetingsCount(newCount + revisionCount + midTermCount);
         };
 
-        unsubscribeNew = onSnapshot(newSubmissionsQuery, (snapshot) => {
-          newCount = snapshot.size;
-          updateTotal();
-        });
+        unsubscribeNew = onSnapshot(newSubmissionsQuery,
+          (snapshot) => {
+            newCount = snapshot.size;
+            updateTotal();
+          },
+          (error) => console.warn("New submissions listener failed:", error)
+        );
 
-        unsubscribeRevision = onSnapshot(revisionSubmissionsQuery, (snapshot) => {
-          revisionCount = snapshot.size;
-          updateTotal();
-        });
+        unsubscribeRevision = onSnapshot(revisionSubmissionsQuery,
+          (snapshot) => {
+            revisionCount = snapshot.size;
+            updateTotal();
+          },
+          (error) => console.warn("Revision submissions listener failed:", error)
+        );
 
-        unsubscribeMidTerm = onSnapshot(midTermQuery, (snapshot) => {
-          midTermCount = snapshot.docs.filter(doc => {
-            const project = doc.data();
-            // Additional client-side check if needed, though Firestore should handle it
-            const firstDisbursement = project.grant?.phases?.[0]?.disbursementDate;
-            return firstDisbursement && new Date(firstDisbursement) <= thresholdDate;
-          }).length;
-          updateTotal();
-        });
+        unsubscribeMidTerm = onSnapshot(midTermQuery,
+          (snapshot) => {
+            midTermCount = snapshot.docs.filter(doc => {
+              const project = doc.data();
+              // Additional client-side check if needed, though Firestore should handle it
+              const firstDisbursement = project.grant?.phases?.[0]?.disbursementDate;
+              return firstDisbursement && new Date(firstDisbursement) <= thresholdDate;
+            }).length;
+            updateTotal();
+          },
+          (error) => console.warn("Mid-term projects listener failed:", error)
+        );
 
         unsubscribes.push(unsubscribeNew, unsubscribeRevision, unsubscribeMidTerm);
       };
@@ -504,17 +594,33 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       fetchSettingsAndSubscribe();
     }
 
-    // Incentive Approvals listener
+    // Incentive Approvals count (combined Firestore + RTDB source)
     const approverModule = user.allowedModules?.find((m) => m.startsWith("incentive-approver-"))
     if (approverModule) {
-      const stage = Number.parseInt(approverModule.split("-")[2], 10)
-      const statusToFetch = `Pending Stage ${stage} Approval`
-      const incentiveQuery = query(collection(db, "incentiveClaims"), where("status", "==", statusToFetch))
-      unsubscribes.push(
-        onSnapshot(incentiveQuery, (snapshot) => {
-          setPendingIncentiveApprovalsCount(snapshot.size)
-        }),
-      )
+      const fetchPendingCount = async () => {
+        try {
+          const count = await fetchPendingIncentiveApprovalsCountAction(user)
+          setPendingIncentiveApprovalsCount(count)
+        } catch (error) {
+          console.warn("Failed to fetch pending incentive approvals:", error)
+        }
+      }
+      fetchPendingCount()
+    }
+
+    // ARPS Approvals count
+    if (user.allowedModules?.includes("arps-approvals")) {
+      const arpsRef = ref(db_rtdb, "arpsSubmissions");
+      const unsubscribe = onValue(arpsRef, (snapshot) => {
+        let count = 0;
+        snapshot.forEach((child) => {
+          if (child.val().status === "Submitted") {
+            count++;
+          }
+        });
+        setPendingArpsApprovalsCount(count);
+      }, (error) => console.warn("ARPS Approvals listener failed:", error));
+      unsubscribes.push(() => unsubscribe());
     }
 
     // Pending Bank Claims listener (for admins)
@@ -524,9 +630,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         where("status", "in", ["Accepted", "Submitted to Accounts"]),
       )
       unsubscribes.push(
-        onSnapshot(bankClaimsQuery, (snapshot) => {
-          setPendingBankClaimsCount(snapshot.size)
-        }),
+        onSnapshot(bankClaimsQuery,
+          (snapshot) => {
+            setPendingBankClaimsCount(snapshot.size)
+          },
+          (error) => console.warn("Bank claims listener failed:", error)
+        ),
       )
     }
 
@@ -538,25 +647,48 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
       const imrQuery = query(collection(db, "projects"), where("status", "==", "Under Review"), where("meetingDetails.assignedEvaluators", "array-contains", user.uid));
       unsubscribes.push(
-        onSnapshot(imrQuery, (snapshot) => {
-          imrCount = snapshot.docs.filter(doc => {
-            const project = doc.data() as Project;
-            return !project.evaluatedBy?.includes(user.uid) && !project.wasAbsent;
-          }).length;
-          updateCounts();
-        })
+        onSnapshot(imrQuery,
+          (snapshot) => {
+            imrCount = snapshot.docs.filter(doc => {
+              const project = doc.data() as Project;
+              return !project.evaluatedBy?.includes(user.uid) && !project.wasAbsent;
+            }).length;
+            updateCounts();
+          },
+          (error) => console.warn("IMR evaluations listener failed:", error)
+        )
       );
 
       const emrQuery = query(collection(db, "emrInterests"), where("status", "==", "Evaluation Pending"), where("assignedEvaluators", "array-contains", user.uid));
       unsubscribes.push(
-        onSnapshot(emrQuery, (snapshot) => {
-          emrCount = snapshot.docs.filter(doc => {
-            const interest = doc.data() as EmrInterest;
-            return !interest.evaluatedBy?.includes(user.uid) && !interest.wasAbsent;
-          }).length;
-          updateCounts();
-        })
+        onSnapshot(emrQuery,
+          (snapshot) => {
+            emrCount = snapshot.docs.filter(doc => {
+              const interest = doc.data() as EmrInterest;
+              return !interest.evaluatedBy?.includes(user.uid) && !interest.wasAbsent;
+            }).length;
+            updateCounts();
+          },
+          (error) => console.warn("EMR evaluations listener failed:", error)
+        )
       );
+    }
+
+    // Pending Lab Consumables listener
+    if (user.allowedModules?.includes("manage-lab-consumables")) {
+      const labConsumablesQuery = query(collection(db, "labConsumables"), where("status", "==", "Pending"))
+      unsubscribes.push(
+        onSnapshot(
+          labConsumablesQuery,
+          (snapshot) => {
+            setPendingLabConsumablesCount(snapshot.size)
+          },
+          (error) => {
+            console.warn("Error fetching pending lab consumables count (likely missing Firestore rules):", error)
+
+          }
+        )
+      )
     }
 
     return () => unsubscribes.forEach((unsub) => unsub())
@@ -595,7 +727,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     if (pathname.includes("/dashboard/profile-setup")) return "Profile Setup"
 
     if (lastSegment === "dashboard") return "Dashboard"
-    return lastSegment.replace(/-/g, " ").replace(/\b\w/g, (l) => l.toUpperCase())
+    const title = lastSegment.replace(/-/g, " ").replace(/\b\w/g, (l) => l.toUpperCase())
+    return title.replace(/\bArps\b/gi, "ARPS")
   }
 
   const sensors = useSensors(
@@ -692,6 +825,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                               {item.badge}
                             </span>
                           )}
+                          {item.tag && (
+                            <span className="ml-auto inline-flex items-center rounded-full bg-destructive px-2 py-0.5 text-[10px] font-bold text-destructive-foreground uppercase tracking-wider animate-pulse">
+                              {item.tag}
+                            </span>
+                          )}
                         </SidebarMenuButton>
                       </SidebarMenuItem>
                     ),
@@ -702,11 +840,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           </SidebarContent>
           <SidebarFooter className="hidden md:flex mt-auto group-data-[collapsible=icon]:hidden">
             <Image
-              src="https://lhdlkrfbkon55i6u.public.blob.vercel-storage.com/PU%20Goa%20Black.png"
+              src="https://atkqjlzikx23ms5d.public.blob.vercel-storage.com/PU%20GOA%20LOGO%20BLACK.svg"
               alt="Parul University Goa Logo"
-              width={150}
-              height={50}
-              className="mx-auto"
+              width={200}
+              height={60}
+              className="mx-auto mb-4"
               style={{ height: "auto" }}
             />
           </SidebarFooter>

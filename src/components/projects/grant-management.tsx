@@ -10,8 +10,7 @@ import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, For
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { useToast } from "@/hooks/use-toast"
-import { addGrantPhase, addTransaction, updatePhaseStatus, deleteTransaction, updateTransaction } from "@/app/actions"
-import { generateInstallmentOfficeNoting } from "@/app/document-actions"
+import { addGrantPhase, addTransaction, updatePhaseStatus, deleteTransaction, updateTransaction, generateInstallmentOfficeNoting } from "@/app/actions"
 import React, { useState } from "react"
 import {
   DollarSign,
@@ -27,7 +26,7 @@ import {
   Trash2,
   Edit,
 } from "lucide-react"
-import * as XLSX from "xlsx"
+import ExcelJS from "exceljs"
 import {
   Dialog,
   DialogContent,
@@ -77,11 +76,11 @@ export function GrantManagement({ project, user, onUpdate }: GrantManagementProp
   const [currentPhaseId, setCurrentPhaseId] = useState<string | null>(null)
   const [isDownloading, setIsDownloading] = useState(false);
   const [phaseForNoting, setPhaseForNoting] = useState<GrantPhase | null>(null);
-  const [transactionToEdit, setTransactionToEdit] = useState<{phaseId: string, transaction: Transaction} | null>(null);
-  const [transactionToDelete, setTransactionToDelete] = useState<{phaseId: string, transaction: Transaction} | null>(null);
+  const [transactionToEdit, setTransactionToEdit] = useState<{ phaseId: string, transaction: Transaction } | null>(null);
+  const [transactionToDelete, setTransactionToDelete] = useState<{ phaseId: string, transaction: Transaction } | null>(null);
 
   const grant = project.grant
-  
+
   const canAddPhase = (user.role === "admin" || user.role === "Super-admin") && (project.isBulkUploaded || (grant && grant.totalAmount > 0));
 
   const totalDisbursed = grant?.phases?.reduce((acc, phase) => acc + phase.amount, 0) || 0;
@@ -91,7 +90,7 @@ export function GrantManagement({ project, user, onUpdate }: GrantManagementProp
     installmentRefNumber: z.string().min(3, "Installment Ref. No. is required."),
     amount: z.coerce.number().positive("Amount must be a positive number.").max(remainingAmount, `Amount cannot exceed the remaining balance of ₹${remainingAmount.toLocaleString('en-IN')}.`),
   })
-  
+
   const notingFormSchema = z.object({
     installmentRefNumber: z.string().min(3, "Installment Ref. No. is required."),
   });
@@ -121,7 +120,7 @@ export function GrantManagement({ project, user, onUpdate }: GrantManagementProp
         path: ["gstNumber"],
       },
     )
-  
+
 
   const canChangeStatus = user.role === "admin" || user.role === "Super-admin"
   const isPI = user.uid === project.pi_uid || user.email === project.pi_email
@@ -132,7 +131,7 @@ export function GrantManagement({ project, user, onUpdate }: GrantManagementProp
     resolver: zodResolver(addPhaseSchema),
     defaultValues: { installmentRefNumber: "", amount: 0 },
   })
-  
+
   const notingForm = useForm<z.infer<typeof notingFormSchema>>({
     resolver: zodResolver(notingFormSchema),
     defaultValues: { installmentRefNumber: "" },
@@ -169,7 +168,7 @@ export function GrantManagement({ project, user, onUpdate }: GrantManagementProp
     }
   }, [transactionToEdit, transactionForm]);
 
-  const handleExportTransactions = (phase: GrantPhase) => {
+  const handleExportTransactions = async (phase: GrantPhase) => {
     if (!phase.transactions || phase.transactions.length === 0) {
       toast({
         variant: "destructive",
@@ -179,57 +178,76 @@ export function GrantManagement({ project, user, onUpdate }: GrantManagementProp
       return
     }
 
-    const dataToExport = phase.transactions.map((t: Transaction) => ({
-      "Transaction Date": new Date(t.dateOfTransaction).toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' }),
-      "Vendor Name": t.vendorName,
-      "Amount (₹)": t.amount,
-      "GST Registered": t.isGstRegistered ? "Yes" : "No",
-      "GST Number": t.gstNumber || "N/A",
-      "Description": t.description,
-      "Invoice URL": t.invoiceUrl || "N/A",
-    }))
+    const workbook = new ExcelJS.Workbook();
+    const worksheet = workbook.addWorksheet("Transactions");
 
-    const worksheet = XLSX.utils.json_to_sheet(dataToExport)
-    const workbook = XLSX.utils.book_new()
-    XLSX.utils.book_append_sheet(workbook, worksheet, "Transactions")
-    XLSX.writeFile(workbook, `${project.title.replace(/\s+/g, "_")}_${phase.name.replace(/\s+/g, "_")}_Transactions.xlsx`)
+    worksheet.columns = [
+      { header: 'Transaction Date', key: 'date', width: 15 },
+      { header: 'Vendor Name', key: 'vendor', width: 25 },
+      { header: 'Amount (₹)', key: 'amount', width: 15 },
+      { header: 'GST Registered', key: 'gstReg', width: 15 },
+      { header: 'GST Number', key: 'gstNum', width: 20 },
+      { header: 'Description', key: 'desc', width: 40 },
+      { header: 'Invoice URL', key: 'url', width: 30 },
+    ];
+
+    phase.transactions.forEach((t: Transaction) => {
+      worksheet.addRow({
+        date: new Date(t.dateOfTransaction).toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' }),
+        vendor: t.vendorName,
+        amount: t.amount,
+        gstReg: t.isGstRegistered ? "Yes" : "No",
+        gstNum: t.gstNumber || "N/A",
+        desc: t.description,
+        url: t.invoiceUrl || "N/A",
+      });
+    });
+
+    const buffer = await workbook.xlsx.writeBuffer();
+    const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${project.title.replace(/\s+/g, "_")}_${phase.name.replace(/\s+/g, "_")}_Transactions.xlsx`;
+    a.click();
+    window.URL.revokeObjectURL(url);
   }
-  
+
   const handleDownloadNoting = async (phase: GrantPhase, installmentRefNumber: string) => {
     if (!phase.amount) {
-        toast({ variant: 'destructive', title: 'Missing Data', description: 'This phase is missing the amount needed to generate the note.' });
-        return;
+      toast({ variant: 'destructive', title: 'Missing Data', description: 'This phase is missing the amount needed to generate the note.' });
+      return;
     }
     setIsDownloading(true);
     try {
-        const result = await generateInstallmentOfficeNoting(project.id, { installmentRefNumber, amount: phase.amount });
+      const result = await generateInstallmentOfficeNoting(project.id, { installmentRefNumber, amount: phase.amount });
 
-        if (result.success && result.fileData) {
-            const byteCharacters = atob(result.fileData);
-            const byteNumbers = new Array(byteCharacters.length);
-            for (let i = 0; i < byteCharacters.length; i++) {
-                byteNumbers[i] = byteCharacters.charCodeAt(i);
-            }
-            const byteArray = new Uint8Array(byteNumbers);
-            const blob = new Blob([byteArray], { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
-
-            const url = window.URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = `Office_Note_Installment_${project.pi.replace(/\s/g, '_')}.docx`;
-            document.body.appendChild(a);
-            a.click();
-            a.remove();
-            window.URL.revokeObjectURL(url);
-            toast({ title: "Download Started" });
-            setPhaseForNoting(null);
-        } else {
-            throw new Error(result.error || "Failed to generate document.");
+      if (result.success && result.fileData) {
+        const byteCharacters = atob(result.fileData);
+        const byteNumbers = new Array(byteCharacters.length);
+        for (let i = 0; i < byteCharacters.length; i++) {
+          byteNumbers[i] = byteCharacters.charCodeAt(i);
         }
+        const byteArray = new Uint8Array(byteNumbers);
+        const blob = new Blob([byteArray], { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
+
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `Office_Note_Installment_${project.pi.replace(/\s/g, '_')}.docx`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        window.URL.revokeObjectURL(url);
+        toast({ title: "Download Started" });
+        setPhaseForNoting(null);
+      } else {
+        throw new Error(result.error || "Failed to generate document.");
+      }
     } catch (error: any) {
-        toast({ variant: 'destructive', title: 'Download Failed', description: error.message });
+      toast({ variant: 'destructive', title: 'Download Failed', description: error.message });
     } finally {
-        setIsDownloading(false);
+      setIsDownloading(false);
     }
   };
 
@@ -238,8 +256,8 @@ export function GrantManagement({ project, user, onUpdate }: GrantManagementProp
     setIsSubmitting(true);
     try {
       const result = await addGrantPhase(project.id, {
-          installmentRefNumber: values.installmentRefNumber,
-          amount: values.amount
+        installmentRefNumber: values.installmentRefNumber,
+        amount: values.amount
       });
       if (result.success && result.updatedProject) {
         onUpdate(result.updatedProject);
@@ -262,84 +280,82 @@ export function GrantManagement({ project, user, onUpdate }: GrantManagementProp
 
     // For final submission, validate all fields
     if (!isDraft) {
-        const validationResult = transactionSchema.safeParse(values);
-        if (!validationResult.success) {
-            // @ts-ignore
-            Object.keys(validationResult.error.formErrors.fieldErrors).forEach((key: keyof z.infer<typeof transactionSchema>) => {
-                const message = validationResult.error.formErrors.fieldErrors[key]?.[0];
-                if (message) {
-                    transactionForm.setError(key, { type: 'manual', message });
-                }
-            });
-            return;
-        }
+      const validationResult = transactionSchema.safeParse(values);
+      if (!validationResult.success) {
+        // @ts-ignore
+        Object.keys(validationResult.error.formErrors.fieldErrors).forEach((key: keyof z.infer<typeof transactionSchema>) => {
+          const message = validationResult.error.formErrors.fieldErrors[key]?.[0];
+          if (message) {
+            transactionForm.setError(key, { type: 'manual', message });
+          }
+        });
+        return;
+      }
     }
 
     setIsSubmitting(true);
     try {
-        const invoiceFile = (values.invoice as FileList)?.[0];
-        let invoiceUrl: string | undefined;
-        let invoiceFileName: string | undefined;
-        
-        // Upload file to new API endpoint if provided
-        if (invoiceFile) {
-            // Validate file before upload
-            const validation = validateFile(invoiceFile);
-            if (!validation.valid) {
-                throw new Error(validation.error || "File validation failed");
-            }
+      const invoiceFile = (values.invoice as FileList)?.[0];
+      let invoiceUrl: string | undefined;
+      let invoiceFileName: string | undefined;
 
-            // Upload file to API
-            const uploadResult = await uploadFileToApi(invoiceFile);
-            if (!uploadResult.success) {
-                throw new Error(uploadResult.error || "Failed to upload invoice");
-            }
-            invoiceUrl = uploadResult.url;
-            invoiceFileName = invoiceFile.name;
-        }
-        
-        const finalValues = {
-            dateOfTransaction: values.dateOfTransaction || '',
-            amount: values.amount || 0,
-            vendorName: values.vendorName || '',
-            isGstRegistered: values.isGstRegistered || false,
-            gstNumber: values.gstNumber || '',
-            description: values.description || '',
-        };
-        
-        let result;
-        if (transactionToEdit) {
-            // Update existing transaction
-            result = await updateTransaction(project.id, transactionToEdit.phaseId, transactionToEdit.transaction.id, {
-                ...finalValues,
-                isDraft,
-                invoiceUrl,
-                invoiceFileName,
-            });
-        } else {
-            // Add new transaction
-            result = await addTransaction(project.id, currentPhaseId, {
-                ...finalValues,
-                isDraft,
-                invoiceUrl,
-                invoiceFileName,
-            });
+      // Upload file to new API endpoint if provided
+      if (invoiceFile) {
+        // Validate file before upload
+        const validation = validateFile(invoiceFile);
+        if (!validation.valid) {
+          throw new Error(validation.error || "File validation failed");
         }
 
-        if (result.success && result.updatedProject) {
-            onUpdate(result.updatedProject);
-            toast({ title: "Success", description: `Transaction ${transactionToEdit ? 'updated' : 'added'} successfully.` });
-            if (!isDraft) {
-                closeTransactionDialog();
-            }
-        } else {
-            throw new Error(result.error || `Failed to ${transactionToEdit ? 'update' : 'add'} transaction.`);
+        // Upload file to API
+        const uploadResult = await uploadFileToApi(invoiceFile);
+        if (!uploadResult.success) {
+          throw new Error(uploadResult.error || "Failed to upload invoice");
         }
+        invoiceUrl = uploadResult.url;
+        invoiceFileName = invoiceFile.name;
+      }
+
+      const finalValues = {
+        dateOfTransaction: values.dateOfTransaction || '',
+        amount: values.amount || 0,
+        vendorName: values.vendorName || '',
+        isGstRegistered: values.isGstRegistered || false,
+        gstNumber: values.gstNumber || '',
+        description: values.description || '',
+      };
+
+      let result;
+      if (transactionToEdit) {
+        // Update existing transaction
+        result = await updateTransaction(project.id, transactionToEdit.phaseId, transactionToEdit.transaction.id, {
+          ...finalValues,
+          isDraft,
+          invoiceUrl,
+        });
+      } else {
+        // Add new transaction
+        result = await addTransaction(project.id, currentPhaseId, {
+          ...finalValues,
+          isDraft,
+          invoiceUrl,
+        });
+      }
+
+      if (result.success && result.updatedProject) {
+        onUpdate(result.updatedProject);
+        toast({ title: "Success", description: `Transaction ${transactionToEdit ? 'updated' : 'added'} successfully.` });
+        if (!isDraft) {
+          closeTransactionDialog();
+        }
+      } else {
+        throw new Error(result.error || `Failed to ${transactionToEdit ? 'update' : 'add'} transaction.`);
+      }
     } catch (error: any) {
-        console.error(`Client error in handleTransactionSubmit:`, error);
-        toast({ variant: "destructive", title: "Error", description: error.message || `Failed to ${transactionToEdit ? 'update' : 'add'} transaction.` });
+      console.error(`Client error in handleTransactionSubmit:`, error);
+      toast({ variant: "destructive", title: "Error", description: error.message || `Failed to ${transactionToEdit ? 'update' : 'add'} transaction.` });
     } finally {
-        setIsSubmitting(false);
+      setIsSubmitting(false);
     }
   };
 
@@ -348,19 +364,19 @@ export function GrantManagement({ project, user, onUpdate }: GrantManagementProp
     if (!transactionToDelete) return;
     setIsSubmitting(true);
     try {
-        const result = await deleteTransaction(project.id, transactionToDelete.phaseId, transactionToDelete.transaction.id);
-        if (result.success && result.updatedProject) {
-            onUpdate(result.updatedProject);
-            toast({ title: 'Transaction Deleted', description: 'The transaction has been removed.' });
-            setTransactionToDelete(null);
-        } else {
-            throw new Error(result.error || "Failed to delete transaction.");
-        }
+      const result = await deleteTransaction(project.id, transactionToDelete.phaseId, transactionToDelete.transaction.id);
+      if (result.success && result.updatedProject) {
+        onUpdate(result.updatedProject);
+        toast({ title: 'Transaction Deleted', description: 'The transaction has been removed.' });
+        setTransactionToDelete(null);
+      } else {
+        throw new Error(result.error || "Failed to delete transaction.");
+      }
     } catch (error: any) {
-        console.error("Client error in handleDeleteTransaction:", error);
-        toast({ variant: 'destructive', title: 'Error', description: error.message || 'Failed to delete transaction.' });
+      console.error("Client error in handleDeleteTransaction:", error);
+      toast({ variant: 'destructive', title: 'Error', description: error.message || 'Failed to delete transaction.' });
     } finally {
-        setIsSubmitting(false);
+      setIsSubmitting(false);
     }
   };
 
@@ -389,16 +405,16 @@ export function GrantManagement({ project, user, onUpdate }: GrantManagementProp
     setTransactionToEdit(null);
     transactionForm.reset();
   }
-  
+
   const getPhaseBadgeVariant = (status: GrantPhase['status']) => {
     switch (status) {
-        case 'Disbursed':
-        case 'Completed':
-            return 'default';
-        case 'Utilization Submitted':
-            return 'default';
-        default:
-            return 'secondary';
+      case 'Disbursed':
+      case 'Completed':
+        return 'default';
+      case 'Utilization Submitted':
+        return 'default';
+      default:
+        return 'secondary';
     }
   };
 
@@ -435,7 +451,7 @@ export function GrantManagement({ project, user, onUpdate }: GrantManagementProp
                     onSubmit={phaseForm.handleSubmit(handleAddPhase)}
                     className="space-y-4 py-4"
                   >
-                     <FormField
+                    <FormField
                       name="installmentRefNumber"
                       control={phaseForm.control}
                       render={({ field }) => (
@@ -487,10 +503,10 @@ export function GrantManagement({ project, user, onUpdate }: GrantManagementProp
           const utilizationPercentage = phase.amount > 0 ? (totalUtilized / phase.amount) * 100 : 0;
           const hasReachedThreshold = utilizationPercentage >= 80;
           const hasRemainingGrant = remainingAmount > 0 || (index < (grant.phases.length - 1));
-          
+
           const canRequestNextPhase = isPI && phase.status === "Disbursed" && hasReachedThreshold && hasRemainingGrant;
           const canManageExpenses = (isPI || isCoPi || isSuperAdmin) && phase.status === 'Disbursed';
-          
+
           const previousPhase = index > 0 ? grant.phases[index - 1] : null;
           const showOfficeNoteButton = (user.role === "admin" || user.role === 'Super-admin') && index > 0 && previousPhase && ['Utilization Submitted', 'Completed'].includes(previousPhase.status);
 
@@ -607,7 +623,7 @@ export function GrantManagement({ project, user, onUpdate }: GrantManagementProp
                         )}
                       </div>
                     </div>
-                    
+
                     {(phase.transactions?.length || 0) > 0 ? (
                       <div className="overflow-x-auto">
                         <Table>
@@ -624,9 +640,9 @@ export function GrantManagement({ project, user, onUpdate }: GrantManagementProp
                           </TableHeader>
                           <TableBody>
                             {phase.transactions?.map((transaction) => {
-                                const dateString = transaction.dateOfTransaction;
-                                const date = dateString ? parseISO(dateString) : null;
-                                return (
+                              const dateString = transaction.dateOfTransaction;
+                              const date = dateString ? parseISO(dateString) : null;
+                              return (
                                 <TableRow key={transaction.id} className={transaction.isDraft ? 'bg-yellow-100 dark:bg-yellow-900/20' : ''}>
                                   <TableCell>{date && isValid(date) ? format(date, "dd/MM/yyyy") : dateString}</TableCell>
                                   <TableCell>{transaction.vendorName}</TableCell>
@@ -656,51 +672,52 @@ export function GrantManagement({ project, user, onUpdate }: GrantManagementProp
                                   {canManageExpenses && (
                                     <TableCell className="text-right">
                                       <div className="flex justify-end gap-1">
-                                        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setTransactionToEdit({phaseId: phase.id, transaction})}>
+                                        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setTransactionToEdit({ phaseId: phase.id, transaction })}>
                                           <Edit className="h-4 w-4" />
                                         </Button>
-                                        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setTransactionToDelete({phaseId: phase.id, transaction})}>
+                                        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setTransactionToDelete({ phaseId: phase.id, transaction })}>
                                           <Trash2 className="h-4 w-4 text-destructive" />
                                         </Button>
                                       </div>
                                     </TableCell>
                                   )}
                                 </TableRow>
-                            )})}
+                              )
+                            })}
                           </TableBody>
                         </Table>
                       </div>
                     ) : (
-                       <div className="text-center py-8">
-                          <p className="text-muted-foreground">No transactions recorded for this phase.</p>
+                      <div className="text-center py-8">
+                        <p className="text-muted-foreground">No transactions recorded for this phase.</p>
                       </div>
                     )}
                   </div>
-                
 
-                 {canRequestNextPhase && (
-                  <div className="mt-4 flex justify-end">
-                    <Button
-                      onClick={() => handlePhaseStatusUpdate(phase.id, 'Utilization Submitted')}
-                      disabled={isSubmitting}
-                    >
-                      Submit Utilization & Request Next Phase
-                    </Button>
-                  </div>
-                )}
 
-                {totalUtilized > phase.amount && (
-                  <Alert className="mt-4">
-                    <AlertCircle className="h-4 w-4" />
-                    <AlertTitle>Over-utilization Warning</AlertTitle>
-                    <AlertDescription>
-                      This phase has been over-utilized by ₹{(totalUtilized - phase.amount).toLocaleString("en-IN")}.
-                    </AlertDescription>
-                  </Alert>
-                )}
-              </CardContent>
-            </Card>
-            {index < ((grant.phases || []).length - 1) && <Separator key={`${phase.id}-separator`} />}
+                  {canRequestNextPhase && (
+                    <div className="mt-4 flex justify-end">
+                      <Button
+                        onClick={() => handlePhaseStatusUpdate(phase.id, 'Utilization Submitted')}
+                        disabled={isSubmitting}
+                      >
+                        Submit Utilization & Request Next Phase
+                      </Button>
+                    </div>
+                  )}
+
+                  {totalUtilized > phase.amount && (
+                    <Alert className="mt-4">
+                      <AlertCircle className="h-4 w-4" />
+                      <AlertTitle>Over-utilization Warning</AlertTitle>
+                      <AlertDescription>
+                        This phase has been over-utilized by ₹{(totalUtilized - phase.amount).toLocaleString("en-IN")}.
+                      </AlertDescription>
+                    </Alert>
+                  )}
+                </CardContent>
+              </Card>
+              {index < ((grant.phases || []).length - 1) && <Separator key={`${phase.id}-separator`} />}
             </React.Fragment>
           );
         })}
@@ -820,66 +837,66 @@ export function GrantManagement({ project, user, onUpdate }: GrantManagementProp
               </form>
             </Form>
             <DialogFooter>
-                <Button variant="outline" onClick={() => handleTransactionSubmit(transactionForm.getValues(), true)} disabled={isSubmitting}>
-                    {isSubmitting ? 'Saving...' : 'Save as Draft'}
+              <Button variant="outline" onClick={() => handleTransactionSubmit(transactionForm.getValues(), true)} disabled={isSubmitting}>
+                {isSubmitting ? 'Saving...' : 'Save as Draft'}
+              </Button>
+              <div>
+                <Button variant="ghost" onClick={closeTransactionDialog}>Cancel</Button>
+                <Button onClick={() => handleTransactionSubmit(transactionForm.getValues())} disabled={isSubmitting}>
+                  {isSubmitting ? "Saving..." : (transactionToEdit ? 'Save Changes' : 'Add Transaction')}
                 </Button>
-                <div>
-                    <Button variant="ghost" onClick={closeTransactionDialog}>Cancel</Button>
-                    <Button onClick={() => handleTransactionSubmit(transactionForm.getValues())} disabled={isSubmitting}>
-                        {isSubmitting ? "Saving..." : (transactionToEdit ? 'Save Changes' : 'Add Transaction')}
-                    </Button>
-                </div>
+              </div>
             </DialogFooter>
           </DialogContent>
         </Dialog>
 
         <AlertDialog open={!!transactionToDelete} onOpenChange={() => setTransactionToDelete(null)}>
-            <AlertDialogContent>
-                <AlertDialogHeader>
-                    <AlertDialogTitle>Are you sure?</AlertDialogTitle>
-                    <AlertDialogDescription>
-                        This will permanently delete the transaction of ₹{transactionToDelete?.transaction.amount.toLocaleString('en-IN')} for "{transactionToDelete?.transaction.vendorName}". This action cannot be undone.
-                    </AlertDialogDescription>
-                </AlertDialogHeader>
-                <AlertDialogFooter>
-                    <AlertDialogCancel>Cancel</AlertDialogCancel>
-                    <AlertDialogAction onClick={handleDeleteTransaction} className="bg-destructive hover:bg-destructive/90" disabled={isSubmitting}>
-                        {isSubmitting ? "Deleting..." : "Confirm Delete"}
-                    </AlertDialogAction>
-                </AlertDialogFooter>
-            </AlertDialogContent>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+              <AlertDialogDescription>
+                This will permanently delete the transaction of ₹{transactionToDelete?.transaction.amount.toLocaleString('en-IN')} for "{transactionToDelete?.transaction.vendorName}". This action cannot be undone.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction onClick={handleDeleteTransaction} className="bg-destructive hover:bg-destructive/90" disabled={isSubmitting}>
+                {isSubmitting ? "Deleting..." : "Confirm Delete"}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
         </AlertDialog>
 
         <Dialog open={!!phaseForNoting} onOpenChange={() => setPhaseForNoting(null)}>
-            <DialogContent>
-                <DialogHeader>
-                    <DialogTitle>Generate Office Note for {phaseForNoting?.name}</DialogTitle>
-                    <DialogDescription>Please provide the installment reference number for this new phase to generate the office noting document.</DialogDescription>
-                </DialogHeader>
-                 <Form {...notingForm}>
-                    <form id="noting-form" onSubmit={notingForm.handleSubmit((data) => handleDownloadNoting(phaseForNoting!, data.installmentRefNumber))} className="py-4">
-                        <FormField
-                            name="installmentRefNumber"
-                            control={notingForm.control}
-                            render={({ field }) => (
-                                <FormItem>
-                                    <FormLabel>New Installment Reference Number</FormLabel>
-                                    <FormControl>
-                                        <Input {...field} placeholder="e.g., RDC/IMR/2024/002-2" />
-                                    </FormControl>
-                                    <FormMessage />
-                                </FormItem>
-                            )}
-                        />
-                    </form>
-                </Form>
-                <DialogFooter>
-                    <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
-                    <Button type="submit" form="noting-form" disabled={isDownloading}>
-                        {isDownloading ? <><Loader2 className="mr-2 h-4 w-4 animate-spin"/> Generating...</> : <><Download className="mr-2 h-4 w-4"/> Download</>}
-                    </Button>
-                </DialogFooter>
-            </DialogContent>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Generate Office Note for {phaseForNoting?.name}</DialogTitle>
+              <DialogDescription>Please provide the installment reference number for this new phase to generate the office noting document.</DialogDescription>
+            </DialogHeader>
+            <Form {...notingForm}>
+              <form id="noting-form" onSubmit={notingForm.handleSubmit((data) => handleDownloadNoting(phaseForNoting!, data.installmentRefNumber))} className="py-4">
+                <FormField
+                  name="installmentRefNumber"
+                  control={notingForm.control}
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>New Installment Reference Number</FormLabel>
+                      <FormControl>
+                        <Input {...field} placeholder="e.g., RDC/IMR/2024/002-2" />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </form>
+            </Form>
+            <DialogFooter>
+              <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
+              <Button type="submit" form="noting-form" disabled={isDownloading}>
+                {isDownloading ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Generating...</> : <><Download className="mr-2 h-4 w-4" /> Download</>}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
         </Dialog>
 
       </CardContent>

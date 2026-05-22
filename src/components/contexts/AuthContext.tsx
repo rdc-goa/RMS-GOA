@@ -26,15 +26,38 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const { toast } = useToast()
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
+    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       setUser(firebaseUser)
       setLoading(false)
+
+      // Sync role to Realtime Database for security rules
+      if (firebaseUser) {
+        try {
+          const { db, db_rtdb } = await import('@/lib/config');
+          const { doc, getDoc } = await import('firebase/firestore');
+          const { ref: rtdbRef, set: rtdbSet } = await import('firebase/database');
+
+          const userDoc = await getDoc(doc(db, 'users', firebaseUser.uid));
+          if (userDoc.exists()) {
+            const userData = userDoc.data();
+            if (userData.role) {
+              await rtdbSet(rtdbRef(db_rtdb, `users/${firebaseUser.uid}/role`), userData.role);
+            }
+          }
+        } catch (error) {
+          console.error("Error syncing role to RTDB:", error);
+        }
+      }
+
       if (!initialLoadComplete) {
         setInitialLoadComplete(true)
       }
     })
     return () => unsubscribe()
   }, [initialLoadComplete])
+
+
+
 
   const logout = async () => {
     await auth.signOut()

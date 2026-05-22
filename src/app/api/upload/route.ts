@@ -1,30 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { uploadFileToServer } from "@/app/actions";
-import { getAuth } from "firebase-admin/auth";
-import { initializeApp, getApps, cert } from "firebase-admin/app";
-import { getStorage } from "firebase-admin/storage";
-
-function ensureFirebaseAdminInitialized() {
-  if (getApps().length) return;
-
-  const projectId = process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID;
-  const clientEmail = process.env.FIREBASE_CLIENT_EMAIL;
-  const privateKey = process.env.FIREBASE_PRIVATE_KEY?.replace(/\n/g, "\n");
-  const storageBucket = process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET;
-
-  if (!projectId || !clientEmail || !privateKey || !storageBucket) {
-    throw new Error("Firebase Admin credentials are not configured");
-  }
-
-  initializeApp({
-    credential: cert({
-      projectId,
-      clientEmail,
-      privateKey,
-    }),
-    storageBucket,
-  });
-}
+import { adminAuth, adminStorage } from "@/lib/admin";
+import { checkRateLimit } from "@/lib/rate-limit";
 
 // Configuration
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
@@ -40,7 +17,6 @@ export const runtime = "nodejs";
 
 export async function POST(req: NextRequest) {
   try {
-    ensureFirebaseAdminInitialized();
 
     // 1. Authenticate user
     const authHeader = req.headers.get("authorization");
@@ -55,12 +31,21 @@ export async function POST(req: NextRequest) {
     let userId: string;
 
     try {
-      const decodedToken = await getAuth().verifyIdToken(token);
+      const decodedToken = await adminAuth.verifyIdToken(token);
       userId = decodedToken.uid;
     } catch (error) {
       return NextResponse.json(
         { error: "Invalid or expired token" },
         { status: 401 }
+      );
+    }
+
+    // Rate Limiting [CRIT-02]
+    const rateLimit = await checkRateLimit(`api-upload-${userId}`, { points: 10, duration: 300 }); // 10 uploads per 5 mins
+    if (!rateLimit.success) {
+      return NextResponse.json(
+        { error: "Too many upload requests. Please try again after some time." },
+        { status: 429 }
       );
     }
 
@@ -161,7 +146,7 @@ export async function POST(req: NextRequest) {
     // 6. Upload to blob storage with Firebase Storage fallback
     const blob = await file.arrayBuffer();
     const buffer = Buffer.from(blob);
-    
+
     let uploadUrl: string | null = null;
     let uploadedVia = "unknown";
 
@@ -198,7 +183,7 @@ export async function POST(req: NextRequest) {
     if (!uploadUrl) {
       try {
         const fileName = `uploads/${userId}/${Date.now()}-${file.name}`;
-        const bucket = getStorage().bucket();
+        const bucket = adminStorage.bucket();
         const fileRef = bucket.file(fileName);
 
         await fileRef.save(buffer, {
@@ -211,8 +196,8 @@ export async function POST(req: NextRequest) {
           },
         });
 
-        // Make file publicly readable
-        await fileRef.makePublic();
+        // RE-STRICTED: Removed automatic public read permission.
+        // Files are now protected by bucket-level permissions and served via authenticated requests or signed URLs.
         uploadUrl = fileRef.publicUrl();
         uploadedVia = "firebase-storage";
       } catch (firebaseError: any) {
@@ -251,15 +236,17 @@ export async function POST(req: NextRequest) {
 
 // OPTIONS for CORS preflight
 export async function OPTIONS(req: NextRequest) {
-  return NextResponse.json(
-    {},
-    {
-      status: 200,
-      headers: {
-        "Access-Control-Allow-Origin": process.env.ALLOWED_ORIGINS || "*",
-        "Access-Control-Allow-Methods": "POST, OPTIONS",
-        "Access-Control-Allow-Headers": "Content-Type, Authorization",
-      },
-    }
-  );
+  const allowedOrigins = (process.env.ALLOWED_ORIGINS || "https://rndprojects.goa.paruluniversity.ac.in,http://localhost:3002,http://localhost:3000").split(',');
+  const origin = req.headers.get("origin");
+
+  const corsOrigin = origin && allowedOrigins.includes(origin) ? origin : allowedOrigins[0];
+
+  return new NextResponse(null, {
+    status: 204,
+    headers: {
+      "Access-Control-Allow-Origin": corsOrigin,
+      "Access-Control-Allow-Methods": "POST, OPTIONS",
+      "Access-Control-Allow-Headers": "Content-Type, Authorization",
+    },
+  });
 }

@@ -11,8 +11,8 @@ interface DashboardClientProps {
 export function DashboardClient({ user }: DashboardClientProps) {
   return (
     <div className="transition-all duration-300">
-      {user.role === 'admin' && <AdminDashboard />}
-      {user.role === 'faculty' && <FacultyDashboard />}
+      {user.role === 'admin' && <AdminDashboard user={user} />}
+      {user.role === 'faculty' && <FacultyDashboard user={user} />}
     </div>
   );
 }

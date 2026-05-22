@@ -75,7 +75,7 @@ export function SubmissionForm({ project }: SubmissionFormProps) {
   const { toast } = useToast();
   const router = useRouter();
   const [coPiSearchTerm, setCoPiSearchTerm] = useState('');
-  const [foundCoPi, setFoundCoPi] = useState<{ uid?: string | null; name: string; email: string; misId: string; campus: string; } | null>(null);
+  const [foundCoPis, setFoundCoPis] = useState<{ uid?: string | null; name: string; email: string; misId: string; campus: string; }[]>([]);
   const [coPiList, setCoPiList] = useState<CoPiDetails[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [coPiCvFiles, setCoPiCvFiles] = useState<{ [email: string]: File }>({});
@@ -195,14 +195,13 @@ export function SubmissionForm({ project }: SubmissionFormProps) {
   const handleSearchCoPi = async () => {
     if (!coPiSearchTerm) return;
     setIsSearching(true);
-    setFoundCoPi(null);
+    setFoundCoPis([]);
     try {
       const result = await findUserByMisId(coPiSearchTerm);
       if (result.success && result.users && result.users.length > 0) {
-        const user = result.users[0];
-        setFoundCoPi({ ...user });
+        setFoundCoPis(result.users.map(u => ({ ...u, campus: u.campus || 'Goa' })));
       } else {
-        toast({ variant: 'destructive', title: 'User Not Found', description: result.error });
+        toast({ variant: 'destructive', title: 'User Not Found', description: `No users found matching "${coPiSearchTerm}"` });
       }
     } catch (error) {
       toast({ variant: 'destructive', title: 'Search Failed', description: 'An error occurred while searching.' });
@@ -211,16 +210,19 @@ export function SubmissionForm({ project }: SubmissionFormProps) {
     }
   };
 
-  const handleAddCoPi = () => {
-    if (foundCoPi && !coPiList.some(coPi => coPi.email === foundCoPi.email)) {
-      if (user && foundCoPi.email === user.email) {
+  const handleAddCoPi = (userToAdd: { uid?: string | null; name: string; email: string; misId: string; campus: string; }) => {
+    if (!coPiList.some(coPi => coPi.email === userToAdd.email)) {
+      if (user && userToAdd.email === user.email) {
         toast({ variant: 'destructive', title: 'Cannot Add Self', description: 'You cannot add yourself as a Co-PI.' });
         return;
       }
-      setCoPiList([...coPiList, foundCoPi]);
+      setCoPiList([...coPiList, userToAdd]);
+      toast({ title: 'Added Successully', description: `${userToAdd.name} has been added.` });
+    } else {
+      toast({ title: 'Already Added', description: 'This person is already in your list.' });
     }
-    setFoundCoPi(null);
-    setCoPiSearchTerm('');
+    // Remove from found list after adding
+    setFoundCoPis(foundCoPis.filter(u => u.email !== userToAdd.email));
   };
 
   const handleRemoveCoPi = (emailToRemove: string) => {
@@ -458,7 +460,7 @@ export function SubmissionForm({ project }: SubmissionFormProps) {
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
                           <Button variant="outline" className="w-full justify-between font-normal">
-                            {(field.value?.length || 0) > 0 ? `${field.value.length} selected` : "Select relevant goals"}
+                            {(field.value?.length || 0) > 0 ? `${field.value?.length} selected` : "Select relevant goals"}
                             <ChevronDown className="h-4 w-4 opacity-50" />
                           </Button>
                         </DropdownMenuTrigger>
@@ -468,11 +470,11 @@ export function SubmissionForm({ project }: SubmissionFormProps) {
                           {sdgGoalsList.map((goal) => (
                             <DropdownMenuCheckboxItem
                               key={goal}
-                              checked={field.value?.includes(goal)}
+                              checked={field.value?.includes(goal) || false}
                               onCheckedChange={(checked) => {
                                 return checked
                                   ? field.onChange([...(field.value || []), goal])
-                                  : field.onChange(field.value?.filter((value) => value !== goal));
+                                  : field.onChange((field.value || []).filter((value: string) => value !== goal));
                               }}
                               onSelect={(e) => e.preventDefault()}
                             >
@@ -538,10 +540,32 @@ export function SubmissionForm({ project }: SubmissionFormProps) {
                       {isSearching ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Search'}
                     </Button>
                   </div>
-                  {foundCoPi && (
-                    <div className="flex items-center justify-between p-2 border rounded-md">
-                      <p>{foundCoPi.name}</p>
-                      <Button type="button" size="sm" onClick={handleAddCoPi}>Add</Button>
+                  {foundCoPis.length > 0 && (
+                    <div className="space-y-2 mt-2 animate-in fade-in-0 slide-in-from-top-1">
+                      <p className="text-[10px] uppercase font-bold text-muted-foreground ml-1 flex items-center gap-2">
+                        <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
+                        Search Results ({foundCoPis.length})
+                      </p>
+                      <div className="border border-border rounded-lg divide-y overflow-hidden shadow-2xl bg-background ring-1 ring-black/5 max-h-[300px] overflow-y-auto">
+                        {foundCoPis.map((u) => (
+                          <div key={u.email} className="flex items-center justify-between p-3 bg-muted/20 hover:bg-muted/40 transition-colors">
+                            <div className="flex flex-col">
+                              <span className="text-sm font-semibold">{u.name}</span>
+                              <span className="text-[10px] text-muted-foreground">{u.misId}</span>
+                            </div>
+                            <Button 
+                              type="button" 
+                              size="sm" 
+                              variant="secondary"
+                              className="h-8 text-xs font-bold"
+                              onClick={() => handleAddCoPi(u)}
+                            >
+                              Add Co-PI
+                            </Button>
+                          </div>
+                        ))}
+                      </div>
+                      <Button variant="ghost" size="sm" className="w-full text-xs h-7" onClick={() => setFoundCoPis([])}>Clear Results</Button>
                     </div>
                   )}
                   <div className="space-y-4 pt-2">

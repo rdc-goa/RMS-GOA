@@ -1,4 +1,4 @@
-# **App Name**: PU Goa Research Projects Portal
+# **App Name**: PU Research Projects Portal
 
 ## Core Features:
 

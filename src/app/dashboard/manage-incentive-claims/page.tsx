@@ -4,7 +4,8 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import * as XLSX from 'xlsx';
+import { readExcelFromBuffer } from '@/lib/excel-utils';
+import ExcelJS from 'exceljs';
 import { PageHeader } from '@/components/page-header';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -34,8 +35,14 @@ import type { IncentiveClaim, User } from '@/types';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { generateOfficeNotingsZip } from '@/app/document-actions';
-import { markPaymentsCompleted, submitToAccounts, generateIncentivePaymentSheet, downloadPaymentSheetByRef } from '@/app/manage-claims-actions';
+import {
+  downloadPaymentSheetByRef,
+  fetchAllClaimsAction,
+  logFrontendAction,
+  generateOfficeNotingsZip,
+  generateIncentivePaymentSheet
+} from '@/app/actions';
+import { reportSystemError } from '@/lib/error-reporting';
 import { ClaimDetailsDialog } from '@/components/incentives/claim-details-dialog';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
@@ -43,7 +50,17 @@ import { Textarea } from '@/components/ui/textarea';
 import { Separator } from '@/components/ui/separator';
 import { isEligibleForFinancialDisbursement } from '@/lib/incentive-eligibility';
 
-const CLAIM_TYPES = ['Research Papers', 'Patents', 'Conference Presentations', 'Books', 'Membership of Professional Bodies', 'Seed Money for APC'];
+const CLAIM_TYPES = [
+  'Research Papers',
+  'Patents',
+  'Conference Presentations',
+  'Books',
+  'Membership of Professional Bodies',
+  'Seed Money for APC',
+  'Award',
+  'EMR Sanction Project',
+  'Workshop/FDP/Training'
+];
 type SortableKeys = keyof Pick<IncentiveClaim, 'userName' | 'paperTitle' | 'submissionDate' | 'status' | 'claimType'>;
 
 
@@ -61,6 +78,7 @@ export default function ManageIncentiveClaimsPage() {
   const [claimTypeFilter, setClaimTypeFilter] = useState('all');
   const [facultyFilter, setFacultyFilter] = useState('all');
   const [instituteFilter, setInstituteFilter] = useState('all');
+  const [stageFilter, setStageFilter] = useState('all');
   const [sortConfig, setSortConfig] = useState<{ key: SortableKeys; direction: 'ascending' | 'descending' }>({ key: 'submissionDate', direction: 'descending' });
 
   const [selectedClaims, setSelectedClaims] = useState<string[]>([]);
@@ -70,6 +88,62 @@ export default function ManageIncentiveClaimsPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const [selectedPaymentSheetRef, setSelectedPaymentSheetRef] = useState<string>('');
   const itemsPerPage = 30;
+
+  const duplicateClaimsMap = useMemo(() => {
+    const map = new Map<string, { isDuplicate: boolean; type: 'self' | 'cross'; originalClaimant: string }>();
+    if (!allClaims || allClaims.length === 0) return map;
+
+    const normalizeText = (text: string): string => {
+      return text
+        .trim()
+        .toLowerCase()
+        .replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g, "")
+        .replace(/\s+/g, "");
+    };
+
+    const getClaimDoi = (claim: any): string => {
+      return (claim.doi || "").trim().toLowerCase();
+    };
+
+    const getTitle = (claim: any): string => {
+      return claim.paperTitle || claim.patentTitle || claim.conferencePaperTitle || claim.publicationTitle || claim.professionalBodyName || claim.apcPaperTitle || claim.awardTitle || claim.emrProjectName || claim.workshopName || '';
+    };
+
+    allClaims.forEach(a => {
+      if (a.status === 'Draft') return;
+
+      for (const b of allClaims) {
+        if (a.id === b.id || b.status === 'Rejected' || b.status === 'Draft' || a.claimType !== b.claimType || a.uid !== b.uid) continue;
+
+        let isMatch = false;
+
+        // Rule 1: DOI Match (Research Papers)
+        if (a.claimType === 'Research Papers') {
+          const doiA = getClaimDoi(a);
+          const doiB = getClaimDoi(b);
+          isMatch = doiA !== "" && doiA === doiB;
+        }
+
+        // Rule 2: Title Match (Fallback / Other Categories)
+        if (!isMatch) {
+          const titleA = normalizeText(getTitle(a));
+          const titleB = normalizeText(getTitle(b));
+          isMatch = titleA !== "" && titleA === titleB;
+        }
+
+        if (isMatch) {
+          map.set(a.id, {
+            isDuplicate: true,
+            type: a.uid === b.uid ? 'self' : 'cross',
+            originalClaimant: b.userName || "Another researcher"
+          });
+          break;
+        }
+      }
+    });
+
+    return map;
+  }, [allClaims]);
 
   useEffect(() => {
     const storedUser = localStorage.getItem('user');
@@ -96,23 +170,11 @@ export default function ManageIncentiveClaimsPage() {
       const userList = userSnapshot.docs.map(doc => ({ ...doc.data(), uid: doc.id } as User));
       setUsers(userList);
 
-      const claimsCollection = collection(db, 'incentiveClaims');
-      let q;
-      if (currentUser.role === 'Super-admin' || currentUser.role === 'admin') {
-        q = query(claimsCollection, orderBy('submissionDate', 'desc'));
-      } else if (currentUser.role === 'CRO') {
-        q = query(claimsCollection, where('faculty', 'in', currentUser.faculties || []), orderBy('submissionDate', 'desc'));
-      } else {
-        setAllClaims([]);
-        setLoading(false);
-        return;
-      }
-
-      const claimSnapshot = await getDocs(q);
-      const claimList = claimSnapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as IncentiveClaim));
+      const claimList = await fetchAllClaimsAction(currentUser);
       setAllClaims(claimList);
     } catch (error) {
       console.error("Error fetching data:", error);
+      reportSystemError(error, currentUser, "Fetching all incentive claims and users for management dashboard");
       toast({ variant: "destructive", title: "Error", description: "Could not fetch incentive claims or user data." });
     } finally {
       setLoading(false);
@@ -126,7 +188,7 @@ export default function ManageIncentiveClaimsPage() {
   }, [currentUser, fetchClaimsAndUsers]);
 
   const getClaimTitle = (claim: IncentiveClaim): string => {
-    return claim.paperTitle || claim.patentTitle || claim.conferencePaperTitle || claim.publicationTitle || claim.professionalBodyName || claim.apcPaperTitle || 'N/A';
+    return claim.paperTitle || claim.patentTitle || claim.conferencePaperTitle || claim.publicationTitle || claim.professionalBodyName || claim.apcPaperTitle || claim.awardTitle || claim.emrProjectName || claim.workshopName || 'N/A';
   };
 
   const uniqueFaculties = useMemo(() => {
@@ -165,6 +227,10 @@ export default function ManageIncentiveClaimsPage() {
       });
     }
 
+    if (stageFilter !== 'all') {
+      filtered = filtered.filter(claim => claim.status === stageFilter);
+    }
+
     if (searchTerm.trim()) {
       const lowerCaseSearch = searchTerm.trim().toLowerCase();
       filtered = filtered.filter(claim => {
@@ -180,7 +246,7 @@ export default function ManageIncentiveClaimsPage() {
       });
     }
     return filtered;
-  }, [allClaims, searchTerm, claimTypeFilter, facultyFilter, instituteFilter, users]);
+  }, [allClaims, searchTerm, claimTypeFilter, facultyFilter, instituteFilter, stageFilter, users]);
 
   // count unique paper titles in the current filtered set
   const uniquePaperCount = useMemo(() => {
@@ -189,7 +255,7 @@ export default function ManageIncentiveClaimsPage() {
   }, [filteredClaims]);
 
   const tabClaims = useMemo(() => {
-    const pending = filteredClaims.filter(claim => ['Pending', 'Pending Principal Approval', 'Pending Stage 1 Approval', 'Pending Stage 2 Approval', 'Pending Stage 3 Approval', 'Pending Stage 4 Approval', 'Pending Stage 5 Approval'].includes(claim.status));
+    const pending = filteredClaims.filter(claim => ['Pending', 'Pending Stage 1 Approval', 'Pending Stage 2 Approval', 'Pending Stage 3 Approval', 'Pending Stage 4 Approval', 'Pending Stage 5 Approval'].includes(claim.status));
     const pendingBank = filteredClaims.filter(claim => claim.status === 'Accepted');
     const submittedBank = filteredClaims.filter(claim => claim.status === 'Submitted to Accounts' && claim.paymentSheetRef);
     const approved = filteredClaims.filter(claim => claim.status === 'Payment Completed');
@@ -213,9 +279,18 @@ export default function ManageIncentiveClaimsPage() {
     }
 
     claimsForTab.sort((a, b) => {
-      const key = sortConfig.key as keyof IncentiveClaim;
-      let aValue = a[key] || '';
-      let bValue = b[key] || '';
+      const key = sortConfig.key;
+      let aValue, bValue;
+
+      if (key === 'paperTitle') {
+        aValue = getClaimTitle(a).toLowerCase();
+        bValue = getClaimTitle(b).toLowerCase();
+      } else {
+        const fieldKey = key as keyof IncentiveClaim;
+        aValue = (a[fieldKey] || '').toString().toLowerCase();
+        bValue = (b[fieldKey] || '').toString().toLowerCase();
+      }
+
       if (aValue < bValue) {
         return sortConfig.direction === 'ascending' ? -1 : 1;
       }
@@ -245,7 +320,7 @@ export default function ManageIncentiveClaimsPage() {
     setSelectedClaims([]);
     setCurrentPage(1);
     setSelectedPaymentSheetRef('');
-  }, [activeTab, searchTerm, claimTypeFilter, facultyFilter, instituteFilter, sortConfig]);
+  }, [activeTab, searchTerm, claimTypeFilter, facultyFilter, instituteFilter, stageFilter, sortConfig]);
 
   const requestSort = (key: SortableKeys) => {
     let direction: 'ascending' | 'descending' = 'ascending';
@@ -323,6 +398,7 @@ export default function ManageIncentiveClaimsPage() {
         throw new Error(result.error || "Failed to generate ZIP file.");
       }
     } catch (error: any) {
+      reportSystemError(error, currentUser, "Downloading office notings");
       toast({ variant: 'destructive', title: 'Error', description: error.message });
     } finally {
       setIsDownloadingNotings(false);
@@ -352,15 +428,33 @@ export default function ManageIncentiveClaimsPage() {
       } else {
         toast({ variant: 'destructive', title: 'Error', description: result.error || 'Failed to download payment sheet.' });
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error downloading payment sheet:', error);
+      reportSystemError(error, currentUser, "Downloading payment sheet by reference");
       toast({ variant: 'destructive', title: 'Error', description: 'Failed to download payment sheet.' });
     } finally {
       setIsUpdating(false);
     }
   };
 
-  const handleExport = () => {
+  const handleStageFilterChange = (value: string) => {
+    setStageFilter(value);
+    if (value === 'all') return;
+
+    if (['Pending', 'Pending Stage 1 Approval', 'Pending Stage 2 Approval', 'Pending Stage 3 Approval', 'Pending Stage 4 Approval', 'Pending Stage 5 Approval'].includes(value)) {
+      setActiveTab('pending');
+    } else if (value === 'Accepted') {
+      setActiveTab('pending-bank');
+    } else if (value === 'Submitted to Accounts') {
+      setActiveTab('submitted-bank');
+    } else if (value === 'Payment Completed') {
+      setActiveTab('approved');
+    } else if (value === 'Rejected') {
+      setActiveTab('rejected');
+    }
+  };
+
+  const handleExport = async () => {
     if (sortedAndFilteredClaims.length === 0) {
       toast({ variant: 'destructive', title: "No Data", description: "There are no claims to export in the current view." });
       return;
@@ -368,30 +462,62 @@ export default function ManageIncentiveClaimsPage() {
 
     const userDetailsMap = new Map(users.map(u => [u.uid, { misId: u.misId || '', designation: u.designation || '' }]));
 
-    const dataToExport = sortedAndFilteredClaims.map(claim => {
-      const { bankDetails, id, uid, ...rest } = claim;
-      const userDetails = userDetailsMap.get(uid);
-      return {
-        ...rest,
+    const workbook = new ExcelJS.Workbook();
+    const worksheet = workbook.addWorksheet("Claims");
+
+    // Define columns
+    const columns = [
+      { header: 'Claim ID', key: 'claimId', width: 15 },
+      { header: 'Employee Name', key: 'userName', width: 25 },
+      { header: 'Email', key: 'userEmail', width: 30 },
+      { header: 'MIS ID', key: 'misId', width: 15 },
+      { header: 'Designation', key: 'designation', width: 20 },
+      { header: 'Faculty', key: 'faculty', width: 20 },
+      { header: 'Claim Type', key: 'claimType', width: 20 },
+      { header: 'Paper Title', key: 'paperTitle', width: 40 },
+      { header: 'Status', key: 'status', width: 15 },
+      { header: 'Final Approved Amount', key: 'finalApprovedAmount', width: 20 },
+      { header: 'Submission Date', key: 'submissionDate', width: 15 },
+      { header: 'Beneficiary Name', key: 'beneficiaryName', width: 25 },
+      { header: 'Account Number', key: 'accountNumber', width: 20 },
+      { header: 'Bank Name', key: 'bankName', width: 20 },
+      { header: 'IFSC Code', key: 'ifscCode', width: 15 },
+    ];
+    worksheet.columns = columns;
+
+    sortedAndFilteredClaims.forEach(claim => {
+      const userDetails = userDetailsMap.get(claim.uid);
+      worksheet.addRow({
+        claimId: claim.claimId || '',
+        userName: claim.userName || '',
+        userEmail: claim.userEmail || '',
         misId: userDetails?.misId || '',
         designation: userDetails?.designation || '',
-        beneficiaryName: bankDetails?.beneficiaryName || '',
-        accountNumber: bankDetails?.accountNumber || '',
-        bankName: bankDetails?.bankName || '',
-        branchName: bankDetails?.branchName || '',
-        city: bankDetails?.city || '',
-        ifscCode: bankDetails?.ifscCode || '',
-      };
+        faculty: claim.faculty || '',
+        claimType: claim.claimType || '',
+        paperTitle: getClaimTitle(claim),
+        status: claim.status || '',
+        finalApprovedAmount: claim.finalApprovedAmount || 0,
+        submissionDate: new Date(claim.submissionDate).toLocaleDateString(),
+        beneficiaryName: claim.bankDetails?.beneficiaryName || '',
+        accountNumber: claim.bankDetails?.accountNumber || '',
+        bankName: claim.bankDetails?.bankName || '',
+        ifscCode: claim.bankDetails?.ifscCode || '',
+      });
     });
 
-    const worksheet = XLSX.utils.json_to_sheet(dataToExport);
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, "Claims");
-    XLSX.writeFile(workbook, `incentive_claims_${activeTab}_${new Date().toISOString().split('T')[0]}.xlsx`);
+    const buffer = await workbook.xlsx.writeBuffer();
+    const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `incentive_claims_${activeTab}_${new Date().toISOString().split('T')[0]}.xlsx`;
+    a.click();
+    window.URL.revokeObjectURL(url);
     toast({ title: "Export Started", description: `Downloading ${sortedAndFilteredClaims.length} claims.` });
   };
 
-  const handleExportUniquePapers = () => {
+  const handleExportUniquePapers = async () => {
     if (uniquePaperCount === 0) {
       toast({ variant: 'destructive', title: "No Data", description: "There are no papers to export in the current view." });
       return;
@@ -495,10 +621,25 @@ export default function ManageIncentiveClaimsPage() {
       return row;
     });
 
-    const worksheet = XLSX.utils.json_to_sheet(dataToExport);
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, "Unique Papers");
-    XLSX.writeFile(workbook, `unique_papers_${new Date().toISOString().split('T')[0]}.xlsx`);
+    const workbook = new ExcelJS.Workbook();
+    const worksheet = workbook.addWorksheet("Unique Papers");
+
+    if (dataToExport.length > 0) {
+      const headers = Object.keys(dataToExport[0]);
+      worksheet.addRow(headers);
+      dataToExport.forEach(item => {
+        worksheet.addRow(Object.values(item));
+      });
+    }
+
+    const buffer = await workbook.xlsx.writeBuffer();
+    const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `unique_papers_${new Date().toISOString().split('T')[0]}.xlsx`;
+    a.click();
+    window.URL.revokeObjectURL(url);
     toast({ title: "Export Started", description: `Downloading ${dataToExport.length} unique papers.` });
   };
 
@@ -541,7 +682,11 @@ export default function ManageIncentiveClaimsPage() {
                   Claimant <ArrowUpDown className="ml-2 h-4 w-4" />
                 </Button>
               </TableHead>
-              <TableHead>Title</TableHead>
+              <TableHead>
+                <Button variant="ghost" onClick={() => requestSort('paperTitle')}>
+                  Title <ArrowUpDown className="ml-2 h-4 w-4" />
+                </Button>
+              </TableHead>
               <TableHead className="hidden md:table-cell">
                 <Button variant="ghost" onClick={() => requestSort('claimType')}>
                   Claim Type <ArrowUpDown className="ml-2 h-4 w-4" />
@@ -560,7 +705,9 @@ export default function ManageIncentiveClaimsPage() {
           </TableHeader>
           <TableBody>
             {paginatedClaims.map((claim) => {
-              const lastRejectedApproval = claim.approvals?.slice().reverse().find(a => a?.status === 'Rejected');
+              const lastRejectedApproval = Array.isArray(claim.approvals) 
+                ? [...claim.approvals].reverse().find(a => a?.status === 'Rejected') 
+                : null;
               return (
                 <TableRow key={claim.id} data-state={selectedClaims.includes(claim.id) ? "selected" : ""}>
                   <TableCell>
@@ -597,7 +744,26 @@ export default function ManageIncentiveClaimsPage() {
                       {claim.claimId && <span className="text-xs text-muted-foreground">{claim.claimId}</span>}
                     </div>
                   </TableCell>
-                  <TableCell className="max-w-xs whitespace-normal break-words">{getClaimTitle(claim)}</TableCell>
+                  <TableCell className="max-w-xs whitespace-normal break-words">
+                    <div className="flex flex-col gap-1">
+                      <span>{getClaimTitle(claim)}</span>
+                      {(() => {
+                        const dupInfo = duplicateClaimsMap.get(claim.id);
+                        if (!dupInfo) return null;
+                        return (
+                          <Badge className={`w-fit mt-1 text-[10px] py-0.5 px-2 rounded-full font-black animate-pulse shadow-sm border-none ${
+                            dupInfo.type === 'self'
+                              ? "bg-red-500 hover:bg-red-600 text-white"
+                              : "bg-amber-500 hover:bg-amber-600 text-black"
+                          }`}>
+                            {dupInfo.type === 'self'
+                              ? "🛑 Duplicate: Self-Resubmission"
+                              : `⚠️ Duplicate: Applied by ${dupInfo.originalClaimant}`}
+                          </Badge>
+                        );
+                      })()}
+                    </div>
+                  </TableCell>
                   <TableCell className="hidden md:table-cell">
                     <div className="flex flex-col gap-1">
                       <Badge variant="outline">{claim.claimType}</Badge>
@@ -684,7 +850,7 @@ export default function ManageIncentiveClaimsPage() {
             </Button>
             <Button onClick={handleExport} disabled={loading}>
               <Download className="mr-2 h-4 w-4" />
-              Export XLSX
+              Export Excel
             </Button>
           </div>
         </PageHeader>
@@ -741,6 +907,24 @@ export default function ManageIncentiveClaimsPage() {
                       {uniqueInstitutes.map(institute => (
                         <SelectItem key={institute} value={institute}>{institute}</SelectItem>
                       ))}
+                    </SelectContent>
+                  </Select>
+                  <Select value={stageFilter} onValueChange={handleStageFilterChange}>
+                    <SelectTrigger className="w-[220px]">
+                      <SelectValue placeholder="Filter by stage/status" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Stages</SelectItem>
+                      <SelectItem value="Pending">Pending</SelectItem>
+                      <SelectItem value="Pending Stage 1 Approval">Stage 1</SelectItem>
+                      <SelectItem value="Pending Stage 2 Approval">Stage 2</SelectItem>
+                      <SelectItem value="Pending Stage 3 Approval">Stage 3</SelectItem>
+                      <SelectItem value="Pending Stage 4 Approval">Stage 4</SelectItem>
+                      <SelectItem value="Pending Stage 5 Approval">Stage 5</SelectItem>
+                      <SelectItem value="Accepted">Accepted</SelectItem>
+                      <SelectItem value="Submitted to Accounts">Submitted to Accounts</SelectItem>
+                      <SelectItem value="Payment Completed">Payment Completed</SelectItem>
+                      <SelectItem value="Rejected">Rejected</SelectItem>
                     </SelectContent>
                   </Select>
                 </>
@@ -837,6 +1021,7 @@ export default function ManageIncentiveClaimsPage() {
           onOpenChange={() => setSelectedClaim(null)}
           currentUser={currentUser}
           claimant={users.find(u => u.uid === selectedClaim?.uid) || null}
+          duplicateInfo={selectedClaim ? duplicateClaimsMap.get(selectedClaim.id) : null}
         />
       </div>
       <GeneratePaymentSheetDialog
@@ -844,12 +1029,13 @@ export default function ManageIncentiveClaimsPage() {
         onOpenChange={setIsGenerateSheetOpen}
         claims={eligibleForPaymentSheet}
         allUsers={users}
+        currentUser={currentUser}
       />
     </>
   );
 }
 
-function GeneratePaymentSheetDialog({ isOpen, onOpenChange, claims, allUsers }: { isOpen: boolean; onOpenChange: (open: boolean) => void; claims: IncentiveClaim[]; allUsers: User[] }) {
+function GeneratePaymentSheetDialog({ isOpen, onOpenChange, claims, allUsers, currentUser }: { isOpen: boolean; onOpenChange: (open: boolean) => void; claims: IncentiveClaim[]; allUsers: User[]; currentUser: User | null }) {
   const { toast } = useToast();
   const [remarks, setRemarks] = useState<Record<string, string>>({});
   const [referenceNumber, setReferenceNumber] = useState('');
@@ -893,6 +1079,7 @@ function GeneratePaymentSheetDialog({ isOpen, onOpenChange, claims, allUsers }: 
         throw new Error(result.error || "Failed to generate sheet.");
       }
     } catch (error: any) {
+      reportSystemError(error, currentUser, "Generating incentive payment sheet");
       toast({ variant: 'destructive', title: 'Error', description: error.message });
     } finally {
       setIsGenerating(false);

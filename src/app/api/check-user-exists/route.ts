@@ -2,15 +2,24 @@ import { NextRequest, NextResponse } from 'next/server';
 import { collection, query, where, getDocs } from 'firebase/firestore';
 import { db } from '@/lib/config';
 import { getSystemSettings } from '@/app/actions';
+import { checkRateLimit } from '@/lib/rate-limit';
 
 export async function POST(request: NextRequest) {
   try {
+    const ip = request.headers.get('x-forwarded-for') || 'anonymous';
+    const rateLimit = await checkRateLimit(`check-user-exists-${ip}`, { points: 10, duration: 300 });
+    
+    if (!rateLimit.success) {
+      return NextResponse.json({ success: false, error: 'Too many requests. Please try again later.' }, { status: 429 });
+    }
+
     const { email } = await request.json();
     if (!email) {
       return NextResponse.json({ success: false, error: 'Email is required' }, { status: 400 });
     }
 
     const lowercasedEmail = email.toLowerCase();
+
     
     // Server-side validation against allowed domains
     const settings = await getSystemSettings();

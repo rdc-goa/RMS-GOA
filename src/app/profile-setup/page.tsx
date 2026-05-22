@@ -1,7 +1,7 @@
 
 'use client';
 
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
@@ -16,17 +16,19 @@ import { auth, db } from '@/lib/config';
 import { doc, getDoc, updateDoc } from 'firebase/firestore';
 import { uploadFileToServer, checkMisIdExists, linkEmrInterestsByMisId } from '@/app/actions';
 import type { User } from '@/types';
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, Suspense, useMemo } from 'react';
 import { onAuthStateChanged, type User as FirebaseUser } from 'firebase/auth';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Separator } from '@/components/ui/separator';
-import { Bot, Loader2, Search } from 'lucide-react';
+import { Bot, Loader2, Search, AlertCircle } from 'lucide-react';
 import { Label } from '@/components/ui/label';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import Link from 'next/link';
 import { Combobox } from '@/components/ui/combobox';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from '@/components/ui/dialog';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+import { useStaffData, useDepartments } from '@/hooks/use-staff-data';
 
 const profileSetupSchema = z.object({
   name: z.string().min(2, 'A full name is required.'),
@@ -38,6 +40,9 @@ const profileSetupSchema = z.object({
   misId: z.string().min(1, 'MIS ID is required.'),
   orcidId: z.string().optional(),
   scopusId: z.string().optional(),
+  hIndex: z.coerce.number().optional(),
+  i10Index: z.coerce.number().optional(),
+  citationCount: z.coerce.number().optional(),
   vidwanId: z.string().optional(),
   googleScholarId: z.string().optional(),
   phoneNumber: z.string().min(10, 'A valid 10-digit phone number is required.').max(10, 'A valid 10-digit phone number is required.'),
@@ -56,17 +61,10 @@ const faculties = [
   "University Office"
 ];
 
+const goaFaculties = faculties;
+
 const campuses = ["Goa"];
 
-const goaFaculties = [
-  "Faculty of Engineering, IT & CS",
-  "Faculty of Management Studies",
-  "Faculty of Pharmacy",
-  "Faculty of Applied and Health Sciences",
-  "Faculty of Nursing",
-  "Faculty of Physiotherapy",
-  "University Office"
-];
 
 const goaInstitutes = [
   "Parul College of Applied and Health Sciences",
@@ -99,10 +97,12 @@ const fileToDataUrl = (file: File): Promise<string> => {
   });
 };
 
-export default function ProfileSetupPage() {
+function ProfileSetupContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { toast } = useToast();
   const [user, setUser] = useState<User | null>(null);
+  const wasRedirected = searchParams.get('redirected') === 'true';
   const [loading, setLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [profilePicFile, setProfilePicFile] = useState<File | null>(null);
@@ -110,7 +110,6 @@ export default function ProfileSetupPage() {
   const [isPrefilling, setIsPrefilling] = useState(false);
   const [misIdToFetch, setMisIdToFetch] = useState('');
   const [userType, setUserType] = useState<'faculty' | 'CRO' | 'Institutional' | null>(null);
-  const [departments, setDepartments] = useState<string[]>([]);
   const [foundUsers, setFoundUsers] = useState<any[]>([]);
   const [isSelectionOpen, setIsSelectionOpen] = useState(false);
 
@@ -126,19 +125,28 @@ export default function ProfileSetupPage() {
       misId: '',
       orcidId: '',
       scopusId: '',
+      hIndex: 0,
+      i10Index: 0,
+      citationCount: 0,
       vidwanId: '',
       googleScholarId: '',
       phoneNumber: '',
     },
   });
 
+  const selectedCampus = form.watch('campus');
   const isGoaCampusUser = user?.email?.endsWith('@goa.paruluniversity.ac.in');
 
   const prefillData = useCallback(async () => {
     if (!misIdToFetch || !user?.email) return;
     setIsPrefilling(true);
     try {
-      const res = await fetch(`/api/get-staff-data?misId=${misIdToFetch}&userEmailForFileCheck=${user.email}`);
+      const idToken = await auth.currentUser?.getIdToken();
+      const res = await fetch(`/api/get-staff-data?misId=${misIdToFetch}&userEmailForFileCheck=${user.email}`, {
+        headers: {
+          'Authorization': `Bearer ${idToken}`
+        }
+      });
       const result = await res.json();
 
       if (result.success && result.data.length > 0) {
@@ -178,7 +186,7 @@ export default function ProfileSetupPage() {
         const userDoc = await getDoc(userDocRef);
         if (userDoc.exists()) {
           const appUser = { uid: firebaseUser.uid, ...userDoc.data() } as User;
-          if (appUser.profileComplete) {
+          if (appUser.profileComplete && !wasRedirected) {
             router.replace('/dashboard');
             return;
           }
@@ -191,7 +199,12 @@ export default function ProfileSetupPage() {
           }
 
           // Pre-fetch user type based on email to determine if MIS ID is needed.
-          const staffRes = await fetch(`/api/get-staff-data?email=${appUser.email!}`);
+          const idToken = await firebaseUser.getIdToken();
+          const staffRes = await fetch(`/api/get-staff-data?email=${appUser.email!}`, {
+            headers: {
+              'Authorization': `Bearer ${idToken}`
+            }
+          });
           const staffResult = await staffRes.json();
           if (staffResult.success) {
             setUserType(staffResult.data[0]?.type || 'faculty');
@@ -210,28 +223,15 @@ export default function ProfileSetupPage() {
     });
 
     return () => unsubscribe();
-  }, [router, toast, form]);
+  }, [router, toast, form, wasRedirected]);
 
-  useEffect(() => {
-    async function fetchDepartments() {
-      const endpoint = '/api/get-goa-departments';
-      try {
-        const res = await fetch(endpoint);
-        const result = await res.json();
-        if (result.success) {
-          setDepartments(result.data);
-          // If current department is not in the new list, reset it
-          const currentDepartment = form.getValues('department');
-          if (currentDepartment && !result.data.includes(currentDepartment)) {
-            form.setValue('department', '');
-          }
-        }
-      } catch (error) {
-        console.error(`Failed to fetch departments from ${endpoint}`, error);
-      }
-    }
-    fetchDepartments();
-  }, [form]);
+  const { departments: allDepartments } = useDepartments(selectedCampus);
+  const departments = useMemo(() => {
+    // For now, the hook returns all departments. 
+    // If the backend /api/get-departments is already filtered, this is fine.
+    // If not, we can filter here or update the hook.
+    return allDepartments;
+  }, [allDepartments]);
 
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -251,7 +251,7 @@ export default function ProfileSetupPage() {
         if (misIdCheck.exists) {
           form.setError("misId", {
             type: "manual",
-            message: "This MIS ID is already registered for this campus. If you need help, contact rdc@goa.paruluniversity.ac.in."
+            message: "This MIS ID is already registered for this campus. If you need help, contact helpdesk.rdc@paruluniversity.ac.in."
           });
           toast({
             variant: 'destructive',
@@ -278,6 +278,7 @@ export default function ProfileSetupPage() {
 
       const updateData: Partial<User> = {
         ...data,
+        campus: data.campus as any,
         photoURL: photoURL,
         profileComplete: true,
       };
@@ -342,6 +343,15 @@ export default function ProfileSetupPage() {
                 </CardDescription>
               </CardHeader>
               <CardContent>
+                {wasRedirected && (
+                  <Alert variant="destructive" className="mb-6 border-red-500/50 bg-red-500/5 dark:bg-red-500/10">
+                    <AlertCircle className="h-4 w-4" />
+                    <AlertTitle>Profile Completion Required</AlertTitle>
+                    <AlertDescription>
+                      You must complete your profile including <strong>MIS ID, Faculty, Institute, and Designation</strong> to access the dashboard.
+                    </AlertDescription>
+                  </Alert>
+                )}
                 {userType !== 'Institutional' && (
                   <div className="space-y-4 mb-6 p-4 border rounded-lg bg-muted/50">
                     <Label>Fetch Details with MIS ID (Optional)</Label>
@@ -426,7 +436,7 @@ export default function ProfileSetupPage() {
                               </SelectTrigger>
                             </FormControl>
                             <SelectContent>
-                              {facultyOptions.map(f => (
+                              {facultyOptions.map((f: string) => (
                                 <SelectItem key={f} value={f}>{f}</SelectItem>
                               ))}
                             </SelectContent>
@@ -513,6 +523,17 @@ export default function ProfileSetupPage() {
                     <FormField control={form.control} name="scopusId" render={({ field }) => (
                       <FormItem><FormLabel>Scopus ID (Optional)</FormLabel><FormControl><Input placeholder="Your Scopus Author ID" {...field} /></FormControl><FormMessage /></FormItem>
                     )} />
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      <FormField control={form.control} name="hIndex" render={({ field }) => (
+                        <FormItem><FormLabel>H-Index (Scopus)</FormLabel><FormControl><Input type="number" placeholder="0" {...field} /></FormControl><FormMessage /></FormItem>
+                      )} />
+                      <FormField control={form.control} name="i10Index" render={({ field }) => (
+                        <FormItem><FormLabel>i10 Index (Scopus)</FormLabel><FormControl><Input type="number" placeholder="0" {...field} /></FormControl><FormMessage /></FormItem>
+                      )} />
+                      <FormField control={form.control} name="citationCount" render={({ field }) => (
+                        <FormItem><FormLabel>Citation Count (Scopus)</FormLabel><FormControl><Input type="number" placeholder="0" {...field} /></FormControl><FormMessage /></FormItem>
+                      )} />
+                    </div>
                     <FormField control={form.control} name="vidwanId" render={({ field }) => (
                       <FormItem><FormLabel>Vidwan ID (Optional)</FormLabel><FormControl><Input placeholder="Your Vidwan-ID" {...field} /></FormControl><FormMessage /></FormItem>
                     )} />
@@ -573,4 +594,27 @@ export default function ProfileSetupPage() {
       </Dialog>
     </>
   );
+}
+
+export default function ProfileSetupPage() {
+  return (
+    <Suspense fallback={
+      <main className="flex min-h-screen items-center justify-center bg-muted/40 p-4">
+        <Card className="w-full max-w-lg">
+          <CardHeader>
+            <Skeleton className="h-8 w-48" />
+            <Skeleton className="h-4 w-3/4" />
+          </CardHeader>
+          <CardContent className="space-y-6">
+            <div className="space-y-2"><Skeleton className="h-4 w-24" /><Skeleton className="h-10 w-full" /></div>
+            <div className="space-y-2"><Skeleton className="h-4 w-24" /><Skeleton className="h-10 w-full" /></div>
+            <div className="space-y-2"><Skeleton className="h-4 w-24" /><Skeleton className="h-10 w-full" /></div>
+            <Skeleton className="h-10 w-full" />
+          </CardContent>
+        </Card>
+      </main>
+    }>
+      <ProfileSetupContent />
+    </Suspense>
+  )
 }

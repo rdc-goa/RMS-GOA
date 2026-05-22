@@ -1,8 +1,10 @@
 
-'use server';
+// This file contains calculation logic that can run on both client and server.
+// Removed 'use server' to prevent Next.js from logging every call as a server action in dev mode.
 
-import type { IncentiveClaim, CoAuthor, Author } from '@/types';
-import { isResearchCoAuthorBeyondFifthPosition } from '@/lib/incentive-eligibility';
+
+import type { IncentiveClaim, Author } from '@/types';
+import { getClaimantAuthorPosition, getClaimantRole } from '@/lib/incentive-eligibility';
 
 // --- Research Paper Calculation ---
 
@@ -84,48 +86,71 @@ function adjustForPublicationType(baseAmount: number, publicationType: string | 
     }
 }
 
+export type ResearchIncentiveBreakdown = {
+    baseAmount: number;
+    publicationTypeAdjustment: string;
+    adjustedAmount: number;
+    deductions: string[];
+    deductedAmount: number;
+    internalAuthorsCount: number;
+    mainAuthorsCount: number;
+    coAuthorsCount: number;
+    authorShare: string;
+    finalAmount: number;
+    poolAmount?: number;
+    poolPercentage?: number;
+    sharingAuthorsCount?: number;
+};
+
 export async function calculateResearchPaperIncentive(
     claimData: Partial<IncentiveClaim>,
     faculty: string,
     designation?: string,
-): Promise<{ success: boolean; amount?: number; error?: string }> {
+): Promise<{ success: boolean; amount?: number; breakdown?: ResearchIncentiveBreakdown; error?: string }> {
     try {
-        const { authors = [], userEmail, publicationType, journalClassification, wasApcPaidByUniversity } = claimData;
+        const { authors = [], userEmail, publicationType, journalClassification, wasApcPaidByUniversity, isPuNameInPublication } = claimData;
 
         // Find the claimant in the author list
-        const claimant = authors.find(a => a.email.toLowerCase() === userEmail?.toLowerCase());
-        if (!claimant) {
-            return { success: false, error: "Claimant not found in the author list." };
-        }
-
-        // Policy: Co-Authors beyond 5th author position are not eligible for monetary incentive.
-        // (These claims may still be used for ARPS and analytics.)
-        if (isResearchCoAuthorBeyondFifthPosition(claimData)) {
-            return { success: true, amount: 0 };
-        }
+        const claimant = authors.find(a => a.email.toLowerCase() === userEmail?.toLowerCase()) || authors[0] || {
+            name: claimData.userName || 'Claimant',
+            email: userEmail || '',
+            role: 'First Author',
+            isExternal: false,
+            status: 'approved'
+        };
 
         const baseIncentive = getBaseIncentiveForPaper(claimData, faculty, designation);
-        let totalSpecifiedIncentive = adjustForPublicationType(baseIncentive, publicationType, journalClassification);
+        let adjustedAmount = adjustForPublicationType(baseIncentive, publicationType, journalClassification);
 
         // Apply university-level deductions before author distribution
+        let deductedAmount = adjustedAmount;
+        const deductions = [];
         if (wasApcPaidByUniversity) {
-            totalSpecifiedIncentive /= 2;
+            deductedAmount /= 2;
+            deductions.push('APC Paid (÷2)');
         }
-        if (claimData.isPuNameInPublication === false) {
-            totalSpecifiedIncentive /= 2;
+        if (isPuNameInPublication === false) {
+            deductedAmount /= 2;
+            deductions.push('No PU Name (÷2)');
         }
 
         const totalAuthors = authors.length || 1;
 
-        // Special case for Letter to Editor/Editorial
+        // Special case for Letter to Editor/Editorial - shared equally among all authors
         if (publicationType === 'Letter to the Editor/Editorial') {
-            const amountPerAuthor = totalSpecifiedIncentive / totalAuthors;
+            const amountPerAuthor = deductedAmount / totalAuthors;
             return { success: true, amount: Math.round(amountPerAuthor) };
         }
 
-        const internalAuthors = authors.filter(a => !a.isExternal);
+        // Identify internal authors. 
+        // We always treat the claimant as internal, even if the primary author marked them as external.
+        const internalAuthors = authors.map(a => ({
+            ...a,
+            isExternal: a.email.toLowerCase() === userEmail?.toLowerCase() ? false : a.isExternal
+        })).filter(a => !a.isExternal);
+
         if (internalAuthors.length === 0) {
-            return { success: true, amount: 0 }; // No PU authors
+            return { success: true, amount: 0 };
         }
 
         // Rule for Scopus Conference Proceedings: Only Presenting authors are eligible
@@ -137,49 +162,108 @@ export async function calculateResearchPaperIncentive(
                 return { success: true, amount: 0, error: 'Only Presenting Authors can claim for this publication type.' };
             }
 
-            const amountPerPresentingAuthor = totalSpecifiedIncentive / (presentingAuthors.length || 1);
+            const amountPerPresentingAuthor = deductedAmount / (presentingAuthors.length || 1);
             return { success: true, amount: Math.round(amountPerPresentingAuthor) };
         }
 
-        const mainAuthors = internalAuthors.filter(a => a.role === 'First Author' || a.role === 'Corresponding Author' || a.role === 'First & Corresponding Author');
-        const coAuthors = internalAuthors.filter(a => a.role === 'Co-Author');
+        // Categorize internal authors for standard research papers
+        const mainRoles = ['First Author', 'Corresponding Author', 'First & Corresponding Author', 'First & Presenting Author'];
+        const mainAuthors = internalAuthors.filter(a => mainRoles.includes(a.role));
+        const coAuthors = internalAuthors.filter(a => a.role === 'Co-Author' || a.role === 'Presenting Author');
 
+        // Check claimant's role based on the updated internalAuthors list to ensure consistency
+        const claimantInList = internalAuthors.find(a => a.email.toLowerCase() === userEmail?.toLowerCase());
+        const isMainAuthor = claimantInList ? mainRoles.includes(claimantInList.role) : mainRoles.includes(claimant.role);
         let finalAmount = 0;
+        let authorShareText = '';
+
+        let poolAmount = 0;
+        let poolPercentage = 0;
+        let sharingAuthorsCount = 0;
 
         if (internalAuthors.length === 1) {
-            // Rule 1: Sole author (as First or Corresponding)
+            // Sole author (as First or Corresponding)
             if (mainAuthors.length === 1) {
-                finalAmount = totalSpecifiedIncentive;
+                finalAmount = deductedAmount;
+                authorShareText = 'Sole main author (100%)';
+                poolAmount = deductedAmount;
+                poolPercentage = 100;
+                sharingAuthorsCount = 1;
             }
-            // Rule 2: Sole author (as Co-Author)
+            // Sole author from PU among external authors (as Co-Author)
             else if (coAuthors.length === 1) {
-                finalAmount = totalSpecifiedIncentive * 0.8;
+                finalAmount = deductedAmount * 0.8;
+                authorShareText = 'Sole co-author (80%)';
+                poolAmount = deductedAmount * 0.8;
+                poolPercentage = 80;
+                sharingAuthorsCount = 1;
             }
         }
-        // Rule 4: Mixed roles (First/Corresponding AND Co-Authors)
+        // Mixed roles (Internal Main Authors AND Internal Co-Authors)
         else if (mainAuthors.length > 0 && coAuthors.length > 0) {
-            if (claimant.role === 'Co-Author') {
-                finalAmount = (totalSpecifiedIncentive * 0.3) / (coAuthors.length || 1);
-            } else { // Claimant is a main author
-                finalAmount = (totalSpecifiedIncentive * 0.7) / (mainAuthors.length || 1);
+            if (isMainAuthor) {
+                poolPercentage = 70;
+                sharingAuthorsCount = mainAuthors.length;
+                poolAmount = deductedAmount * 0.7;
+                finalAmount = poolAmount / mainAuthors.length;
+            } else {
+                poolPercentage = 30;
+                sharingAuthorsCount = coAuthors.length;
+                poolAmount = deductedAmount * 0.3;
+                finalAmount = poolAmount / coAuthors.length;
             }
+            authorShareText = `Mixed: Main (70% ÷ ${mainAuthors.length}), Co-Author (30% ÷ ${coAuthors.length})`;
         }
-        // Rule 3: Multiple Co-Authors only (no internal Main Authors)
-        else if (mainAuthors.length === 0 && coAuthors.length > 1) {
-            finalAmount = (totalSpecifiedIncentive * 0.8) / (coAuthors.length || 1);
+        // Multiple Co-Authors only (no internal Main Authors)
+        else if (mainAuthors.length === 0 && coAuthors.length > 0) {
+            poolPercentage = 80;
+            sharingAuthorsCount = coAuthors.length;
+            poolAmount = deductedAmount * 0.8;
+            finalAmount = poolAmount / coAuthors.length;
+            authorShareText = `Multiple co-authors (80% ÷ ${coAuthors.length})`;
         }
-        // Fallback for cases like multiple main authors from PU but no co-authors
-        else if (mainAuthors.length > 0 && coAuthors.length === 0) {
-            finalAmount = totalSpecifiedIncentive / mainAuthors.length;
+        // Multiple main authors only
+        else if (mainAuthors.length > 0) {
+            poolPercentage = 100;
+            sharingAuthorsCount = mainAuthors.length;
+            poolAmount = deductedAmount;
+            finalAmount = poolAmount / mainAuthors.length;
+            authorShareText = `Multiple main authors (÷ ${mainAuthors.length})`;
         }
 
-        return { success: true, amount: Math.round(finalAmount) };
+        // --- Post-Calculation Policy Enforcement ---
+
+        // Policy: Co-Authors beyond 5th author position are not eligible for monetary incentive.
+        const position = getClaimantAuthorPosition(claimData);
+        if (!isMainAuthor && position > 5) {
+            finalAmount = 0;
+            authorShareText = `Ineligible: Co-author at position ${position} (Max position is 5th)`;
+        }
+
+        const breakdown: ResearchIncentiveBreakdown = {
+            baseAmount: baseIncentive,
+            publicationTypeAdjustment: publicationType === 'Case Reports/Short Surveys' ? '0.9×' : (publicationType === 'Review Articles' && ['Q3', 'Q4'].includes(journalClassification || '') ? '0.8×' : '1.0×'),
+            adjustedAmount: Math.round(adjustedAmount),
+            deductions,
+            deductedAmount: Math.round(deductedAmount),
+            internalAuthorsCount: internalAuthors.length,
+            mainAuthorsCount: mainAuthors.length,
+            coAuthorsCount: coAuthors.length,
+            authorShare: authorShareText,
+            finalAmount: Math.round(finalAmount),
+            poolAmount: Math.round(poolAmount),
+            poolPercentage,
+            sharingAuthorsCount
+        };
+
+        return { success: true, amount: Math.round(finalAmount), breakdown };
 
     } catch (error: any) {
         console.error("Error calculating incentive:", error);
         return { success: false, error: "Calculation failed: " + error.message };
     }
 }
+
 
 
 // --- Book/Chapter Calculation ---
@@ -242,7 +326,7 @@ export async function calculateBookIncentive(claimData: Partial<IncentiveClaim>)
             totalIncentive = Math.min(sum, baseBookIncentive);
         }
 
-        const internalAuthorsCount = (claimData.authors?.filter(a => !a.isExternal).length || 0) + (claimData.totalPuAuthors || 0);
+        const internalAuthorsCount = claimData.authors?.filter(a => !a.isExternal).length || 1;
         if (internalAuthorsCount > 1) {
             totalIncentive /= internalAuthorsCount;
         }
@@ -305,9 +389,10 @@ export async function calculateApcIncentive(
 
         const admissibleAmount = Math.min(actualAmountPaid, maxReimbursementLimit);
 
-        const finalIncentive = admissibleAmount / internalAuthorCount;
+        // Split equally among all PU (internal) authors (as per SOP)
+        const individualShare = admissibleAmount / (internalAuthorCount || 1);
 
-        return { success: true, amount: Math.round(finalIncentive) };
+        return { success: true, amount: Math.round(individualShare) };
 
     } catch (error: any) {
         console.error("Error calculating APC incentive:", error);
@@ -339,7 +424,7 @@ export async function calculateConferenceIncentive(
         let maxReimbursement = 0;
 
         const isPuConference =
-            (organizerName || "").toLowerCase().includes("parul university goa") ||
+            (organizerName || "").toLowerCase().includes("parul university") ||
             (conferenceName || "").toLowerCase().includes("picet");
 
         if (isPuConference) {
@@ -407,7 +492,23 @@ export async function calculateConferenceIncentive(
             maxReimbursement > 0 ? Math.min(eligibleExpenses, maxReimbursement) : eligibleExpenses;
 
         // round to nearest integer
-        const finalAmount = Math.round(reimbursableAmount);
+        let finalAmount = Math.round(reimbursableAmount);
+
+        // Apply author sharing logic for Conference Presentations
+        // Amount divided equally among all eligible authors (up to 5th position, plus corresponding author regardless of position)
+        const { authors = [], userEmail } = claimData;
+        if (authors && authors.length > 0) {
+            // Filter authors: include up to 5th position OR corresponding author role
+            const eligibleAuthors = authors.filter((author) => {
+                const position = parseInt(author.position || '0', 10);
+                const isCorresponding = author.role === 'Corresponding Author' || author.role === 'First & Corresponding Author';
+                return (position > 0 && position <= 5) || isCorresponding;
+            });
+
+            if (eligibleAuthors.length > 0) {
+                finalAmount = Math.round(finalAmount / eligibleAuthors.length);
+            }
+        }
 
         return {
             success: true,
@@ -454,9 +555,12 @@ export async function calculatePatentIncentive(claimData: Partial<IncentiveClaim
         }
 
         let baseAmount = 0;
-        if (currentStatus === 'Published') {
+        // Check both patentStatus and currentStatus to be robust
+        const status = claimData.patentStatus || claimData.currentStatus;
+
+        if (status === 'Published') {
             baseAmount = 3000;
-        } else if (currentStatus === 'Granted') {
+        } else if (status === 'Granted' || status === 'Awarded') {
             baseAmount = 15000;
         } else {
             return { success: true, amount: 0 };
@@ -504,8 +608,8 @@ export async function calculateJournalPublicationPoints(
         const basePointsMap: { [key: string]: number } = {
             'Q1': 30,
             'Q2': 20,
-            'Q3': 12,
-            'Q4': 8
+            'Q3': 15,
+            'Q4': 10
         };
         const basePoints = basePointsMap[journalClassification] || 0;
 
@@ -532,10 +636,13 @@ export async function calculateJournalPublicationPoints(
         }
 
         // Find claimant in author list and get author position
-        const claimant = authors?.find(a => a.email.toLowerCase() === userEmail?.toLowerCase());
-        if (!claimant) {
-            return { success: false, error: "Claimant not found in the author list." };
-        }
+        const claimant = authors?.find(a => a.email.toLowerCase() === userEmail?.toLowerCase()) || authors[0] || {
+            name: claimData.userName || 'Claimant',
+            email: userEmail || '',
+            role: 'First Author',
+            isExternal: false,
+            status: 'approved'
+        };
 
         // Author position multiplier (Section 5.2.3)
         let authorPositionMultiplier = 0.3; // Default: Co-Author
@@ -584,6 +691,19 @@ export async function calculateJournalPublicationPoints(
 
     } catch (error: any) {
         console.error("Error calculating journal publication points:", error);
+        return { success: false, error: error.message || "An unknown error occurred during calculation." };
+    }
+}
+
+// --- EMR Sanction Project Calculation ---
+
+export async function calculateEmrSanctionIncentive(claimData: Partial<IncentiveClaim>): Promise<{ success: boolean; amount?: number; error?: string }> {
+    try {
+        const sanctionAmount = claimData.sanctionAmount || 0;
+        const incentive = sanctionAmount * 0.01; // 1% as per user request
+        return { success: true, amount: Math.round(incentive) };
+    } catch (error: any) {
+        console.error("Error calculating EMR sanction incentive:", error);
         return { success: false, error: error.message || "An unknown error occurred during calculation." };
     }
 }

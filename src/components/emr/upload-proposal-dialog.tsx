@@ -97,22 +97,10 @@ export function UploadProposalDialog({ isOpen, onOpenChange, interest, call, use
     }
   };
 
-  const handleDelete = async () => {
-    setIsUploading(true);
-    try {
-      const result = await removeEmrProposal(interest.id);
-      if (result.success) {
-        toast({ title: 'Success', description: 'Your proposal has been removed.' });
-        onUploadSuccess();
-      } else {
-        throw new Error(result.error);
-      }
-    } catch (error: any) {
-      toast({ variant: 'destructive', title: 'Deletion Failed', description: error.message || 'An unexpected error occurred.' });
-    } finally {
-      setIsUploading(false);
-    }
-  };
+    /* 
+       REMOVED: handleDelete - Mandatory documents cannot be deleted once registered.
+       Users must use the 'Replace' functionality instead to ensure integrity.
+    */
 
   const deadlineWithTime = interest.meetingSlot?.pptDeadline ? parseISO(interest.meetingSlot.pptDeadline) : null;
   const isDeadlinePast = deadlineWithTime ? isAfter(new Date(), deadlineWithTime) : false;
@@ -148,11 +136,6 @@ export function UploadProposalDialog({ isOpen, onOpenChange, interest, call, use
               <a href={interest.proposalUrl} target="_blank" rel="noopener noreferrer" className="text-primary font-medium hover:underline flex items-center gap-2">
                 <File className="h-4 w-4" /> View Current Proposal
               </a>
-              {!isUploadDisabled && (
-                <Button variant="destructive" size="sm" onClick={handleDelete} disabled={isUploading}>
-                  <Trash2 className="h-4 w-4" />
-                </Button>
-              )}
             </div>
           )}
           <div className="space-y-2">

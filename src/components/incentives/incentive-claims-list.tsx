@@ -14,50 +14,46 @@ import {
   DropdownMenuLabel,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { db } from '@/lib/config';
-import { collection, getDocs, doc, updateDoc, orderBy, query } from 'firebase/firestore';
+import { db_rtdb } from '@/lib/config';
+import { ref, update } from 'firebase/database';
 import type { IncentiveClaim } from '@/types';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
+import { useIncentiveClaims } from '@/hooks/use-staff-data';
 
 const STATUSES: IncentiveClaim['status'][] = ['Pending', 'Accepted', 'Rejected'];
 
 export function IncentiveClaimsList() {
-  const [claims, setClaims] = useState<IncentiveClaim[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { claims, isLoading: loading, mutate } = useIncentiveClaims();
   const { toast } = useToast();
-
-  const fetchClaims = useCallback(async () => {
-    setLoading(true);
-    try {
-      const claimsCollection = collection(db, 'incentiveClaims');
-      const q = query(claimsCollection, orderBy('submissionDate', 'desc'));
-      const claimSnapshot = await getDocs(q);
-      const claimList = claimSnapshot.docs.map(claimDoc => ({ ...claimDoc.data(), id: claimDoc.id } as IncentiveClaim));
-      setClaims(claimList);
-    } catch (error) {
-      console.error("Error fetching claims:", error);
-      toast({ variant: 'destructive', title: "Error", description: "Could not fetch incentive claims." });
-    } finally {
-      setLoading(false);
-    }
-  }, [toast]);
-
-  useEffect(() => {
-    fetchClaims();
-  }, [fetchClaims]);
 
   const handleStatusChange = useCallback(async (id: string, newStatus: IncentiveClaim['status']) => {
     try {
-      const claimDoc = doc(db, 'incentiveClaims', id);
-      await updateDoc(claimDoc, { status: newStatus });
+      // Legacy Firestore write has been completely purged to strictly enforce the RTDB-only pipeline.
+      console.warn("LEGACY: Direct Firestore update in IncentiveClaimsList is disabled. Use the API instead.");
+
+      // Sync to Realtime Database
+      try {
+        const { sanitizeForRtdb } = await import('@/lib/rtdb-utils');
+        const sanitizedUpdate = sanitizeForRtdb({ 
+          status: newStatus,
+          lastSyncedAt: new Date().toISOString()
+        });
+        const rtdbRef = ref(db_rtdb, `incentiveClaims/${id}`);
+        await update(rtdbRef, sanitizedUpdate);
+      } catch (rtdbError) {
+        console.error("RTDB Sync Error (handleStatusChange):", rtdbError);
+      }
+
+
       toast({ title: 'Status Updated', description: "The claim's status has been changed." });
-      fetchClaims(); 
+      mutate(); 
     } catch (error) {
        console.error("Error updating status:", error);
        toast({ variant: 'destructive', title: "Error", description: "Could not update status." });
     }
-  }, [fetchClaims, toast]);
+  }, [mutate, toast]);
+
   
   if (loading) {
     return (

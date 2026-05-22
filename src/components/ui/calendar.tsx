@@ -14,21 +14,22 @@ function Calendar({
   className,
   classNames,
   showOutsideDays = true,
+  captionLayout = "buttons",
+  numberOfMonths = 1,
   ...props
 }: CalendarProps) {
   return (
     <DayPicker
       showOutsideDays={showOutsideDays}
-      captionLayout="dropdown-buttons"
+      captionLayout={captionLayout}
       className={cn("p-3", className)}
-      numberOfMonths={1}
+      numberOfMonths={numberOfMonths}
       classNames={{
         months: "flex flex-col sm:flex-row space-y-4 sm:space-x-4 sm:space-y-0",
         month: "space-y-4",
-        caption: "flex justify-center pt-1 relative items-center",
-        // 👇 hide label since dropdowns already show month & year
-        caption_label: "hidden",
-        caption_dropdowns: "flex justify-center gap-1",
+        caption: "flex justify-center pt-1 relative items-center h-10",
+        caption_label: cn("text-sm font-medium", captionLayout === "dropdown-buttons" && "hidden"),
+        caption_dropdowns: "flex justify-center gap-1 items-center",
         nav: "space-x-1 flex items-center",
         nav_button: cn(
           buttonVariants({ variant: "outline" }),
@@ -61,22 +62,22 @@ function Calendar({
       components={{
         IconLeft: () => <ChevronLeft className="h-4 w-4" />,
         IconRight: () => <ChevronRight className="h-4 w-4" />,
-        Dropdown: ({ children, ...props }: any) => {
+        Dropdown: ({ children, ...dropdownProps }: any) => {
           const options = React.Children.toArray(children) as React.ReactElement<React.HTMLProps<HTMLOptionElement>>[]
-          const selected = options.find((child) => child.props.value === props.value)
+          const selected = options.find((child) => child.props.value === dropdownProps.value)
           const handleChange = (value: string) => {
             const changeEvent = {
               target: { value },
             } as React.ChangeEvent<HTMLSelectElement>
-            props.onChange?.(changeEvent)
+            dropdownProps.onChange?.(changeEvent)
           }
           return (
             <Select
-              value={props.value?.toString()}
+              value={dropdownProps.value?.toString()}
               onValueChange={(value) => handleChange(value)}
             >
-              <SelectTrigger className="h-8 w-fit gap-1 border-none bg-transparent px-2 py-1 font-medium focus:ring-0 [&>span]:line-clamp-none">
-                <SelectValue placeholder={props.caption}>{selected?.props?.children}</SelectValue>
+              <SelectTrigger className="h-8 w-fit gap-1 border-none bg-transparent px-2 py-1 font-bold text-sm focus:ring-0 [&>span]:line-clamp-none text-foreground hover:text-primary transition-colors">
+                <SelectValue placeholder={dropdownProps.caption}>{selected?.props?.children}</SelectValue>
               </SelectTrigger>
               <SelectContent className="max-h-80">
                 {options.map((option) => (

@@ -2,13 +2,21 @@
 'use client';
 
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import { useForm } from 'react-hook-form';
+import { useForm, type FieldErrors } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { useToast } from '@/hooks/use-toast';
 import type { User, IncentiveClaim, ApprovalStage, Author } from '@/types';
-import { processIncentiveClaimAction } from '@/app/incentive-approval-actions';
+import { processIncentiveClaimAction } from '@/app/actions';
 import { isEligibleForFinancialDisbursement } from '@/lib/incentive-eligibility';
+import { calculateIncentiveBreakdown } from '@/lib/incentive-calculator';
+const APPROVER_NAMES = [
+    'Shridhar Billur',
+    'Apexa Hansaliya',
+    'Janvi Rohit',
+    'Krish Patel',
+    'Hiren Dalwadi'
+];
 import {
     Dialog,
     DialogContent,
@@ -18,7 +26,6 @@ import {
     DialogFooter,
 } from '@/components/ui/dialog';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage, FormDescription } from '@/components/ui/form';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
@@ -28,7 +35,6 @@ import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
 import Link from 'next/link';
 import { Tooltip, TooltipProvider, TooltipTrigger, TooltipContent } from '../ui/tooltip';
-import { IncentiveCalculationBreakdown } from './calculation-breakdown';
 
 interface ApprovalDialogProps {
     claim: IncentiveClaim;
@@ -52,6 +58,7 @@ const createApprovalSchema = (stageIndex: number, claimType?: string) => {
         comments: z.string().optional(),
         verifiedFields: verifiedFieldsSchema,
         suggestions: suggestionsSchema,
+        approverName: z.string().optional(),
     }).refine(data => {
         if (data.action !== 'reject') {
             return data.amount !== undefined && data.amount >= 0;
@@ -110,6 +117,17 @@ const additionalResearchPaperFieldsForFinalReview: { id: keyof IncentiveClaim | 
     { id: 'puStudentNames', label: 'PU Student Names' },
     { id: 'wasApcPaidByUniversity', label: 'APC Paid by University' },
     { id: 'authorsSummary', label: 'All Authors (Role)' },
+];
+
+const awardFields: { id: keyof IncentiveClaim; label: string }[] = [
+    { id: 'awardTitle', label: 'Award Title' },
+    { id: 'awardCategory', label: 'Award Category' },
+    { id: 'awardingBody', label: 'Awarding Body' },
+    { id: 'awardStature', label: 'Award Stature' },
+    { id: 'awardBodyType', label: 'Awarding Body Type' },
+    { id: 'awardDate', label: 'Award Date' },
+    { id: 'isPaidAward', label: 'Is it a Paid Award?' },
+    { id: 'amountPaid', label: 'Cash Prize Received' },
 ];
 
 const conferenceChecklistFields: { id: keyof IncentiveClaim | 'name' | 'designation', label: string }[] = [
@@ -187,7 +205,7 @@ function ConferenceClaimDetails({
                 <div className="col-span-3 flex justify-end gap-1">
                     {stageIndex > 0 && (
                         <div className="w-7 h-7 flex items-center justify-center">
-                            <TooltipProvider><Tooltip><TooltipTrigger asChild><span>{getVerificationMark(approval1, field.id)}</span></TooltipTrigger><TooltipContent><p>Approver 1 Verification</p></TooltipContent></Tooltip></TooltipProvider>
+                            <TooltipProvider><Tooltip><TooltipTrigger>{getVerificationMark(approval1, field.id)}</TooltipTrigger><TooltipContent><p>Approver 1 Verification</p></TooltipContent></Tooltip></TooltipProvider>
                         </div>
                     )}
                     {isChecklistEnabled && (
@@ -198,7 +216,7 @@ function ConferenceClaimDetails({
                                 <FormItem>
                                     <FormControl>
                                         <div className="flex items-center gap-1">
-                                            <Button type="button" size="icon" variant="ghost" className={`h-7 w-7 ${formField.value === true ? 'bg-green-600 hover:bg-green-700 text-white' : ''}`} onClick={() => formField.onChange(formField.value === true ? undefined : true)}><Check className="h-4 w-4" /></Button>
+                                            <Button type="button" size="icon" variant={formField.value === true ? 'secondary' : 'ghost'} className="h-7 w-7" onClick={() => formField.onChange(formField.value === true ? undefined : true)}><Check className="h-4 w-4" /></Button>
                                             <Button type="button" size="icon" variant={formField.value === false ? 'destructive' : 'ghost'} className="h-7 w-7" onClick={() => formField.onChange(formField.value === false ? undefined : false)}><X className="h-4 w-4" /></Button>
                                         </div>
                                     </FormControl>
@@ -230,11 +248,21 @@ function ConferenceClaimDetails({
         );
     };
 
+    const autoDuration = (() => {
+        if (claim.conferenceDate && claim.conferenceEndDate) {
+            const start = new Date(claim.conferenceDate);
+            const end = new Date(claim.conferenceEndDate);
+            const diffDays = Math.round((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+            return diffDays > 0 ? diffDays : null;
+        }
+        return null;
+    })();
+
     const claimWithUserData = {
         ...claim,
         name: claimant?.name,
         designation: `${claimant?.designation || 'N/A'}, ${claimant?.department || 'N/A'}`,
-        conferenceDuration: claim.conferenceDuration ? `${claim.conferenceDuration} Days` : 'N/A',
+        conferenceDuration: autoDuration ? `${autoDuration} Days` : (claim.conferenceDuration ? `${claim.conferenceDuration} Days` : 'N/A'),
     };
 
     return (
@@ -246,6 +274,29 @@ function ConferenceClaimDetails({
                     {isChecklistEnabled && <span>Your Verify</span>}
                 </div>
             </div>
+
+            {/* Read-only Date & Mode Info Strip */}
+            <div className="flex flex-wrap gap-2 p-3 bg-background rounded-lg border border-border/60 text-xs">
+                {claim.conferenceMode && (
+                    <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full font-semibold ${claim.conferenceMode === 'Online' ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300' : 'bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-300'}`}>
+                        {claim.conferenceMode === 'Online' ? '🌐' : '📍'} {claim.conferenceMode}
+                    </span>
+                )}
+                {claim.conferenceDate && (
+                    <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-muted font-medium text-muted-foreground">
+                        Start: <strong className="text-foreground">{claim.conferenceDate}</strong>
+                    </span>
+                )}
+                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-muted font-medium text-muted-foreground">
+                    End: <strong className="text-foreground">{claim.conferenceEndDate || 'N/A'}</strong>
+                </span>
+                {claim.presentationDate && (
+                    <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-primary/10 text-primary font-medium">
+                        Presentation: <strong>{claim.presentationDate}</strong>
+                    </span>
+                )}
+            </div>
+
             <div className="space-y-1">
                 {conferenceChecklistFields.map(field => renderDetail(field, (claimWithUserData as any)[field.id]))}
             </div>
@@ -352,12 +403,12 @@ function ResearchPaperClaimDetails({
                 <div className="col-span-3 flex justify-end gap-1">
                     {stageIndex > 0 && (
                         <div className="w-7 h-7 flex items-center justify-center">
-                            <TooltipProvider><Tooltip><TooltipTrigger asChild><span>{getVerificationMark(approval1, field.id)}</span></TooltipTrigger><TooltipContent><p>Approver 1 Verification</p></TooltipContent></Tooltip></TooltipProvider>
+                            <TooltipProvider><Tooltip><TooltipTrigger>{getVerificationMark(approval1, field.id)}</TooltipTrigger><TooltipContent><p>Approver 1 Verification</p></TooltipContent></Tooltip></TooltipProvider>
                         </div>
                     )}
                     {stageIndex > 1 && (
                         <div className="w-7 h-7 flex items-center justify-center">
-                            <TooltipProvider><Tooltip><TooltipTrigger asChild><span>{getVerificationMark(approval2, field.id)}</span></TooltipTrigger><TooltipContent><p>Approver 2 Verification</p></TooltipContent></Tooltip></TooltipProvider>
+                            <TooltipProvider><Tooltip><TooltipTrigger>{getVerificationMark(approval2, field.id)}</TooltipTrigger><TooltipContent><p>Approver 2 Verification</p></TooltipContent></Tooltip></TooltipProvider>
                         </div>
                     )}
                     {isChecklistEnabled && (
@@ -368,7 +419,7 @@ function ResearchPaperClaimDetails({
                                 <FormItem>
                                     <FormControl>
                                         <div className="flex items-center gap-1">
-                                            <Button type="button" size="icon" variant="ghost" className={`h-7 w-7 ${formField.value === true ? 'bg-green-600 hover:bg-green-700 text-white' : ''}`} onClick={() => formField.onChange(formField.value === true ? undefined : true)}>
+                                            <Button type="button" size="icon" variant={formField.value === true ? 'secondary' : 'ghost'} className="h-7 w-7" onClick={() => formField.onChange(formField.value === true ? undefined : true)}>
                                                 <Check className="h-4 w-4" />
                                             </Button>
                                             <Button type="button" size="icon" variant={formField.value === false ? 'destructive' : 'ghost'} className="h-7 w-7" onClick={() => formField.onChange(formField.value === false ? undefined : false)}>
@@ -416,7 +467,8 @@ function ResearchPaperClaimDetails({
         );
     };
 
-    const breakdown = true; // Use the component's internal logic
+
+    const breakdown = calculateIncentiveBreakdown(claim);
 
     const claimWithUserData = {
         ...claim,
@@ -438,9 +490,25 @@ function ResearchPaperClaimDetails({
                     {isChecklistEnabled && <span>Your Verify</span>}
                 </div>
             </div>
-            <div className="space-y-1">
-                {allPossibleResearchPaperFields.map(field => renderDetail(field, (claimWithUserData as any)[field.id]))}
-            </div>
+            {claim.claimType === 'Research Papers' && (
+                <div className="space-y-1">
+                    {allPossibleResearchPaperFields.map(field => renderDetail(field, (claimWithUserData as any)[field.id]))}
+                </div>
+            )}
+
+            {claim.claimType === 'Award' && (
+                <div className="space-y-1">
+                    {awardFields.map(field => renderDetail(field, (claimWithUserData as any)[field.id]))}
+                </div>
+            )}
+
+            {claim.claimType !== 'Research Papers' && claim.claimType !== 'Award' && (
+                <div className="space-y-1">
+                    {/* Fallback for other types */}
+                    <p className="text-xs text-muted-foreground italic">Details verification for this claim type is handled via the full details view.</p>
+                </div>
+            )}
+
             {!isChecklistEnabled && (
                 <>
                     <Separator />
@@ -450,13 +518,116 @@ function ResearchPaperClaimDetails({
                     </div>
                 </>
             )}
-            {breakdown && claim.claimType && ['Research Papers', 'Patents', 'Books', 'Conference Presentations'].includes(claim.claimType) && (
+            {breakdown && (breakdown as any).isAward && (
                 <>
                     <Separator />
-                    <IncentiveCalculationBreakdown claimData={claim} user={claimant} />
+                    <div className="space-y-2 bg-purple-50 dark:bg-purple-950 rounded-lg p-3 border border-purple-200 dark:border-purple-800">
+                        <h5 className="text-sm font-semibold text-purple-900 dark:text-purple-100">Award Honorarium Breakdown</h5>
+                        <div className="space-y-1.5 text-xs text-purple-800 dark:text-purple-200">
+                            <div className="flex justify-between">
+                                <span>Policy Base ({(breakdown as any).category}):</span>
+                                <span className="font-semibold">₹{(breakdown as any).baseAmount.toLocaleString('en-IN')}</span>
+                            </div>
+                            {(breakdown as any).isPaid && (
+                                <div className="flex justify-between text-red-600">
+                                    <span>Paid Award (Disqualified):</span>
+                                    <span className="font-semibold">-100%</span>
+                                </div>
+                            )}
+                            <div className="pt-1.5 border-t border-purple-200 dark:border-purple-800 mt-1.5 flex justify-between font-bold text-sm">
+                                <span>Suggested Honorarium:</span>
+                                <span>₹{(breakdown as any).finalAmount.toLocaleString('en-IN')}</span>
+                            </div>
+                        </div>
+                    </div>
+                </>
+            )}
+
+            {breakdown && !(breakdown as any).isAward && (
+                <>
+                    <Separator />
+                    <div className="space-y-2 bg-blue-50 dark:bg-blue-950 rounded-lg p-3 border border-blue-200 dark:border-blue-800">
+                        <h5 className="text-sm font-semibold text-blue-900 dark:text-blue-100">Incentive Calculation Breakdown</h5>
+                        <div className="space-y-1.5 text-xs">
+
+                            <div className="grid grid-cols-2 gap-2">
+                                <span className="text-blue-700 dark:text-blue-300">1. Base Amount (Q-Rating):</span>
+                                <span className="font-medium text-right">₹{breakdown.baseAmount.toLocaleString('en-IN')}</span>
+                            </div>
+                            <div className="grid grid-cols-2 gap-2">
+                                <span className="text-blue-700 dark:text-blue-300">2. Publication Type Adjustment:</span>
+                                <span className="font-medium text-right">×{breakdown.publicationTypeAdjustment}</span>
+                            </div>
+                            <div className="grid grid-cols-2 gap-2">
+                                <span className="text-blue-700 dark:text-blue-300">3. After Adjustment:</span>
+                                <span className="font-medium text-right">₹{breakdown.adjustedAmount.toLocaleString('en-IN')}</span>
+                            </div>
+                            {breakdown.deductions.length > 0 && (
+                                <>
+                                    <div className="border-t border-blue-200 dark:border-blue-800 pt-1.5 mt-1.5">
+                                        <p className="text-blue-700 dark:text-blue-300 font-medium mb-1">University-level Deductions:</p>
+                                        {breakdown.deductions.map((deduction, i) => (
+                                            <div key={i} className="grid grid-cols-2 gap-2 ml-2">
+                                                <span className="text-blue-600 dark:text-blue-400">• {deduction}</span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-2 font-semibold border-t border-blue-200 dark:border-blue-800 pt-1.5 mt-1.5">
+                                        <span className="text-blue-900 dark:text-blue-100">After All Deductions:</span>
+                                        <span className="text-right text-blue-900 dark:text-blue-100">₹{breakdown.deductedAmount.toLocaleString('en-IN')}</span>
+                                    </div>
+                                </>
+                            )}
+                            <div className="border-t border-blue-200 dark:border-blue-800 pt-1.5 mt-1.5">
+                                <p className="text-blue-700 dark:text-blue-300 font-medium mb-1">Author Distribution:</p>
+                                <div className="ml-2 space-y-0.5">
+                                    <div className="text-blue-600 dark:text-blue-400">Internal Authors: {breakdown.internalAuthorsCount}</div>
+                                    <div className="text-blue-600 dark:text-blue-400">Main Authors: {breakdown.mainAuthorsCount}, Co-Authors: {breakdown.coAuthorsCount}</div>
+                                    <div className="text-blue-600 dark:text-blue-400 text-xs italic">{breakdown.authorShare}</div>
+                                </div>
+                            </div>
+                            <div className="grid grid-cols-2 gap-2 font-bold border-t border-blue-200 dark:border-blue-800 pt-1.5 mt-1.5 bg-blue-100 dark:bg-blue-900 p-2 rounded">
+                                <span className="text-blue-900 dark:text-blue-50">Final Incentive per Author:</span>
+                                <span className="text-right text-green-700 dark:text-green-400">₹{breakdown.finalAmount.toLocaleString('en-IN')}</span>
+                            </div>
+                        </div>
+                    </div>
                 </>
             )}
             {isChecklistEnabled && <FormMessage>{form.formState.errors.verifiedFields?.message}</FormMessage>}
+        </div>
+    );
+}
+
+function BookClaimDetails({ claim }: { claim: IncentiveClaim }) {
+    const renderDetail = (label: string, value?: string | number | boolean | null) => {
+        if (value === undefined || value === null || value === '') return null;
+        const display = typeof value === 'boolean' ? (value ? 'Yes' : 'No') : String(value);
+        return (
+            <div className="grid grid-cols-2 text-sm">
+                <span className="text-muted-foreground">{label}</span>
+                <span>{display}</span>
+            </div>
+        );
+    };
+
+    return (
+        <div className="space-y-4 rounded-lg border bg-muted/50 p-4">
+            <h4 className="font-semibold">Book / Chapter Details to Review</h4>
+            <div className="space-y-1">
+                {renderDetail('Application Type', claim.bookApplicationType)}
+                {renderDetail('Title', claim.publicationTitle)}
+                {claim.bookApplicationType === 'Book Chapter' && renderDetail('Book Title', claim.bookTitleForChapter)}
+                {renderDetail('Publisher', claim.publisherName)}
+                {renderDetail('Publisher Type', claim.publisherType)}
+                {renderDetail('ISBN', claim.isbn || claim.isbnPrint || claim.isbnElectronic)}
+                {renderDetail('Publication Order (Year)', claim.publicationOrderInYear)}
+                {renderDetail('Scopus Indexed', claim.isScopusIndexed)}
+                {renderDetail('Calculated Incentive', claim.calculatedIncentive != null ? `₹${claim.calculatedIncentive.toLocaleString('en-IN')}` : null)}
+                {claim.bookApplicationType === 'Book Chapter'
+                    ? renderDetail('Chapter Pages', claim.bookChapterPages)
+                    : renderDetail('Total Book Pages', claim.bookTotalPages)}
+            </div>
         </div>
     );
 }
@@ -516,12 +687,7 @@ export function ApprovalDialog({ claim, approver, claimant, stageIndex, isOpen, 
         }
 
         return fieldList
-            .filter(f => {
-                const value = (claimData as any)[f.id];
-                if (value === undefined || value === null || value === '') return false;
-                if (Array.isArray(value) && value.length === 0) return false;
-                return true;
-            })
+            .filter(f => (claimData as any)[f.id] !== undefined && (claimData as any)[f.id] !== null && (claimData as any)[f.id] !== '')
             .map(f => f.id);
     }, [isConferenceClaim, isResearchPaperClaim, claim, claimant]);
 
@@ -533,6 +699,8 @@ export function ApprovalDialog({ claim, approver, claimant, stageIndex, isOpen, 
         path: ['verifiedFields'],
     }), [approvalSchema, isChecklistEnabled, fieldsToVerify]);
 
+    const breakdown = calculateIncentiveBreakdown(claim);
+
     const { defaultAmount, isAutoCalculated } = useMemo(() => {
         if (stageIndex > 0 && claim.approvals) {
             const previousApprovals = claim.approvals
@@ -543,8 +711,13 @@ export function ApprovalDialog({ claim, approver, claimant, stageIndex, isOpen, 
                 return { defaultAmount: previousApprovals[0].approvedAmount, isAutoCalculated: false };
             }
         }
-        return { defaultAmount: claim.calculatedIncentive, isAutoCalculated: true };
-    }, [stageIndex, claim]);
+
+        if (breakdown && (breakdown as any).isAward) {
+            return { defaultAmount: (breakdown as any).finalAmount, isAutoCalculated: true };
+        }
+
+        return { defaultAmount: claim.calculatedIncentive || 0, isAutoCalculated: true };
+    }, [stageIndex, claim, breakdown]);
 
     const getDefaultAction = useCallback(() => {
         if (isChecklistEnabled) return 'verify';
@@ -558,6 +731,8 @@ export function ApprovalDialog({ claim, approver, claimant, stageIndex, isOpen, 
             verifiedFields: {},
             suggestions: {},
             action: getDefaultAction(),
+            comments: '',
+            approverName: '',
         }
     });
 
@@ -575,6 +750,7 @@ export function ApprovalDialog({ claim, approver, claimant, stageIndex, isOpen, 
                 suggestions: suggestions,
                 action: getDefaultAction(),
                 comments: '',
+                approverName: '',
             });
         }
     }, [isOpen, claim, defaultAmount, form.reset, getDefaultAction, fieldsToVerify]);
@@ -582,8 +758,22 @@ export function ApprovalDialog({ claim, approver, claimant, stageIndex, isOpen, 
 
     const action = form.watch('action');
     const showAmountField = action !== 'reject';
-    const showCommentsField = action === 'reject' || (!isChecklistEnabled && stageIndex < 2) || (stageIndex >= 1);
+    const showCommentsFieldVal = action === 'reject' || (!isChecklistEnabled && stageIndex < 2) || (stageIndex >= 1);
 
+
+    const handleInvalid = (errors: FieldErrors<ApprovalFormData>) => {
+        const firstMessage =
+            errors.approverName?.message ||
+            errors.comments?.message ||
+            errors.amount?.message ||
+            errors.action?.message ||
+            errors.verifiedFields?.message;
+        toast({
+            variant: 'destructive',
+            title: 'Cannot submit',
+            description: typeof firstMessage === 'string' ? firstMessage : 'Please complete all required fields.',
+        });
+    };
 
     const handleSubmit = async (values: ApprovalFormData) => {
         setIsSubmitting(true);
@@ -624,10 +814,10 @@ export function ApprovalDialog({ claim, approver, claimant, stageIndex, isOpen, 
 
     return (
         <Dialog open={isOpen} onOpenChange={onOpenChange}>
-            <DialogContent className="sm:max-w-2xl">
-                <DialogHeader>
-                    <div className="flex items-center justify-between">
-                        <div>
+            <DialogContent className="flex max-h-[min(90dvh,calc(100vh-2rem))] flex-col gap-0 overflow-hidden p-0 sm:max-w-2xl">
+                <DialogHeader className="shrink-0 space-y-1.5 border-b px-6 pb-4 pr-14 pt-6">
+                    <div className="flex items-center justify-between gap-3">
+                        <div className="min-w-0">
                             <DialogTitle>Stage {stageIndex + 1} Approval</DialogTitle>
                             <DialogDescription>
                                 Review and take action on the claim for {' '}
@@ -639,7 +829,7 @@ export function ApprovalDialog({ claim, approver, claimant, stageIndex, isOpen, 
                             </DialogDescription>
                         </div>
                         {claim.doi && (
-                            <Button asChild variant="outline">
+                            <Button asChild variant="outline" className="shrink-0">
                                 <a href={`https://doi.org/${claim.doi}`} target="_blank" rel="noopener noreferrer">
                                     <ExternalLink className="mr-2 h-4 w-4" /> View Paper
                                 </a>
@@ -648,126 +838,164 @@ export function ApprovalDialog({ claim, approver, claimant, stageIndex, isOpen, 
                     </div>
                 </DialogHeader>
 
-                <div className="max-h-[60vh] overflow-y-auto pr-4 space-y-4">
-
-                    {stageIndex === 0 && claim.calculatedIncentive !== undefined && claim.calculatedIncentive !== null && (
-                        <div className={`p-4 rounded-md text-center ${isEligibleForFinancialDisbursement(claim) ? 'bg-blue-100 dark:bg-blue-900/30' : 'bg-yellow-100 dark:bg-yellow-900/30'}`}>
-                            <p className={`text-sm font-medium ${isEligibleForFinancialDisbursement(claim) ? 'text-blue-800 dark:text-blue-200' : 'text-yellow-800 dark:text-yellow-200'}`}>
-                                {isEligibleForFinancialDisbursement(claim) ? 'Tentatively Eligible Incentive Amount:' : 'ARPS-Only Claim (No Financial Disbursement):'}
-                            </p>
-                            <p className={`font-bold text-2xl mt-1 ${isEligibleForFinancialDisbursement(claim) ? 'text-blue-600 dark:text-blue-400' : 'text-yellow-600 dark:text-yellow-400'}`}>₹{(isEligibleForFinancialDisbursement(claim) ? claim.calculatedIncentive : 0).toLocaleString('en-IN')}</p>
-                            {!isEligibleForFinancialDisbursement(claim) && (
-                                <p className="text-xs text-yellow-700 dark:text-yellow-300 mt-2">This co-author research paper claim is beyond the 5th position and qualifies for ARPS score but not monetary incentive.</p>
-                            )}
-                        </div>
-                    )}
-
-                    <Form {...form}>
-                        {claim.claimType === 'Membership of Professional Bodies' && <MembershipClaimDetails claim={claim} claimant={claimant} />}
-                        {isResearchPaperClaim && <ResearchPaperClaimDetails claim={claim} claimant={claimant} form={form} isChecklistEnabled={isChecklistEnabled} stageIndex={stageIndex} previousApprovals={claim.approvals || []} />}
-                        {isConferenceClaim && <ConferenceClaimDetails claim={claim} claimant={claimant} form={form} isChecklistEnabled={isChecklistEnabled} stageIndex={stageIndex} previousApprovals={claim.approvals || []} />}
-
-
-                        <form id="approval-form" onSubmit={form.handleSubmit(handleSubmit)} className="space-y-4">
-                            {isViewerAdminOrApprover && previousApprovals.length > 0 && (
-                                <div className="space-y-4 mb-6">
-                                    <h4 className="font-semibold text-sm">Previous Approval History</h4>
-                                    {previousApprovals.map((approval, index) => (
-                                        approval && (
-                                            <div key={index} className="p-4 border rounded-lg bg-muted/50 space-y-2 text-sm">
-                                                <div className="flex justify-between items-center">
-                                                    <p className="font-semibold text-primary">Stage {approval.stage}: {approval.approverName}</p>
-                                                    <Badge variant={approval.status === 'Approved' ? 'success' : 'destructive'} className="h-5">
-                                                        {approval.status}
-                                                    </Badge>
-                                                </div>
-                                                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-                                                    <p className="text-muted-foreground italic">
-                                                        "{approval.comments || 'No comments'}"
-                                                    </p>
-                                                    {approval.status === 'Approved' && (
-                                                        <Badge variant="secondary" className="font-mono">
-                                                            ₹{approval.approvedAmount.toLocaleString('en-IN')}
-                                                        </Badge>
-                                                    )}
-                                                </div>
-                                            </div>
-                                        )
-                                    ))}
-                                    <Separator />
-                                </div>
-                            )}
-
-                            <FormField
-                                name="action"
-                                control={form.control}
-                                render={({ field }) => (
-                                    <FormItem>
-                                        <FormLabel>Your Action</FormLabel>
-                                        <FormControl>
-                                            <RadioGroup onValueChange={field.onChange} defaultValue={field.value} className="flex space-x-4">
-                                                {isChecklistEnabled ? (
-                                                    <>
-                                                        <FormItem className="flex items-center space-x-2"><FormControl><RadioGroupItem value="verify" /></FormControl><FormLabel className="font-normal">Verify & Forward</FormLabel></FormItem>
-                                                        <FormItem className="flex items-center space-x-2"><FormControl><RadioGroupItem value="reject" /></FormControl><FormLabel className="font-normal">Reject</FormLabel></FormItem>
-                                                    </>
-                                                ) : (
-                                                    <>
-                                                        <FormItem className="flex items-center space-x-2"><FormControl><RadioGroupItem value="approve" /></FormControl><FormLabel className="font-normal">Approve</FormLabel></FormItem>
-                                                        <FormItem className="flex items-center space-x-2"><FormControl><RadioGroupItem value="reject" /></FormControl><FormLabel className="font-normal">Reject</FormLabel></FormItem>
-                                                    </>
-                                                )}
-                                            </RadioGroup>
-                                        </FormControl>
-                                        <FormMessage />
-                                    </FormItem>
-                                )}
-                            />
-                            {showAmountField && (
-                                <FormField
-                                    name="amount"
-                                    control={form.control}
-                                    render={({ field }) => (
-                                        <FormItem>
+                <Form {...form}>
+                    <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+                        <form
+                            onSubmit={form.handleSubmit(handleSubmit, handleInvalid)}
+                            className="flex min-h-0 flex-1 flex-col overflow-hidden"
+                        >
+                            <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-6 py-4">
+                                {claim.aiVerification && (
+                                    <div className={`p-4 border rounded-lg space-y-2 text-sm ${claim.aiVerification.isAuthentic ? 'bg-green-50 dark:bg-green-950/20 border-green-200 dark:border-green-800' : 'bg-red-50 dark:bg-red-950/20 border-red-200 dark:border-red-800'}`}>
+                                        <div className="flex justify-between items-center">
+                                            <h4 className={`font-semibold flex items-center gap-2 ${claim.aiVerification.isAuthentic ? 'text-green-700 dark:text-green-400' : 'text-red-700 dark:text-red-400'}`}>
+                                                {claim.aiVerification.isAuthentic ? <Check className="h-5 w-5" /> : <X className="h-5 w-5" />}
+                                                AI Verification {claim.aiVerification.isAuthentic ? 'Passed' : 'Flagged'}
+                                            </h4>
+                                            <span className="text-xs text-muted-foreground bg-background/50 px-2 py-1 rounded">Score: {claim.aiVerification.confidenceScore}%</span>
+                                        </div>
+                                        <p className="text-muted-foreground">{claim.aiVerification.reasoning}</p>
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2 mt-2 pt-2 border-t border-black/5 dark:border-white/5">
                                             <div className="flex items-center gap-2">
-                                                <FormLabel>Approved Amount (INR)</FormLabel>
-                                                {isAutoCalculated && stageIndex === 0 && <span className="text-xs text-muted-foreground">(Tentative)</span>}
+                                                {claim.aiVerification.affiliationMentioned ? <Check className="h-4 w-4 text-green-600" /> : <X className="h-4 w-4 text-red-600" />}
+                                                <span className="text-xs font-medium">Affiliation Mentioned</span>
                                             </div>
-                                            <FormControl><Input
-                                                type="number"
-                                                min="0"
-                                                onWheel={(e) => (e.target as HTMLElement).blur()}
-                                                {...field}
-                                            /></FormControl>
-                                            <FormMessage />
-                                        </FormItem>
+                                            <div className="flex items-center gap-2">
+                                                {claim.aiVerification.authorsMatch ? <Check className="h-4 w-4 text-green-600" /> : <X className="h-4 w-4 text-red-600" />}
+                                                <span className="text-xs font-medium">Authors Match</span>
+                                            </div>
+                                            <div className="flex items-center gap-2">
+                                                {claim.aiVerification.isIndexed ? <Check className="h-4 w-4 text-green-600" /> : <X className="h-4 w-4 text-red-600" />}
+                                                <span className="text-xs font-medium">Indexed (Crossref/Scopus)</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {isViewerAdminOrApprover && previousApprovals.length > 0 && (
+                                    <div className="space-y-4">
+                                        <h4 className="font-semibold text-sm">Previous Approval History</h4>
+                                        {previousApprovals.map((approval, index) => (
+                                            approval && (
+                                                <div key={index} className="p-4 border rounded-lg bg-muted/50 space-y-2 text-sm">
+                                                    <div className="flex justify-between items-center">
+                                                        <p className="font-semibold">Stage {approval.stage}: {approval.approverName}</p>
+                                                        <p className={`font-semibold ${approval.status === 'Approved' ? 'text-green-600' : 'text-red-600'}`}>{approval.status}</p>
+                                                    </div>
+                                                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between">
+                                                        <p>
+                                                            <strong className="text-muted-foreground">Comments:</strong>{' '}
+                                                            {approval.comments || 'N/A'}
+                                                        </p>
+                                                        {approval.status === 'Approved' && (
+                                                            <p className="mt-1 sm:mt-0">
+                                                                <strong className="text-muted-foreground">Amount Forwarded:</strong>{' '}
+                                                                ₹{approval.approvedAmount.toLocaleString('en-IN')}
+                                                            </p>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            )
+                                        ))}
+                                        <Separator />
+                                    </div>
+                                )}
+
+                                {stageIndex === 0 && claim.calculatedIncentive !== undefined && claim.calculatedIncentive !== null && (
+                                    <div className={`p-4 rounded-md text-center ${isEligibleForFinancialDisbursement(claim) ? 'bg-blue-100 dark:bg-blue-900/30' : 'bg-yellow-100 dark:bg-yellow-900/30'}`}>
+                                        <p className={`text-sm font-medium ${isEligibleForFinancialDisbursement(claim) ? 'text-blue-800 dark:text-blue-200' : 'text-yellow-800 dark:text-yellow-200'}`}>
+                                            {isEligibleForFinancialDisbursement(claim) ? 'Tentatively Eligible Incentive Amount:' : 'ARPS-Only Claim (No Financial Disbursement):'}
+                                        </p>
+                                        <p className={`font-bold text-2xl mt-1 ${isEligibleForFinancialDisbursement(claim) ? 'text-blue-600 dark:text-blue-400' : 'text-yellow-600 dark:text-yellow-400'}`}>₹{(isEligibleForFinancialDisbursement(claim) ? claim.calculatedIncentive : 0).toLocaleString('en-IN')}</p>
+                                        {!isEligibleForFinancialDisbursement(claim) && (
+                                            <p className="text-xs text-yellow-700 dark:text-yellow-300 mt-2">This co-author research paper claim is beyond the 5th position and not qualifies monetary incentive.</p>
+                                        )}
+                                    </div>
+                                )}
+
+                                {claim.claimType === 'Books' && <BookClaimDetails claim={claim} />}
+                                {claim.claimType === 'Membership of Professional Bodies' && <MembershipClaimDetails claim={claim} claimant={claimant} />}
+                                {isResearchPaperClaim && <ResearchPaperClaimDetails claim={claim} claimant={claimant} form={form} isChecklistEnabled={isChecklistEnabled} stageIndex={stageIndex} previousApprovals={claim.approvals || []} />}
+                                {isConferenceClaim && <ConferenceClaimDetails claim={claim} claimant={claimant} form={form} isChecklistEnabled={isChecklistEnabled} stageIndex={stageIndex} previousApprovals={claim.approvals || []} />}
+
+                                <div className="space-y-4">
+
+                                    <FormField
+                                        name="action"
+                                        control={form.control}
+                                        render={({ field }) => (
+                                            <FormItem>
+                                                <FormLabel>Your Action</FormLabel>
+                                                <FormControl>
+                                                    <RadioGroup
+                                                        onValueChange={field.onChange}
+                                                        value={field.value ?? getDefaultAction()}
+                                                        className="flex space-x-4"
+                                                    >
+                                                        {isChecklistEnabled ? (
+                                                            <>
+                                                                <FormItem className="flex items-center space-x-2"><FormControl><RadioGroupItem value="verify" /></FormControl><FormLabel className="font-normal">Verify & Forward</FormLabel></FormItem>
+                                                                <FormItem className="flex items-center space-x-2"><FormControl><RadioGroupItem value="reject" /></FormControl><FormLabel className="font-normal">Reject</FormLabel></FormItem>
+                                                            </>
+                                                        ) : (
+                                                            <>
+                                                                <FormItem className="flex items-center space-x-2"><FormControl><RadioGroupItem value="approve" /></FormControl><FormLabel className="font-normal">Approve</FormLabel></FormItem>
+                                                                <FormItem className="flex items-center space-x-2"><FormControl><RadioGroupItem value="reject" /></FormControl><FormLabel className="font-normal">Reject</FormLabel></FormItem>
+                                                            </>
+                                                        )}
+                                                    </RadioGroup>
+                                                </FormControl>
+                                                <FormMessage />
+                                            </FormItem>
+                                        )}
+                                    />
+                                    {showAmountField && (
+                                        <FormField
+                                            name="amount"
+                                            control={form.control}
+                                            render={({ field }) => (
+                                                <FormItem>
+                                                    <div className="flex items-center gap-2">
+                                                        <FormLabel>Approved Amount (INR)</FormLabel>
+                                                        {isAutoCalculated && stageIndex === 0 && <span className="text-xs text-muted-foreground">(Tentative)</span>}
+                                                    </div>
+                                                    <FormControl><Input
+                                                        type="number"
+                                                        min="0"
+                                                        onWheel={(e) => (e.target as HTMLElement).blur()}
+                                                        {...field}
+                                                    /></FormControl>
+                                                    <FormMessage />
+                                                </FormItem>
+                                            )}
+                                        />
                                     )}
-                                />
-                            )}
-                            {showCommentsField && (
-                                <FormField
-                                    name="comments"
-                                    control={form.control}
-                                    render={({ field }) => (
-                                        <FormItem>
-                                            <FormLabel>Your Comments {action === 'reject' || stageIndex === 1 || stageIndex === 2 ? '(Required)' : ''}</FormLabel>
-                                            <FormControl><Textarea {...field} /></FormControl>
-                                            <FormMessage />
-                                        </FormItem>
+                                    {showCommentsFieldVal && (
+                                        <FormField
+                                            name="comments"
+                                            control={form.control}
+                                            render={({ field }) => (
+                                                <FormItem>
+                                                    <FormLabel>Your Comments {action === 'reject' || stageIndex === 1 || stageIndex === 2 ? '(Required)' : ''}</FormLabel>
+                                                    <FormControl><Textarea {...field} /></FormControl>
+                                                    <FormMessage />
+                                                </FormItem>
+                                            )}
+                                        />
                                     )}
-                                />
-                            )}
+                                </div>
+                            </div>
+                            <DialogFooter className="shrink-0 border-t bg-background px-6 py-4">
+                                <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
+                                <Button type="submit" disabled={isSubmitting}>
+                                    {isSubmitting ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Submitting...</> : (
+                                        action === 'reject' ? 'Submit Rejection' : (!isChecklistEnabled ? 'Submit Action' : 'Verify & Forward')
+                                    )}
+                                </Button>
+                            </DialogFooter>
                         </form>
-                    </Form>
-                </div>
-                <DialogFooter>
-                    <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
-                    <Button type="submit" form="approval-form" disabled={isSubmitting}>
-                        {isSubmitting ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Submitting...</> : (
-                            action === 'reject' ? 'Submit Rejection' : (!isChecklistEnabled ? 'Submit Action' : 'Verify & Forward')
-                        )}
-                    </Button>
-                </DialogFooter>
+                    </div>
+                </Form>
             </DialogContent>
         </Dialog>
     );

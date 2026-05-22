@@ -1,22 +1,19 @@
 
 'use server';
 
-import type { IncentiveClaim } from '@/types';
+import { checkRateLimit } from '@/lib/rate-limit';
+import { callOpenRouter } from '@/lib/openrouter';
 
-function calculateQuartile(percentile: number): 'Q1' | 'Q2' | 'Q3' | 'Q4' | undefined {
-    if (percentile >= 75) return 'Q1';
-    if (percentile >= 50) return 'Q2';
-    if (percentile >= 25) return 'Q3';
-    if (percentile >= 0) return 'Q4';
-    return undefined;
-}
 
-export async function fetchAdvancedScopusData(
+
+export async function fetchScopusDataByUrl(
   identifier: string, // Can be a URL or just a DOI
   claimantName: string,
+  userId: string,
 ): Promise<{
   success: boolean
   data?: {
+    title: string;
     paperTitle: string;
     journalName: string;
     publicationMonth: string;
@@ -27,11 +24,19 @@ export async function fetchAdvancedScopusData(
     journalWebsite?: string;
     publicationType?: string;
     journalClassification?: 'Q1' | 'Q2' | 'Q3' | 'Q4';
+    totalAuthors: number;
+    totalInternalAuthors: number;
+    totalInternalCoAuthors: number;
   }
   error?: string
   warning?: string
   claimantIsAuthor?: boolean
 }> {
+  // Rate limiting [CRIT-02]
+  const rateLimit = await checkRateLimit(`scopus-fetch-${userId}`, { points: 15, duration: 600 }); // 5 lookups per 10 mins
+  if (!rateLimit.success) {
+    return { success: false, error: "Too many search requests. Please try again after 10 minutes." };
+  }
   const apiKey = process.env.SCOPUS_API_KEY
   if (!apiKey) {
     console.error("Scopus API key is not configured.")
@@ -58,9 +63,13 @@ export async function fetchAdvancedScopusData(
       headers: { "X-ELS-APIKey": apiKey, Accept: "application/json" },
     });
     if (!response.ok) {
-        const errorData = await response.json();
-        const errorMessage = errorData?.['service-error']?.status?.statusText || response.statusText || "The resource specified cannot be found.";
-        throw new Error(`Scopus Abstract API Error: ${errorMessage}`);
+      if (response.status === 401 || response.status === 403) {
+        console.error(`Scopus API Authentication Error (Status: ${response.status}). Please check SCOPUS_API_KEY.`);
+        return { success: false, error: "Automated fetch is currently unavailable due to a server configuration issue. Please enter details manually." };
+      }
+      const errorData = await response.json().catch(() => ({}));
+      const errorMessage = errorData?.['service-error']?.status?.statusText || response.statusText || "The resource specified cannot be found.";
+      throw new Error(`Scopus Abstract API Error: ${errorMessage}`);
     }
     const abstractData = await response.json();
     const retrievalResponse = abstractData?.["abstracts-retrieval-response"];
@@ -74,20 +83,20 @@ export async function fetchAdvancedScopusData(
     const journalName = coredata["prism:publicationName"] || "";
     const coverDate = coredata["prism:coverDate"];
     const subtypeDescription = coredata["subtypeDescription"] || "";
-    
+
     const affiliationData = retrievalResponse.affiliation;
     let isPuNameInPublication = false;
-    
+
     if (Array.isArray(affiliationData)) {
-        try {
-            isPuNameInPublication = affiliationData.some((affil: any) => 
-                affil && typeof affil === 'object' && affil['affilname'] && affil['affilname'].toLowerCase().includes('parul')
-            );
-        } catch (e) {
-            console.warn("Could not parse Scopus affiliation data, ignoring.", e);
-        }
+      try {
+        isPuNameInPublication = affiliationData.some((affil: any) =>
+          affil && typeof affil === 'object' && affil['affilname'] && affil['affilname'].toLowerCase().includes('parul')
+        );
+      } catch (e) {
+        console.warn("Could not parse Scopus affiliation data, ignoring.", e);
+      }
     } else if (affiliationData && typeof affiliationData === 'object' && affiliationData['affilname']) {
-        isPuNameInPublication = (affiliationData['affilname'] as string).toLowerCase().includes('parul');
+      isPuNameInPublication = (affiliationData['affilname'] as string).toLowerCase().includes('parul');
     }
 
 
@@ -122,53 +131,24 @@ export async function fetchAdvancedScopusData(
 
 
     if (coverDate) {
-        const date = new Date(coverDate);
-        publicationYear = date.getFullYear().toString();
-        publicationMonth = date.toLocaleString('en-US', { month: 'long' });
+      const date = new Date(coverDate);
+      publicationYear = date.getFullYear().toString();
+      publicationMonth = date.toLocaleString('en-US', { month: 'long' });
     }
 
     if (subtypeDescription) {
-        const subtype = subtypeDescription.toLowerCase();
-        if (subtype.includes('article')) {
-            publicationType = 'Research Articles/Short Communications';
-        } else if (subtype.includes('review')) {
-            publicationType = 'Review Articles';
-        } else if (subtype.includes('letter')) {
-            publicationType = 'Letter to the Editor/Editorial';
-        } else if (subtype.includes('conference paper')) {
-            publicationType = 'Scopus Indexed Conference Proceedings';
-        }
+      const subtype = subtypeDescription.toLowerCase();
+      if (subtype.includes('article')) {
+        publicationType = 'Research Articles/Short Communications';
+      } else if (subtype.includes('review')) {
+        publicationType = 'Review Articles';
+      } else if (subtype.includes('letter')) {
+        publicationType = 'Letter to the Editor/Editorial';
+      } else if (subtype.includes('conference paper')) {
+        publicationType = 'Scopus Indexed Conference Proceedings';
+      }
     }
 
-    const sourceId = coredata['source-id'];
-    if (sourceId) {
-        try {
-            const serialApiUrl = `https://api.elsevier.com/content/serial/title/source_id/${sourceId}?apiKey=${apiKey}&view=ENHANCED`;
-            const serialResponse = await fetch(serialApiUrl, { headers: { Accept: "application/json" } });
-            if (serialResponse.ok) {
-                const serialData = await serialResponse.json();
-                const serialTitleResponse = serialData?.['serial-title-response']?.[0];
-                const citeScoreInfo = serialTitleResponse?.citeScoreYearInfoList;
-
-                if (citeScoreInfo?.citeScoreTracker && citeScoreInfo?.citeScoreCurrentMetric) {
-                     const percentile = parseFloat(citeScoreInfo.citeScoreTracker);
-                     if (!isNaN(percentile)) {
-                        journalClassification = calculateQuartile(percentile);
-                     } else {
-                        warning = 'Could not parse percentile from Scopus to determine Q rating.';
-                     }
-                } else {
-                    warning = 'Q rating information was not available in the Scopus response for this journal.';
-                }
-            } else {
-                 warning = `Could not fetch Q rating details. Scopus returned status: ${serialResponse.status}`;
-                 console.warn(`Scopus Serial API failed with status: ${serialResponse.status}`);
-            }
-        } catch (serialError) {
-            warning = 'Could not fetch journal Q rating due to a network error. Please enter it manually.';
-            console.warn("Could not fetch journal Q rating from Scopus Serial API, but proceeding without it.", serialError);
-        }
-    }
 
 
     // After getting journalName, try to find its website via Springer Nature API
@@ -194,10 +174,41 @@ export async function fetchAdvancedScopusData(
     }
 
 
-    return {
+    const authorsSource = retrievalResponse.authors?.author || [];
+    const authorsCount = Array.isArray(authorsSource) ? authorsSource.length : 1;
+
+    // Simplistic internal author counting: check if any of their affiliations contain 'parul'
+    // Usually each author in retrievalResponse has an affiliation list
+    let totalInternalAuthors = isPuNameInPublication ? 1 : 0; // At least the claimant if PU check passed
+    if (Array.isArray(authorsSource)) {
+      totalInternalAuthors = authorsSource.filter((a: any) => {
+        const affils = Array.isArray(a.affiliation) ? a.affiliation : [a.affiliation];
+        return affils.some((af: any) => af?.['affilname']?.toLowerCase().includes('parul'));
+      }).length;
+    }
+
+    let processedTitle = paperTitle;
+    try {
+      const prompt = `
+        Format the following research paper title using HTML <sub> and <sup> tags for chemical formulas and scientific notation:
+        "${paperTitle}"
+        
+        Example: H2O -> H<sub>2</sub>O, La2Ni -> La<sub>2</sub>Ni, 10^-3 -> 10<sup>-3</sup>.
+        Return ONLY the formatted string. No extra text or markdown.
+      `;
+      
+      console.log("OpenRouter: Formatting title...");
+      const text = await callOpenRouter({ prompt });
+      if (text && text.trim().length > 5) processedTitle = text.trim();
+    } catch (e) {
+      console.error("OpenRouter Title Formatting Error:", e);
+    }
+
+     return {
       success: true,
       data: {
-        paperTitle,
+        title: processedTitle,
+        paperTitle: processedTitle,
         journalName,
         publicationMonth,
         publicationYear,
@@ -207,6 +218,10 @@ export async function fetchAdvancedScopusData(
         journalWebsite: journalWebsite || '',
         publicationType,
         journalClassification,
+        totalAuthors: authorsCount,
+        totalInternalAuthors: totalInternalAuthors,
+        totalInternalCoAuthors: Math.max(0, totalInternalAuthors - 1),
+        publisher: coredata["dc:publisher"] || '',
       },
       warning,
     }
@@ -214,4 +229,36 @@ export async function fetchAdvancedScopusData(
     console.error("Error calling Scopus API:", error)
     return { success: false, error: error.message || "An unexpected error occurred while fetching Scopus data." }
   }
+}
+
+export async function getJournalWebsite({ journalName }: { journalName: string }): Promise<{ success: boolean; url?: string; error?: string }> {
+  const springerApiKey = process.env.SPRINGER_API_KEY;
+  if (!springerApiKey) {
+    return { success: false, error: "Springer Nature API key is not configured." };
+  }
+
+  try {
+    const springerUrl = `https://api.springernature.com/meta/v2/json?q=journal:"${encodeURIComponent(journalName)}"&p=1&api_key=${springerApiKey}`;
+    const springerResponse = await fetch(springerUrl);
+    if (!springerResponse.ok) {
+      throw new Error(`Springer Nature API Error: ${springerResponse.statusText}`);
+    }
+
+    const springerData = await springerResponse.json();
+    if (springerData.records && springerData.records.length > 0 && springerData.records[0].url) {
+      const springerLink = springerData.records[0].url.find((u: { platform: string; value: string; }) => u.platform === 'springerlink');
+      if (springerLink && springerLink.value) {
+        return { success: true, url: springerLink.value };
+      }
+    }
+    return { success: false, error: "No website found for this journal." };
+  } catch (error: any) {
+    console.error("Error finding journal website:", error);
+    return { success: false, error: error.message || "An unexpected error occurred." };
+  }
+}
+
+// Backward compatibility alias
+export async function fetchAdvancedScopusData(...args: Parameters<typeof fetchScopusDataByUrl>) {
+  return fetchScopusDataByUrl(...args);
 }

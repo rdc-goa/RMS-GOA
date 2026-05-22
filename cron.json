@@ -1,0 +1,7 @@
+{
+  "schedules": [{
+    "path": "/api/cron/weekly-digest",
+    "schedule": "30 14 * * 5"
+  }]
+}
+

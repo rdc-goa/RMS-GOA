@@ -7,6 +7,8 @@ export type CoPiDetails = {
   misId?: string; // Stored when adding an unregistered user by MIS ID
   cvUrl?: string // URL to the uploaded CV
   cvFileName?: string // Original filename for display
+  organization?: string;
+  isExternal?: boolean;
 }
 
 export type UserBankDetails = {
@@ -39,6 +41,9 @@ export type User = {
   misId?: string
   orcidId?: string
   scopusId?: string
+  hIndex?: number
+  i10Index?: number
+  citationCount?: number
   vidwanId?: string
   googleScholarId?: string
   phoneNumber?: string
@@ -59,6 +64,7 @@ export type Author = {
   role: "First Author" | "Corresponding Author" | "Co-Author" | "First & Corresponding Author" | "Presenting Author" | "First & Presenting Author";
   isExternal: boolean
   status: 'approved' | 'pending' | 'Applied';
+  organization?: string;
 }
 
 export type ResearchPaper = {
@@ -115,7 +121,7 @@ export type GrantPhase = {
 export type GrantDetails = {
   totalAmount: number
   sanctionNumber?: string
-  status: "Awarded" | "In Progress" | "Completed" | "Pending"
+  status: "Awarded" | "In Progress" | "Completed"
   bankDetails?: BankDetails
   phases: GrantPhase[]
 }
@@ -145,17 +151,17 @@ export type Project = {
   coPiDetails?: CoPiDetails[]
   coPiUids?: string[]
   status:
-    | "Draft"
-    | "Submitted"
-    | "Under Review"
-    | "Revision Needed"
-    | "Revision Submitted"
-    | "Recommended"
-    | "Sanctioned"
-    | "Not Recommended"
-    | "In Progress"
-    | "Completed"
-    | "Pending Completion Approval"
+  | "Draft"
+  | "Submitted"
+  | "Under Review"
+  | "Revision Needed"
+  | "Revision Submitted"
+  | "Recommended"
+  | "Sanctioned"
+  | "Not Recommended"
+  | "In Progress"
+  | "Completed"
+  | "Pending Completion Approval"
   teamInfo: string
   timelineAndOutcomes: string
   submissionDate: string // Should be ISO string
@@ -209,15 +215,18 @@ export type ApprovalStage = {
   timestamp: string; // ISO string
   comments: string;
   approvedAmount: number;
-  stage: number; // 1, 2, 3, 4, or 5
+  stage: number; // 1, 2, 3 or 4
   verifiedFields?: { [key: string]: boolean };
   suggestions?: { [key: string]: string };
 };
 
 export type PatentInventor = {
-    name: string;
-    misId: string;
-    uid?: string | null;
+  name: string;
+  misId?: string;
+  email?: string;
+  uid?: string | null;
+  isExternal?: boolean;
+  organization?: string;
 }
 
 export type IncentiveClaim = {
@@ -229,7 +238,6 @@ export type IncentiveClaim = {
   status: "Pending" | "Accepted" | "Rejected" | "Draft" | "Pending Stage 1 Approval" | "Pending Stage 2 Approval" | "Pending Stage 3 Approval" | "Pending Stage 4 Approval" | "Pending Stage 5 Approval" | "Submitted to Accounts" | "Payment Completed";
   submissionDate: string // ISO String
   faculty: string
-  institute?: string
   bankDetails?: UserBankDetails
   originalClaimId?: string // Link to the primary author's claim
   misId?: string
@@ -241,6 +249,15 @@ export type IncentiveClaim = {
   paperId?: string; // Link to the entry in the 'papers' collection
   paymentSheetRef?: string;
   paymentSheetRemarks?: string;
+  aiVerification?: {
+    isAuthentic: boolean;
+    affiliationMentioned: boolean;
+    authorsMatch: boolean;
+    isIndexed: boolean;
+    reasoning: string;
+    confidenceScore: number;
+    verifiedAt: string;
+  };
 
   // Main selector
   claimType: string
@@ -251,11 +268,10 @@ export type IncentiveClaim = {
   authors?: Author[];
   authorUids?: string[];
   authorEmails?: string[];
-  totalPuAuthors?: number;
 
   // Research Paper Fields
   publicationType?: string;
-  indexType?: "wos" | "scopus" | "both" | "sci" | "other";
+  indexType?: "wos" | "scopus" | "both" | "sci" | "other" | "esci";
   doi?: string;
   scopusLink?: string;
   wosLink?: string;
@@ -265,7 +281,7 @@ export type IncentiveClaim = {
   journalWebsite?: string;
   paperTitle?: string;
   relevantLink?: string;
-  authorPosition?: '1st' | '2nd' | '3rd' | '4th' | '5th' | '6th' | '7th' | '8th' | '9th' | '10th' ;
+  authorPosition?: '1st' | '2nd' | '3rd' | '4th' | '5th' | '6th' | '7th' | '8th' | '9th' | '10th';
   locale?: 'National' | 'International';
   printIssn?: string;
   electronicIssn?: string;
@@ -300,7 +316,6 @@ export type IncentiveClaim = {
   patentCountry?: string;
   patentCoApplicants?: PatentInventor[];
   patentInventors?: PatentInventor[];
-  patentFilingDate?: string;
   patentDomain?: string;
   isCollaboration?: 'Yes' | 'No' | 'NA';
   collaborationDetails?: string;
@@ -318,16 +333,13 @@ export type IncentiveClaim = {
   conferenceName?: string
   conferencePaperTitle?: string
   conferenceType?: "International" | "National" | "Regional/State"
-  conferenceCity?: string;
-  conferenceCountry?: string;
-  conferenceStartDate?: string;
   conferenceVenue?:
-    | "India"
-    | "Indian Subcontinent"
-    | "South Korea, Japan, Australia and Middle East"
-    | "Europe"
-    | "African/South American/North American"
-    | 'Other'
+  | "India"
+  | "Indian Subcontinent"
+  | "South Korea, Japan, Australia and Middle East"
+  | "Europe"
+  | "African/South American/North American"
+  | 'Other'
   presentationType?: "Oral" | "Poster" | "Other"
   govtFundingRequestProofUrl?: string
   registrationFee?: number
@@ -353,11 +365,15 @@ export type IncentiveClaim = {
   travelPlaceVisited?: string
   travelMode?: "Bus" | "Train" | "Air" | "Other"
   travelReceiptsUrl?: string
+  flightTicketsUrl?: string
   conferenceSelfDeclaration?: boolean
   totalAuthors?: string;
+  conferenceProofUrl?: string;
 
   // Workshop/Training/FDP fields
   workshopName?: string;
+  workshopStartDate?: string; // ISO
+  workshopEndDate?: string; // ISO
   attendanceMode?: "Online" | "Offline";
   eventTypeLevel?: "International" | "National" | "Regional/State" | "Other";
   workshopCertificateUrl?: string;
@@ -407,10 +423,15 @@ export type IncentiveClaim = {
   awardStature?: 'National' | 'International';
   awardBodyType?: 'Government' | 'NGO (Non-Governmental Organization)' | 'Any Other';
   awardLocale?: string;
-  amountPaid?: number;
+  awardCategory?: 'International Award' | 'National Award' | 'Best Research Paper Award';
+  isPaidAward?: boolean;
+  amountPaid?: number; // Cash prize received (if any)
   paymentDate?: string; // ISO string
   awardDate?: string; // ISO string
-  awardProofUrls?: string[];
+  totalInternalAuthors?: number;
+  totalInternalCoAuthors?: number;
+  awardProofUrls?: string[]
+  additionalDocumentsUrls?: string[];
   awardSelfDeclaration?: boolean;
 
   // Seed Money for APC Fields
@@ -435,6 +456,15 @@ export type IncentiveClaim = {
   apcAmountClaimed?: number
   apcTotalAmount?: number
   apcSelfDeclaration?: boolean
+
+  // EMR Sanction Project Fields
+  emrProjectName?: string;
+  wasRoutedThroughRdc?: boolean;
+  sanctionFrom?: string;
+  sanctionAmount?: number;
+  sanctionDate?: string; // ISO
+  externalCoPis?: CoPiDetails[];
+  sanctionProofUrl?: string;
 }
 
 export type FundingCall = {
@@ -447,7 +477,7 @@ export type FundingCall = {
   interestDeadline: string // ISO String
   callType: "Fellowship" | "Grant" | "Collaboration" | "Other"
   detailsUrl?: string
-  attachments?: { name: string; url: string }[]
+  driveLink?: string
   createdAt: string // ISO String
   createdBy: string // UID of the admin who created it
   status: "Open" | "Closed" | "Meeting Scheduled"
@@ -482,21 +512,22 @@ export type EmrInterest = {
   coPiNames?: string[]
   coPiEmails?: string[]
   status:
-    | "Registered"
-    | "PPT Submitted"
-    | "Revision Submitted"
-    | "Evaluation Pending"
-    | "Evaluation Done"
-    | "Recommended"
-    | "Not Recommended"
-    | "Revision Needed"
-    | "Endorsement Submitted"
-    | "Endorsement Signed"
-    | "Submitted to Agency"
-    | "Sanctioned"
-    | "Not Sanctioned"
-    | "Process Complete"
-    | "Awaiting Rescheduling"
+  | "Registered"
+  | "PPT Submitted"
+  | "Documents Submitted"
+  | "Revision Submitted"
+  | "Evaluation Pending"
+  | "Evaluation Done"
+  | "Recommended"
+  | "Not Recommended"
+  | "Revision Needed"
+  | "Endorsement Submitted"
+  | "Endorsement Signed"
+  | "Submitted to Agency"
+  | "Sanctioned"
+  | "Not Sanctioned"
+  | "Process Complete"
+  | "Awaiting Rescheduling"
   adminRemarks?: string
   revisedPptUrl?: string
   meetingSlot?: {
@@ -532,15 +563,15 @@ export type EmrEvaluation = {
 }
 
 export type CroAssignment = {
-    email: string;
-    faculty: string;
-    campus: string;
+  email: string;
+  faculty: string;
+  campus: string;
 };
 
 export type ApproverSetting = {
-    email: string;
-    stage: 1 | 2 | 3 | 4 | 5;
-    signatureUrl?: string;
+  email: string;
+  stage: 1 | 2 | 3 | 4 | 5;
+  signatureUrl?: string;
 };
 
 export type TemplateUrls = {
@@ -555,12 +586,13 @@ export type TemplateUrls = {
   IMR_OFFICE_NOTING?: string;
   INCENTIVE_PAYMENT_SHEET?: string;
   IMR_SANCTION_ORDER?: string;
+  INCENTIVE_OFFICE_NOTING?: string;
 };
 
 export type ApiIntegrations = {
-    scopus?: boolean;
-    wos?: boolean;
-    sci?: boolean;
+  scopus?: boolean;
+  wos?: boolean;
+  sci?: boolean;
 };
 
 export type SystemSettings = {
@@ -568,7 +600,6 @@ export type SystemSettings = {
   allowedDomains?: string[]
   croAssignments?: CroAssignment[]
   incentiveApprovers?: ApproverSetting[];
-  institutePrincipals?: Record<string, string>; // institute name -> principal email
   incentiveApprovalWorkflows?: Record<string, number[]>;
   iqacEmail?: string;
   enabledIncentiveTypes?: Record<string, boolean>;
@@ -579,13 +610,14 @@ export type SystemSettings = {
   templateUrls?: TemplateUrls;
   apiIntegrations?: ApiIntegrations;
   driveParentFolderId?: string;
-  authMethods?: any;
+  principalEmails?: Record<string, string>;
 }
 
 export type LoginOtp = {
   email: string
   otp: string
   expiresAt: number // Store as timestamp
+  isPasswordVerified?: boolean
 }
 
 export type FoundUser = {
@@ -630,4 +662,96 @@ export type RecruitmentApplication = {
   cvUrl: string;
   coverLetterUrl?: string;
   appliedAt: string; // ISO String
+};
+
+export type ArpsSubmissionHistory = {
+  timestamp: string;
+  user: string;
+  action: string;
+  remarks?: string;
+};
+
+export type ArpsSubmission = {
+  id: string;
+  uid: string;
+  userName: string;
+  userEmail: string;
+  faculty: string;
+  submissionId?: string; // e.g., RDC/ARPS/2025-26/PUB/0001
+  status: "Draft" | "Submitted" | "Under Review" | "Approved" | "Rejected" | "Resubmission Required" | "Locked" | "Finalized";
+  submissionDate: string; // ISO string
+  academicYear: string; // e.g., "2025-2026"
+  submissionType: "publication" | "patent" | "consultancy" | "emr" | "student" | "activity";
+  remarks?: string; // Review remarks
+  comments?: string;
+  history?: ArpsSubmissionHistory[];
+  proofUrls?: string[];
+  verifiedFields?: Record<string, boolean>;
+
+  // A. Publication fields
+  paperTitle?: string;
+  doi?: string;
+  journalName?: string;
+  journalClassification?: "Q1" | "Q2" | "Q3" | "Q4";
+  indexType?: "scopus" | "wos" | "both";
+  articleType?: "Original Research" | "Review" | "Case Report" | "Short Survey";
+  publicationType?: "Journal" | "Book Chapter" | "Book Editor" | "Conference Proceedings";
+  authorPosition?: "Single Author" | "First Author" | "Corresponding Author" | "Co-Author" | "First & Corresponding Author";
+  authorOrder?: number; // Position in co-authorship (1-indexed)
+  totalAuthors?: number;
+  isSinglePuAuthorWithExternal?: boolean;
+  hasImrAcknowledgement?: boolean;
+  hasEmrAcknowledgement?: boolean;
+  publicationDate?: string;
+  fundingAcknowledgement?: string;
+  publisherName?: string;
+  publisherWebsite?: string;
+  isbn?: string;
+
+  // B. Patent fields
+  patentTitle?: string;
+  patentCategory?: "Published" | "Granted India" | "Granted International";
+  patentNumber?: string;
+  filingDate?: string;
+  grantDate?: string;
+  applicantStructure?: string;
+  isPuJointApplicant?: boolean;
+  isPuSoleApplicant?: boolean;
+  patentInventors?: { name: string; email?: string; uid?: string; organization?: string }[];
+
+  // C. Consultancy fields
+  consultancyTitle?: string;
+  clientOrganization?: string;
+  revenueAmount?: number;
+  transactionDate?: string;
+  routingProofUrl?: string;
+
+  // D. EMR fields
+  projectTitle?: string;
+  fundingAgency?: string;
+  sanctionAmount?: number;
+  emrTeamMembers?: string;
+  role?: "PI" | "Co-PI" | "Team Member";
+  projectStatus?: "Ongoing" | "Sanctioned";
+  durationMonths?: number;
+  startDate?: string;
+  endDate?: string;
+  sanctionDate?: string;
+
+  // E. Students fields
+  studentName?: string;
+  studentEnrollmentNo?: string;
+  studentInstitute?: string;
+  studentDepartment?: string;
+  program?: "PhD" | "PG Dissertation";
+  studentStatus?: "Ongoing" | "Completed"; // renamed from status to avoid collision
+  allotmentDetails?: string;
+
+  // F. Academic Activities fields
+  activityCategory?: "Conference presentation" | "Convener" | "Coordinator" | "Expert talk" | "Participation" | "Membership" | "EMR team member";
+  eventName?: string;
+  organization?: string;
+  eventDurationDays?: number;
+  location?: "In PU" | "Outside PU" | "Outside India";
+  rolePerformed?: string;
 };

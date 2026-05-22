@@ -17,22 +17,27 @@ import {
   GoogleAuthProvider,
   signInWithPopup,
   signOut,
+  signInWithCustomToken,
   type User as FirebaseUser,
   onAuthStateChanged,
 } from "firebase/auth"
-import { doc, getDoc, setDoc, collection, addDoc } from "firebase/firestore"
+import { doc, getDoc, setDoc, collection, addDoc, updateDoc } from "firebase/firestore"
 import type { User } from "@/types"
 import { useState, useEffect } from "react"
 import { getDefaultModulesForRole } from "@/lib/modules"
 import {
   linkHistoricalData,
   getSystemSettings,
-  sendLoginOtp,
+  initiateLogin,
   isEmailDomainAllowed,
   linkEmrInterestsToNewUser,
   linkEmrCoPiInterestsToNewUser,
   verifyLoginOtp,
+  logFrontendAction,
+  registerUserInDatabase,
+  setSession,
 } from "@/app/actions"
+import { LogCategory } from "@/lib/logger"
 import { Eye, EyeOff, Loader2 } from "lucide-react"
 import { OtpDialog } from "@/components/otp-dialog"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -44,16 +49,16 @@ const loginSchema = z.object({
 
 type LoginFormValues = z.infer<typeof loginSchema>
 
-async function logLogin(uid: string, email: string) {
+async function logLoginEvent(category: LogCategory, message: string, user?: User | any, status: 'success' | 'error' | 'warning' = 'success', error?: string) {
   try {
-    await addDoc(collection(db, 'logs'), {
-      timestamp: new Date().toISOString(),
-      level: 'INFO',
-      message: 'User logged in',
-      context: { uid, email }
+    await logFrontendAction(category, message, {
+      user,
+      status,
+      metadata: error ? { error } : {},
+      path: '/login'
     });
-  } catch (error) {
-    console.error("Failed to log user login:", error);
+  } catch (err) {
+    console.error("Failed to log internal event:", err);
   }
 }
 
@@ -75,19 +80,43 @@ export default function LoginPage() {
   });
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
-      if (user) {
-        router.replace('/dashboard');
-      } else {
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      if (user && !isSubmitting) {
+        const userDocRef = doc(db, 'users', user.uid);
+        const userDocSnap = await getDoc(userDocRef);
+        if (userDocSnap.exists()) {
+          const userData = userDocSnap.data();
+          if (userData.profileComplete) {
+            router.replace('/dashboard');
+          } else {
+            router.replace('/profile-setup');
+          }
+        } else {
+          setLoading(false);
+        }
+      } else if (!user) {
         setLoading(false);
       }
     });
 
     return () => unsubscribe();
-  }, [router]);
+  }, [router, isSubmitting]);
 
 
   const processSignIn = async (firebaseUser: FirebaseUser) => {
+    const systemSettings = await getSystemSettings();
+
+    // Check if email matches configured principal emails
+    let matchedInstituteForPrincipal = "";
+    if (systemSettings?.principalEmails) {
+      for (const [inst, email] of Object.entries(systemSettings.principalEmails)) {
+        if (email.toLowerCase() === firebaseUser.email!.toLowerCase()) {
+          matchedInstituteForPrincipal = inst;
+          break;
+        }
+      }
+    }
+
     const userDocRef = doc(db, "users", firebaseUser.uid)
     const userDocSnap = await getDoc(userDocRef)
     let user: User
@@ -97,8 +126,34 @@ export default function LoginPage() {
       if (user.name === user.email.split("@")[0] && firebaseUser.displayName) {
         user.name = firebaseUser.displayName
       }
+
+      // Dynamic update for Principal role if newly assigned
+      if (matchedInstituteForPrincipal && (user.designation !== "Principal" || user.institute !== matchedInstituteForPrincipal)) {
+        user.designation = "Principal";
+        user.institute = matchedInstituteForPrincipal;
+        user.role = "faculty";
+        user.profileComplete = true;
+        user.allowedModules = getDefaultModulesForRole("faculty", "Principal");
+
+        await updateDoc(userDocRef, {
+          designation: "Principal",
+          institute: matchedInstituteForPrincipal,
+          role: "faculty",
+          profileComplete: true,
+          allowedModules: user.allowedModules
+        });
+      }
+
+      const idToken = await firebaseUser.getIdToken();
+      await setSession(idToken);
     } else {
-      const staffRes = await fetch(`/api/get-staff-data?email=${firebaseUser.email!}`)
+      const idToken = await firebaseUser.getIdToken();
+      await setSession(idToken);
+      const staffRes = await fetch(`/api/get-staff-data?email=${firebaseUser.email!}`, {
+        headers: {
+          'Authorization': `Bearer ${idToken}`
+        }
+      })
       const staffResult = await staffRes.json()
 
       let userDataFromExcel: Partial<User> = {}
@@ -108,10 +163,14 @@ export default function LoginPage() {
 
       const domainCheck = await isEmailDomainAllowed(firebaseUser.email!)
 
-      if (staffResult.success && Array.isArray(staffResult.data) && staffResult.data.length > 0) {
-        const staffData = staffResult.data[0]
-        userDataFromExcel = staffData
-        const userType = staffData.type
+      if (matchedInstituteForPrincipal) {
+        role = "faculty";
+        designation = "Principal";
+        profileComplete = true;
+        userDataFromExcel.institute = matchedInstituteForPrincipal;
+      } else if (staffResult.success) {
+        userDataFromExcel = staffResult.data
+        const userType = staffResult.data.type
 
         if (userType === "CRO") {
           role = "CRO"
@@ -128,14 +187,17 @@ export default function LoginPage() {
         profileComplete = true
       }
 
+      const determinedCampus = "Goa";
+
       user = {
         uid: firebaseUser.uid,
         name: userDataFromExcel.name || firebaseUser.displayName || firebaseUser.email!.split("@")[0],
         email: firebaseUser.email!,
         role,
         designation,
+        campus: determinedCampus,
         faculty: userDataFromExcel.faculty || domainCheck.croFaculty || '',
-        institute: userDataFromExcel.institute || '',
+        institute: matchedInstituteForPrincipal || userDataFromExcel.institute || '',
         department: userDataFromExcel.department || '',
         phoneNumber: userDataFromExcel.phoneNumber || '',
         misId: userDataFromExcel.misId || '',
@@ -152,7 +214,15 @@ export default function LoginPage() {
       user.allowedModules = getDefaultModulesForRole(user.role, user.designation)
     }
 
-    const systemSettings = await getSystemSettings();
+    if (user.designation === "Principal" || matchedInstituteForPrincipal) {
+      if (!user.allowedModules?.includes('incentive-approver-1')) {
+        user.allowedModules = [...(user.allowedModules || []), 'incentive-approver-1'];
+      }
+      if (!user.allowedModules?.includes('incentive-approvals')) {
+        user.allowedModules = [...(user.allowedModules || []), 'incentive-approvals'];
+      }
+    }
+
     const approverSetting = systemSettings.incentiveApprovers?.find(a => a.email.toLowerCase() === user.email.toLowerCase());
 
     if (approverSetting) {
@@ -163,9 +233,12 @@ export default function LoginPage() {
     }
 
 
-    await setDoc(userDocRef, user, { merge: true })
+    const regResult = await registerUserInDatabase(user);
+    if (!regResult.success) {
+      throw new Error(regResult.error || "Failed to update user in database.");
+    }
 
-    await logLogin(user.uid, user.email);
+    await logLoginEvent('AUTH', 'User logged in successfully', user);
 
     try {
       const result = await linkHistoricalData(user)
@@ -219,8 +292,17 @@ export default function LoginPage() {
         throw new Error(otpResult.error || "Invalid OTP");
       }
 
-      // Now that OTP is verified, sign the user in
-      const userCredential = await signInWithEmailAndPassword(auth, pendingUser.email, pendingUser.password);
+      let userCredential;
+      try {
+        userCredential = await signInWithEmailAndPassword(auth, pendingUser.email, pendingUser.password);
+      } catch (emailSignInError) {
+        if (otpResult.customToken) {
+          userCredential = await signInWithCustomToken(auth, otpResult.customToken);
+        } else {
+          throw emailSignInError;
+        }
+      }
+
       setIsOtpOpen(false);
       await processSignIn(userCredential.user);
     } catch (error: any) {
@@ -237,22 +319,32 @@ export default function LoginPage() {
   const onEmailSubmit = async (data: LoginFormValues) => {
     setIsSubmitting(true)
     try {
-      const settings = await getSystemSettings()
+      // Initiate login securely on the server
+      // This checks credentials and 2FA requirement in one go, preventing client-side bypass
+      const loginResult = await initiateLogin(data.email, data.password);
 
-      if (settings.is2faEnabled && data.email !== "vicepresident_86@paruluniversity.ac.in") {
+      if (!loginResult.success) {
+        throw new Error(loginResult.error || "Login failed.");
+      }
+
+      if (loginResult.otpRequired) {
         setPendingUser(data);
-        const otpResult = await sendLoginOtp(data.email);
-        if (otpResult.success) {
-          setIsOtpOpen(true);
-        } else {
-          throw new Error(otpResult.error || "Failed to send OTP.");
-        }
+        setIsOtpOpen(true);
       } else {
-        const userCredential = await signInWithEmailAndPassword(auth, data.email, data.password)
-        await processSignIn(userCredential.user)
+        let userCredential;
+        try {
+          userCredential = await signInWithEmailAndPassword(auth, data.email, data.password);
+        } catch (emailSignInError) {
+          if (loginResult.customToken) {
+            userCredential = await signInWithCustomToken(auth, loginResult.customToken);
+          } else {
+            throw emailSignInError;
+          }
+        }
+        await processSignIn(userCredential.user);
       }
     } catch (error: any) {
-      console.error("Login error:", error)
+      console.error("Login error full object:", error)
       toast({
         variant: "destructive",
         title: "Login Failed",
@@ -261,6 +353,8 @@ export default function LoginPage() {
             ? "Invalid email or password."
             : error.message || "An unknown error occurred.",
       })
+      await logLoginEvent('AUTH', 'Login attempt failed', { email: data.email }, 'error', error.message);
+
     } finally {
       setIsSubmitting(false)
     }
@@ -287,6 +381,7 @@ export default function LoginPage() {
           title: "Access Denied",
           description: "Access is for faculty members only. Student accounts are not permitted.",
         })
+        await logLoginEvent('AUTH', 'Google sign-in blocked: Unauthorized account type', { email }, 'warning');
         setIsSubmitting(false)
         return
       }
@@ -298,6 +393,7 @@ export default function LoginPage() {
           title: "Access Denied",
           description: "Access is restricted to authorized university domains.",
         })
+        await logLoginEvent('AUTH', 'Google sign-in blocked: Unauthorized domain', { email }, 'warning');
         setIsSubmitting(false)
         return
       }
@@ -310,6 +406,7 @@ export default function LoginPage() {
         title: "Sign In Failed",
         description: error.message || "Could not sign in with Google. Please try again.",
       })
+      await logLoginEvent('AUTH', 'Google sign-in attempt failed', {}, 'error', error.message);
     } finally {
       setIsSubmitting(false)
     }
@@ -409,11 +506,13 @@ export default function LoginPage() {
                   onClick={handleGoogleSignIn}
                   disabled={isSubmitting}
                 >
-                  <svg role="img" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" className="mr-2 h-4 w-4">
-                    <title>Google</title>
-                    <path d="M12.48 10.92v3.28h7.84c-.24 1.84-.85 3.18-1.73 4.1-1.02 1.02-2.62 1.9-4.63 1.9-3.87 0-7-3.13-7-7s3.13-7 7-7c2.18 0 3.66.87 4.53 1.73l2.43-2.38C18.04 2.33 15.47 1 12.48 1 7.01 1 3 5.02 3 9.98s4.01 8.98 9.48 8.98c2.96 0 5.42-1 7.15-2.68 1.78-1.74 2.37-4.24 2.37-6.52 0-.6-.05-1.18-.15-1.72H12.48z" />
+                  <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" className="mr-2 h-4 w-4">
+                    <path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.23 0 12 0 7.31 0 3.25 2.69 1.28 6.61l3.99 3.1C6.21 6.86 8.87 4.75 12 4.75z" />
+                    <path fill="#4285F4" d="M23.49 12.27c0-.78-.07-1.54-.19-2.27H12v4.51h6.47c-.29 1.48-1.13 2.74-2.39 3.59l3.86 3c2.26-2.09 3.55-5.18 3.55-8.83z" />
+                    <path fill="#FBBC05" d="M5.26 14.29c-.24-.72-.38-1.49-.38-2.29s.14-1.57.38-2.29L1.27 6.61C.46 8.23 0 10.06 0 12s.46 3.77 1.27 5.39l3.99-3.1z" />
+                    <path fill="#34A853" d="M12 24c3.24 0 5.97-1.06 7.94-2.91l-3.86-3c-1.08.72-2.46 1.15-4.08 1.15-3.13 0-5.78-2.11-6.73-4.95L1.27 17.39C3.25 21.31 7.31 24 12 24z" />
                   </svg>
-                  Sign in with Google
+                  Sign in with Parul University Goa Google Account
                 </Button>
               </CardContent>
               <CardFooter className="justify-center text-sm">

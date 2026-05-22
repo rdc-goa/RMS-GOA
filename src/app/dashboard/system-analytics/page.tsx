@@ -21,8 +21,9 @@ import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { useToast } from '@/hooks/use-toast'
-import { db } from '@/lib/config'
+import { db, db_rtdb } from '@/lib/config'
 import type { Project, EmrInterest, IncentiveClaim, User } from '@/types'
+import { fetchAllClaimsAction } from '@/app/actions'
 
 const COLORS = ["#6366f1", "#10b981", "#f59e0b", "#ef4444", "#8b5cf6"]
 
@@ -63,21 +64,30 @@ export default function SystemAnalyticsPage() {
     unsubscribes.push(onSnapshot(collection(db, 'emrInterests'), (snapshot) => {
       setEmrInterests(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as EmrInterest)))
     }))
-    unsubscribes.push(onSnapshot(collection(db, 'incentiveClaims'), (snapshot) => {
-      setIncentiveClaims(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as IncentiveClaim)))
-    }))
     unsubscribes.push(onSnapshot(collection(db, 'users'), (snapshot) => {
       setUsers(snapshot.docs.map(doc => ({ uid: doc.id, ...doc.data() } as User)))
     }))
 
-    const logsQuery = query(collection(db, 'logs'), where('timestamp', '>=', thresholdIso), orderBy('timestamp', 'asc'))
+    // Fetch incentive claims via server action
+    const currentUser = JSON.parse(localStorage.getItem('user') || '{}') as User;
+    if (currentUser.uid) {
+      fetchAllClaimsAction(currentUser).then(claims => {
+        setIncentiveClaims(claims);
+      }).catch(err => console.error("Error fetching claims in system analytics:", err));
+    }
+
+    const logsQuery = query(collection(db, 'system_logs'), where('timestamp', '>=', thresholdIso), orderBy('timestamp', 'asc'))
     unsubscribes.push(onSnapshot(logsQuery, (snapshot) => {
       setLogs(snapshot.docs.map(doc => doc.data()))
+      setLoading(false)
+    }, (error) => {
+      console.error("Error fetching logs:", error)
+      toast({ variant: 'destructive', title: 'Error', description: 'Failed to fetch system logs. Please check your connection or permissions.' })
       setLoading(false)
     }))
 
     return () => unsubscribes.forEach(unsub => unsub())
-  }, [timeRange])
+  }, [timeRange, toast])
 
   // --- DATA PROCESSING (Identical to previous Step for consistency) ---
   const analytics = useMemo(() => {
@@ -85,9 +95,22 @@ export default function SystemAnalyticsPage() {
     const criticalStages = ['Submitted', 'Under Review', 'Recommended', 'Sanctioned']
     const auditGaps: any[] = []
     
+    // Optimize log processing by grouping by project ID
+    const logsByProject: Record<string, any[]> = {}
+    logs.forEach(l => {
+      const pid = l.projectId || l.context?.projectId
+      if (pid) {
+        if (!logsByProject[pid]) logsByProject[pid] = []
+        logsByProject[pid].push(l)
+      }
+    })
+
     const projectTraces = projects.map(p => {
-      const projectLogs = logs.filter(l => l.projectId === p.id || l.context?.projectId === p.id)
-      const sorted = projectLogs.filter(l => l.newStatus).sort((a,b) => a.timestamp.localeCompare(b.timestamp))
+      const projectLogs = logsByProject[p.id] || []
+      const sorted = projectLogs
+        .filter(l => l.newStatus && l.timestamp)
+        .sort((a, b) => (a.timestamp || '').localeCompare(b.timestamp || ''))
+
       const stagesPresent = new Set(sorted.map(l => l.newStatus))
       const missing = criticalStages.filter(s => {
         const statusIdx = criticalStages.indexOf(p.status)
@@ -100,8 +123,13 @@ export default function SystemAnalyticsPage() {
       const stageDurs: Record<string, number> = {}
       for(let i=0; i<sorted.length - 1; i++) {
         const from = sorted[i].newStatus
-        const dur = differenceInDays(parseISO(sorted[i+1].timestamp), parseISO(sorted[i].timestamp))
-        stageDurs[from] = (stageDurs[from] || 0) + dur
+        if (!from || !sorted[i].timestamp || !sorted[i+1].timestamp) continue;
+        try {
+          const dur = differenceInDays(parseISO(sorted[i+1].timestamp), parseISO(sorted[i].timestamp))
+          stageDurs[from] = (stageDurs[from] || 0) + dur
+        } catch (e) {
+          console.warn("Error calculating duration for stage:", from, e)
+        }
       }
       return { id: p.id, history: sorted, gaps: missing, eventCount: projectLogs.length, stageDurations: stageDurs, status: p.status }
     })
@@ -200,7 +228,7 @@ export default function SystemAnalyticsPage() {
            { label: 'Active Users', val: analytics.summary.actUsers, sub: `Unique active in last ${timeRange} days`, icon: Users, color: 'text-indigo-600', bg: 'bg-indigo-50' },
            { label: 'Audit Completeness', val: analytics.summary.auditComp + '%', sub: 'Full trace availability', icon: ClipboardCheck, color: 'text-emerald-600', bg: 'bg-emerald-50' },
          ].map((item, i) => (
-           <Card key={i} className="shadow-sm border-muted/50 hover:border-primary/20 transition-colors h-full">
+           <Card key={i} className="shadow-sm border-muted/50 hover:border-primary/20 transition-colors">
              <CardHeader className="pb-2 flex flex-row items-center justify-between">
                 <CardTitle className="text-xs font-semibold uppercase text-muted-foreground">{item.label}</CardTitle>
                 <div className={`p-1.5 rounded-md ${item.bg} ${item.color}`}>

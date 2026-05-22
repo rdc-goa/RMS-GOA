@@ -9,6 +9,9 @@ export const ALL_MODULES = [
   { id: "emr-calendar", label: "EMR Calendar" },
   { id: "incentive-claim", label: "Incentive Claims" },
   { id: "arps-calculator", label: "ARPS Calculator" },
+  { id: "arps-submission", label: "ARPS Submissions" },
+  { id: "arps-approvals", label: "ARPS Approvals" },
+  { id: "manage-arps-submissions", label: "Manage ARPS" },
   { id: "incentive-approvals", label: "Incentive Approvals" },
   { id: "evaluator-dashboard", label: "Evaluation Queue" },
   { id: "my-evaluations", label: "My IMR Evaluations" },
@@ -30,21 +33,23 @@ export const ALL_MODULES = [
   { id: "settings", label: "Settings" },
   { id: 'post-a-job', label: 'Post a Job' },
   { id: 'recruitment-approvals', label: 'Recruitment Approvals' },
+  { id: 'lab-consumables', label: 'Lab Consumables' },
+  { id: 'manage-lab-consumables', label: 'Manage Lab Consumables' },
 ]
 
 const coreModules = ["dashboard", "notifications", "settings", "emr-calendar", "incentive-claim"]
 const facultyCoreModules = ["new-submission", "my-projects"]
 const hierarchyCoreModules = ["analytics"]
 
-const facultyDefaults = [...coreModules, ...facultyCoreModules]
-const croDefaults = [...coreModules, ...facultyCoreModules, "all-projects", "analytics", "incentive-approvals"]
+const facultyDefaults = [...coreModules, ...facultyCoreModules, "arps-submission", "arps-calculator"]
+const croDefaults = [...coreModules, ...facultyCoreModules, "all-projects", "analytics", "arps-submission", "arps-approvals", "arps-calculator"]
 const iqacDefaults = [...coreModules, "all-projects", "analytics"]
-const adminDefaults = [...croDefaults, "schedule-meeting", "pending-reviews", "completed-reviews", "emr-management", "manage-incentive-claims"]
-const superAdminDefaults = [...adminDefaults, "module-management", "arps-calculator"]
+const adminDefaults = [...croDefaults, "schedule-meeting", "pending-reviews", "completed-reviews", "emr-management", "manage-incentive-claims", "manage-lab-consumables"]
+const superAdminDefaults = [...adminDefaults, "module-management", "manage-arps-submissions"]
 
 // Default modules for special designations who are otherwise 'faculty' role
-const principalDefaults = [...coreModules, ...hierarchyCoreModules, "all-projects", "incentive-approvals", "incentive-approver-1"]
-const hodDefaults = [...coreModules, ...hierarchyCoreModules, "all-projects", "incentive-approvals", "incentive-approver-1"]
+const principalDefaults = [...coreModules, ...hierarchyCoreModules, "all-projects"]
+const hodDefaults = [...coreModules, ...hierarchyCoreModules, "all-projects"]
 const goaHeadDefaults = [...coreModules, ...hierarchyCoreModules, "all-projects"] // Read-only access
 
 export function getDefaultModulesForRole(role: User["role"], designation?: User["designation"]): string[] {

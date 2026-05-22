@@ -3,13 +3,6 @@
 
 import type { IncentiveClaim } from '@/types';
 
-function calculateQuartile(percentile: number): 'Q1' | 'Q2' | 'Q3' | 'Q4' | undefined {
-    if (percentile >= 75) return 'Q1';
-    if (percentile >= 50) return 'Q2';
-    if (percentile >= 25) return 'Q3';
-    if (percentile >= 0) return 'Q4';
-    return undefined;
-}
 
 export async function fetchAdvancedScopusData(
   identifier: string, // Can be a URL or just a DOI
@@ -58,7 +51,11 @@ export async function fetchAdvancedScopusData(
       headers: { "X-ELS-APIKey": apiKey, Accept: "application/json" },
     });
     if (!response.ok) {
-        const errorData = await response.json();
+        if (response.status === 401 || response.status === 403) {
+            console.error(`Scopus API Authentication Error (Status: ${response.status}). Please check SCOPUS_API_KEY.`);
+            return { success: false, error: "Automated fetch is currently unavailable due to a server configuration issue. Please enter details manually." };
+        }
+        const errorData = await response.json().catch(() => ({}));
         const errorMessage = errorData?.['service-error']?.status?.statusText || response.statusText || "The resource specified cannot be found.";
         throw new Error(`Scopus Abstract API Error: ${errorMessage}`);
     }
@@ -140,35 +137,6 @@ export async function fetchAdvancedScopusData(
         }
     }
 
-    const sourceId = coredata['source-id'];
-    if (sourceId) {
-        try {
-            const serialApiUrl = `https://api.elsevier.com/content/serial/title/source_id/${sourceId}?apiKey=${apiKey}&view=ENHANCED`;
-            const serialResponse = await fetch(serialApiUrl, { headers: { Accept: "application/json" } });
-            if (serialResponse.ok) {
-                const serialData = await serialResponse.json();
-                const serialTitleResponse = serialData?.['serial-title-response']?.[0];
-                const citeScoreInfo = serialTitleResponse?.citeScoreYearInfoList;
-
-                if (citeScoreInfo?.citeScoreTracker && citeScoreInfo?.citeScoreCurrentMetric) {
-                     const percentile = parseFloat(citeScoreInfo.citeScoreTracker);
-                     if (!isNaN(percentile)) {
-                        journalClassification = calculateQuartile(percentile);
-                     } else {
-                        warning = 'Could not parse percentile from Scopus to determine Q rating.';
-                     }
-                } else {
-                    warning = 'Q rating information was not available in the Scopus response for this journal.';
-                }
-            } else {
-                 warning = `Could not fetch Q rating details. Scopus returned status: ${serialResponse.status}`;
-                 console.warn(`Scopus Serial API failed with status: ${serialResponse.status}`);
-            }
-        } catch (serialError) {
-            warning = 'Could not fetch journal Q rating due to a network error. Please enter it manually.';
-            console.warn("Could not fetch journal Q rating from Scopus Serial API, but proceeding without it.", serialError);
-        }
-    }
 
 
     // After getting journalName, try to find its website via Springer Nature API

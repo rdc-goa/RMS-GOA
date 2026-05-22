@@ -8,8 +8,10 @@ import path from 'path';
 import { sendEmail as sendEmailUtility } from "@/lib/email";
 import { formatInTimeZone, toDate } from "date-fns-tz";
 import type * as z from 'zod';
-import { addDays, setHours, setMinutes, setSeconds, addHours, format, parseISO } from "date-fns";
-import * as XLSX from 'xlsx';
+import { addDays, setHours, setMinutes, setSeconds, addHours, format, parseISO, differenceInHours } from "date-fns";
+import { GovernanceLogger } from "@/lib/governance-logger";
+import { checkAuth } from "@/lib/check-auth";
+
 
 // --- Centralized Logging Service ---
 type LogLevel = "INFO" | "WARNING" | "ERROR"
@@ -37,7 +39,7 @@ async function logActivity(level: LogLevel, message: string, context: Record<str
 const EMAIL_STYLES = {
   background:
     'style="background: linear-gradient(135deg, #0f2027, #203a43, #2c5364); color:#ffffff; font-family:Arial, sans-serif; padding:20px; border-radius:8px;"',
-  logo: '<div style="text-align:center; margin-bottom:20px;"><img src="https://lhdlkrfbkon55i6u.public.blob.vercel-storage.com/Pu%20Goa%20White.png" alt="RDC Logo" style="max-width:300px; height:auto;" /></div>',
+  logo: '<div style="text-align:center; margin-bottom:20px;"><img src="https://pinxoxpbufq92wb4.public.blob.vercel-storage.com/RDC-PU-LOGO-WHITE.png" alt="RDC Logo" style="max-width:300px; height:auto;" /></div>',
   footer: ` 
     <p style="color:#b0bec5; margin-top: 30px;">Best Regards,</p>
     <p style="color:#b0bec5;">Research & Development Cell Team,</p>
@@ -118,13 +120,13 @@ export async function uploadFileToServer(
       },
     });
 
-    // Make the file public
-    await file.makePublic();
+    // RE-STRICTED: Removed automatic 'makePublic' call to ensure data privacy.
+    // await file.makePublic();
 
-    // Get the public URL
-    const publicUrl = file.publicUrl();
+    // Use the proxy URL format for all internal documents
+    const publicUrl = `/api/documents/${path}`;
 
-    console.log(`File uploaded successfully to ${path}, URL: ${publicUrl}`);
+    console.log(`File uploaded successfully to ${path}, Assigned Proxy URL: ${publicUrl}`);
 
     return { success: true, url: publicUrl };
 
@@ -140,6 +142,7 @@ export async function registerEmrInterest(
   callId: string,
   user: User,
   pptData: { dataUrl: string; fileName: string },
+  proposalData: { dataUrl: string; fileName: string },
   coPis: CoPiDetails[] = [],
   registeredByAdmin?: { adminUid: string, adminName: string }
 ): Promise<{ success: boolean; error?: string }> {
@@ -158,6 +161,13 @@ export async function registerEmrInterest(
       }
     }
 
+    if (!proposalData || !proposalData.dataUrl) {
+      return {
+        success: false,
+        error: "Project Proposal upload is mandatory for registration.",
+      }
+    }
+
     const interestsRef = adminDb.collection("emrInterests")
     const q = interestsRef.where("callId", "==", callId).where("userId", "==", user.uid)
     const docSnap = await q.get()
@@ -165,13 +175,22 @@ export async function registerEmrInterest(
       return { success: false, error: "This user has already registered interest for this call." }
     }
 
-    const fileExtension = path.extname(pptData.fileName);
-    const standardizedName = `emr_${user.name.replace(/\s+/g, "_")}${fileExtension}`;
-    const filePath = `emr-presentations/${callId}/${user.uid}/${standardizedName}`;
-    const uploadResult = await uploadFileToServer(pptData.dataUrl, filePath);
+    const pptExtension = path.extname(pptData.fileName);
+    const pptStandardizedName = `emr_ppt_${user.name.replace(/\s+/g, "_")}${pptExtension}`;
+    const pptPath = `emr-presentations/${callId}/${user.uid}/${pptStandardizedName}`;
+    const pptUploadResult = await uploadFileToServer(pptData.dataUrl, pptPath);
 
-    if (!uploadResult.success || !uploadResult.url) {
-      throw new Error(uploadResult.error || "PPT upload failed.");
+    if (!pptUploadResult.success || !pptUploadResult.url) {
+      throw new Error(pptUploadResult.error || "PPT upload failed.");
+    }
+
+    const proposalExtension = path.extname(proposalData.fileName);
+    const proposalStandardizedName = `emr_proposal_${user.name.replace(/\s+/g, "_")}${proposalExtension}`;
+    const proposalPath = `emr-proposals/${callId}/${user.uid}/${proposalStandardizedName}`;
+    const proposalUploadResult = await uploadFileToServer(proposalData.dataUrl, proposalPath);
+
+    if (!proposalUploadResult.success || !proposalUploadResult.url) {
+      throw new Error(proposalUploadResult.error || "Proposal upload failed.");
     }
 
     const allInterestsForCallQuery = interestsRef.where("callId", "==", callId)
@@ -199,13 +218,15 @@ export async function registerEmrInterest(
         faculty: user.faculty || "N/A",
         department: user.department || "N/A",
         registeredAt: new Date().toISOString(),
-        status: "PPT Submitted",
+        status: "Documents Submitted",
         coPiDetails: coPis,
         coPiUids: coPis.map((p) => p.uid).filter(Boolean) as string[],
         coPiNames: coPis.map((p) => p.name),
         coPiEmails: coPis.map((p) => p.email.toLowerCase()),
-        pptUrl: uploadResult.url,
+        pptUrl: pptUploadResult.url,
         pptSubmissionDate: new Date().toISOString(),
+        proposalUrl: proposalUploadResult.url,
+        proposalSubmissionDate: new Date().toISOString(),
       }
 
       if (registeredByAdmin) {
@@ -253,10 +274,11 @@ export async function registerEmrInterest(
         ${EMAIL_STYLES.footer}
       </div>`;
       await sendEmailUtility({
-        to: 'rdc@goa.paruluniversity.ac.in',
+        to: 'process.env.ADMIN_EMAIL',
         subject: `FIRST EMR Interest: ${callTitle}`,
         html: firstInterestEmail,
-        from: 'default'
+        from: 'default',
+        category: 'EMR'
       });
       await logActivity("INFO", "First EMR interest email sent to super-admin", { callId, userId: user.uid });
     }
@@ -288,7 +310,8 @@ export async function registerEmrInterest(
         to: user.email,
         subject: `Your EMR Interest Registration for: ${callTitle}`,
         html: emailHtml,
-        from: 'default'
+        from: 'default',
+        category: 'EMR'
       });
     }
 
@@ -311,6 +334,7 @@ export async function registerEmrInterest(
                 ${EMAIL_STYLES.footer}
               </div>`,
             from: "default",
+            category: 'EMR'
           });
         }
 
@@ -376,9 +400,9 @@ export async function scheduleEmrMeeting(
     const meetingDate = toDate(meetingDateTimeString, { timeZone });
 
     // Format for ICS
-    const startTimeUTC = format(meetingDate, "yyyyMMdd'T'HHmmss'Z'");
-    const endTimeUTC = format(addHours(meetingDate, 1), "yyyyMMdd'T'HHmmss'Z'");
-    const dtstamp = format(new Date(), "yyyyMMdd'T'HHmmss'Z'");
+    const startTimeUTC = formatInTimeZone(meetingDate, 'UTC', "yyyyMMdd'T'HHmmss'Z'");
+    const endTimeUTC = formatInTimeZone(addHours(meetingDate, 1), 'UTC', "yyyyMMdd'T'HHmmss'Z'");
+    const dtstamp = formatInTimeZone(new Date(), 'UTC', "yyyyMMdd'T'HHmmss'Z'");
 
 
     batch.update(callRef, {
@@ -392,6 +416,8 @@ export async function scheduleEmrMeeting(
       },
     });
 
+    let anyDocumentUploaded = false;
+
     for (const userId of applicantUids) {
       const interestsRef = adminDb.collection("emrInterests")
       const q = interestsRef.where("callId", "==", callId).where("userId", "==", userId)
@@ -402,6 +428,15 @@ export async function scheduleEmrMeeting(
       const interestDoc = interestSnapshot.docs[0]
       const interestRef = interestDoc.ref
       const interest = interestDoc.data() as EmrInterest
+
+      if (!interest.pptUrl || !interest.proposalUrl) {
+        return {
+          success: false,
+          error: `Cannot schedule meeting: ${interest.userName} has not uploaded all mandatory documents (PPT and Proposal).`
+        }
+      }
+
+      anyDocumentUploaded = true;
 
       batch.update(interestRef, {
         meetingSlot: { date, time, pptDeadline },
@@ -464,6 +499,7 @@ export async function scheduleEmrMeeting(
             subject: `Your EMR Presentation Slot for: ${call.title}${subjectOnlineIndicator}`,
             html: emailHtml,
             from: "default",
+            category: 'EMR',
             icalEvent: {
               filename: 'invite.ics',
               method: 'REQUEST',
@@ -523,7 +559,13 @@ export async function scheduleEmrMeeting(
                   <p><strong style="color: #ffffff;">${mode === 'Online' ? 'Meeting Link:' : 'Venue:'}</strong> 
                       ${mode === 'Online' ? `<a href="${venue}" style="color: #64b5f6; text-decoration: underline;">${venue}</a>` : venue}
                   </p>
+                  ${anyDocumentUploaded ? `
+                  <p style="color: #e0e0e0; margin-top: 15px;">The PI(s) have uploaded their Presentations/Proposals. You can view them directly on the portal:</p>
+                  <a href="${process.env.NEXT_PUBLIC_BASE_URL}/dashboard/evaluator-dashboard" style="display: inline-block; padding: 10px 20px; margin-top: 10px; font-size: 14px; font-weight: bold; color: #ffffff; background-color: #64b5f6; text-decoration: none; border-radius: 5px;">View on Evaluation Dashboard</a>
+                  <br/><br/>
+                  ` : `
                   <p style="color: #cccccc; margin-top: 15px;">Please review the assigned presentations on the PU Research Projects Portal.</p>
+                  `}
                   ${EMAIL_STYLES.footer}
               </div>
             `;
@@ -553,6 +595,7 @@ export async function scheduleEmrMeeting(
                 subject: `EMR Evaluation Assignment: ${call.title}${subjectOnlineIndicator}`,
                 html: emailHtml,
                 from: "default",
+                category: 'EMR',
                 icalEvent: {
                   filename: 'invite.ics',
                   method: 'REQUEST',
@@ -565,8 +608,18 @@ export async function scheduleEmrMeeting(
       }
     }
 
+    const emailResults = await Promise.all(emailPromises);
+    const failedEmails = emailResults.filter(r => !r.success);
+
+    if (failedEmails.length > 0 && emailPromises.length > 0) {
+      const errorMsg = failedEmails[0].error || "Unknown email error";
+      return {
+        success: false,
+        error: `Notification failed for ${failedEmails.length} recipient(s): ${errorMsg}. EMR Meeting was NOT scheduled. Please verify email configuration and recipient addresses.`
+      };
+    }
+
     await batch.commit()
-    await Promise.all(emailPromises)
     await logActivity("INFO", "EMR meeting scheduled", { callId, applicantUids, meetingDate: meetingDetails.date })
 
     return { success: true }
@@ -613,7 +666,7 @@ export async function uploadEmrPpt(
 
     if (adminName && interest.userEmail) {
       const callSnap = await adminDb.collection('fundingCalls').doc(interest.callId).get();
-      const callTitle = callSnap.exists() ? (callSnap.data() as FundingCall).title : 'your EMR application';
+      const callTitle = callSnap.exists ? (callSnap.data() as FundingCall).title : 'your EMR application';
 
       const emailHtml = `
             <div ${EMAIL_STYLES.background}>
@@ -630,6 +683,7 @@ export async function uploadEmrPpt(
         subject: `Presentation Uploaded for EMR Call: ${callTitle}`,
         html: emailHtml,
         from: 'default',
+        category: 'EMR',
         attachments: [{
           filename: originalFileName,
           path: result.url,
@@ -698,7 +752,7 @@ export async function uploadEmrProposal(
 
     if (adminName && interest.userEmail) {
       const callSnap = await adminDb.collection('fundingCalls').doc(interest.callId).get();
-      const callTitle = callSnap.exists() ? (callSnap.data() as FundingCall).title : 'your EMR application';
+      const callTitle = callSnap.exists ? (callSnap.data() as FundingCall).title : 'your EMR application';
 
       const emailHtml = `
             <div ${EMAIL_STYLES.background}>
@@ -715,6 +769,7 @@ export async function uploadEmrProposal(
         subject: `Proposal Uploaded for EMR Call: ${callTitle}`,
         html: emailHtml,
         from: 'default',
+        category: 'EMR',
         attachments: [{
           filename: originalFileName,
           path: result.url,
@@ -976,6 +1031,22 @@ export async function addEmrEvaluation(
     const interestSnap = await adminDb.collection("emrInterests").doc(interestId).get()
     if (interestSnap.exists) {
       const interest = interestSnap.data() as EmrInterest
+
+      // SLA Tracking
+      if (interest.meetingSlot?.date) {
+        const deadlineDate = new Date(`${interest.meetingSlot.date}T${interest.meetingSlot.time || '00:00'}:00`);
+        const now = new Date();
+        const delayHours = differenceInHours(now, deadlineDate);
+
+        await GovernanceLogger.logPolicyTrace({
+          policyName: 'SLA_EMR_EVALUATION',
+          entityId: interestId,
+          inputs: { deadline: deadlineDate.toISOString(), completion: now.toISOString() },
+          outputs: { delayHours, isBreached: delayHours > 24 }, // Breach if > 24h after meeting
+          logicVersion: '1.0.0'
+        });
+      }
+
       const superAdminUsersSnapshot = await adminDb.collection("users").where("role", "==", "Super-admin").get()
       if (!superAdminUsersSnapshot.empty) {
         const batch = adminDb.batch()
@@ -1008,22 +1079,10 @@ export async function addEmrEvaluation(
 
 export async function createFundingCall(
   callData: any,
+  createdBy: string,
 ): Promise<{ success: boolean; error?: string }> {
   try {
     const newCallDocRef = adminDb.collection("fundingCalls").doc()
-    const attachments: { name: string; url: string }[] = []
-
-    if (callData.attachments && callData.attachments.length > 0) {
-      for (const attachment of callData.attachments) {
-        const path = `emr-attachments/${newCallDocRef.id}/${attachment.name}`
-        const result = await uploadFileToServer(attachment.dataUrl, path)
-        if (result.success && result.url) {
-          attachments.push({ name: attachment.name, url: result.url })
-        } else {
-          throw new Error(`Failed to upload attachment: ${attachment.name}`)
-        }
-      }
-    }
 
     // Transaction to generate a new sequential ID
     const newCallData = await adminDb.runTransaction(async (transaction) => {
@@ -1047,9 +1106,9 @@ export async function createFundingCall(
         applyDeadline: callData.applyDeadline.toISOString(),
         interestDeadline: callData.interestDeadline.toISOString(),
         detailsUrl: callData.detailsUrl,
-        attachments: attachments,
+        driveLink: callData.driveLink || null,
         createdAt: new Date().toISOString(),
-        createdBy: "Super-admin",
+        createdBy: createdBy,
         status: "Open",
         isAnnounced: callData.notifyAllStaff,
       }
@@ -1091,39 +1150,17 @@ export async function updateFundingCall(
     const existingCall = callSnap.data() as FundingCall
     const oldInterestDeadline = existingCall.interestDeadline
     const newInterestDeadline = callData.interestDeadline.toISOString()
-    const oldApplyDeadline = existingCall.applyDeadline
-    const newApplyDeadline = callData.applyDeadline.toISOString()
 
-    // Check if deadlines have changed
-    const interestDeadlineChanged = oldInterestDeadline !== newInterestDeadline
-    const applyDeadlineChanged = oldApplyDeadline !== newApplyDeadline
-    const deadlineChanged = interestDeadlineChanged || applyDeadlineChanged
+    // Check if interest deadline has changed
+    const deadlineChanged = oldInterestDeadline !== newInterestDeadline
 
-    if (interestDeadlineChanged) {
+    if (deadlineChanged) {
       console.log(`⏰ Interest deadline changed for call: ${callData.title} (ID: ${callId})`)
       console.log(`   Old deadline: ${oldInterestDeadline}`)
       console.log(`   New deadline: ${newInterestDeadline}`)
     }
 
-    if (applyDeadlineChanged) {
-      console.log(`📅 Agency deadline changed for call: ${callData.title} (ID: ${callId})`)
-      console.log(`   Old deadline: ${oldApplyDeadline}`)
-      console.log(`   New deadline: ${newApplyDeadline}`)
-    }
-
-    const attachments: { name: string; url: string }[] = existingCall.attachments || []
-
-    if (callData.attachments && callData.attachments.length > 0) {
-      for (const attachment of callData.attachments) {
-        const path = `emr-attachments/${callId}/${attachment.name}`
-        const result = await uploadFileToServer(attachment.dataUrl, path)
-        if (result.success && result.url) {
-          attachments.push({ name: attachment.name, url: result.url })
-        } else {
-          throw new Error(`Failed to upload attachment: ${attachment.name}`)
-        }
-      }
-    }
+    // We no longer process file attachments natively
 
     const updatedCallData = {
       title: callData.title,
@@ -1133,7 +1170,7 @@ export async function updateFundingCall(
       applyDeadline: callData.applyDeadline.toISOString(),
       interestDeadline: newInterestDeadline,
       detailsUrl: callData.detailsUrl,
-      attachments: attachments,
+      driveLink: callData.driveLink || null,
       updatedAt: new Date().toISOString(),
     }
 
@@ -1145,12 +1182,7 @@ export async function updateFundingCall(
 
     if (deadlineChanged && notifyDeadlineChange) {
       console.log(`📧 Sending deadline change notification for call: ${callData.title} (ID: ${callId})`)
-      const notificationResult = await notifyDeadlineChangeToStaff(
-        callId, 
-        existingCall, 
-        interestDeadlineChanged ? newInterestDeadline : undefined,
-        applyDeadlineChanged ? newApplyDeadline : undefined
-      )
+      const notificationResult = await notifyDeadlineChangeToStaff(callId, existingCall, newInterestDeadline)
       if (!notificationResult.success) {
         throw new Error(notificationResult.error || "Funding call updated, but failed to send deadline change notification.")
       }
@@ -1179,9 +1211,9 @@ export async function updateFundingCall(
 
 export async function announceEmrCall(callId: string): Promise<{ success: boolean; error?: string }> {
   try {
-    const vadodaraEmail = process.env.ALL_STAFF_EMAIL;
+    const staffEmail = process.env.ALL_STAFF_EMAIL;
 
-    if (!vadodaraEmail) {
+    if (!staffEmail) {
       return {
         success: false,
         error: "Staff email address is not configured on the server. Please add ALL_STAFF_EMAIL to the .env file.",
@@ -1197,8 +1229,6 @@ export async function announceEmrCall(callId: string): Promise<{ success: boolea
     const call = callSnap.data() as FundingCall
     const timeZone = "Asia/Kolkata"
 
-    const emailAttachments = (call.attachments || []).map((att) => ({ filename: att.name, path: att.url }))
-
     let emailHtml = `
       <div ${EMAIL_STYLES.background}>
         ${EMAIL_STYLES.logo}
@@ -1211,8 +1241,8 @@ export async function announceEmrCall(callId: string): Promise<{ success: boolea
         </div>
     `
 
-    if (emailAttachments.length > 0) {
-      emailHtml += `<p style="color:#e0e0e0; margin-top: 20px;">Please find the relevant documents attached to this email.</p>`
+    if (call.driveLink) {
+      emailHtml += `<p style="color:#e0e0e0; margin-top: 20px;"><strong>Project Documents:</strong> <a href="${call.driveLink}" style="color: #64B5F6;">Access Files on Drive</a></p>`
     }
 
     emailHtml += `
@@ -1237,10 +1267,9 @@ export async function announceEmrCall(callId: string): Promise<{ success: boolea
     `
 
     await sendEmailUtility({
-      to: vadodaraEmail,
+      to: staffEmail,
       subject: `New Funding Call: ${call.title}`,
       from: "rdc",
-      attachments: emailAttachments,
       html: emailHtml,
     })
 
@@ -1259,13 +1288,12 @@ export async function announceEmrCall(callId: string): Promise<{ success: boolea
 export async function notifyDeadlineChangeToStaff(
   callId: string,
   call: FundingCall,
-  newInterestDeadline?: string,
-  newApplyDeadline?: string
+  newInterestDeadline: string
 ): Promise<{ success: boolean; error?: string }> {
   try {
-    const vadodaraEmail = process.env.ALL_STAFF_EMAIL;
+    const staffEmail = process.env.ALL_STAFF_EMAIL;
 
-    if (!vadodaraEmail) {
+    if (!staffEmail) {
       return {
         success: false,
         error: "Staff email address is not configured on the server. Please add ALL_STAFF_EMAIL to the .env file.",
@@ -1274,13 +1302,11 @@ export async function notifyDeadlineChangeToStaff(
 
     const timeZone = "Asia/Kolkata"
 
-    const emailAttachments = (call.attachments || []).map((att) => ({ filename: att.name, path: att.url }))
-
     let emailHtml = `
       <div ${EMAIL_STYLES.background}>
         ${EMAIL_STYLES.logo}
-        <h2 style="color: #ffffff; text-align: center;">Updated Deadlines for Funding Call</h2>
-        <p style="color:#e0e0e0;">The registration deadlines for the funding call <strong style="color:#ffffff;">"${call.title}"</strong> from <strong style="color:#ffffff;">${call.agency}</strong> have been updated.</p>
+        <h2 style="color: #ffffff; text-align: center;">Updated Interest Registration Deadline</h2>
+        <p style="color:#e0e0e0;">The interest registration deadline for the funding call <strong style="color:#ffffff;">"${call.title}"</strong> from <strong style="color:#ffffff;">${call.agency}</strong> has been updated.</p>
         
           <div style="padding: 15px; border: 1px solid #ff9800; border-radius: 8px; margin-top: 20px; background-color:#2c3e50;">
           <p style="color:#ff9800; font-weight: bold; font-size: 14px;">Important Notice:</p>
@@ -1289,32 +1315,13 @@ export async function notifyDeadlineChangeToStaff(
         </div>
         <div style="padding: 15px; border: 1px solid #4f5b62; border-radius: 8px; margin-top: 20px; background-color:#2c3e50;">
           <div style="color:#e0e0e0;" class="prose prose-sm">${call.description || "No description provided."}</div>
-          <div style="margin-top: 15px; space-y: 5px;">
-            ${newInterestDeadline ? `
-              <p style="color:#64B5F6; font-weight: bold; font-size: 14px; margin-bottom: 5px;">
-                <strong>NEW Interest Registration Deadline:</strong> ${formatInTimeZone(newInterestDeadline, timeZone, "PPpp (z)")}
-              </p>
-            ` : `
-              <p style="color:#e0e0e0; font-size: 14px; margin-bottom: 5px;">
-                <strong>Interest Registration Deadline:</strong> ${formatInTimeZone(call.interestDeadline, timeZone, "PPpp (z)")}
-              </p>
-            `}
-            
-            ${newApplyDeadline ? `
-              <p style="color:#64B5F6; font-weight: bold; font-size: 14px;">
-                <strong>NEW Agency Application Deadline:</strong> ${formatInTimeZone(newApplyDeadline, timeZone, "PP (z)")}
-              </p>
-            ` : `
-              <p style="color:#e0e0e0; font-size: 14px;">
-                <strong>Agency Application Deadline:</strong> ${formatInTimeZone(call.applyDeadline, timeZone, "PP (z)")}
-              </p>
-            `}
-          </div>
+          <p style="color:#e0e0e0; font-weight: bold; font-size: 14px;"><strong>New Interest Registration Deadline:</strong> ${formatInTimeZone(newInterestDeadline, timeZone, "PPpp (z)")}</p>
+          <p style="color:#e0e0e0;"><strong>Agency Application Deadline:</strong> ${formatInTimeZone(call.applyDeadline, timeZone, "PP (z)")}</p>
         </div>
     `
 
-    if (emailAttachments.length > 0) {
-      emailHtml += `<p style="color:#e0e0e0; margin-top: 20px;">Please find the relevant documents attached to this email.</p>`
+    if (call.driveLink) {
+      emailHtml += `<p style="color:#e0e0e0; margin-top: 20px;"><strong>Project Documents:</strong> <a href="${call.driveLink}" style="color: #64B5F6;">Access Files on Drive</a></p>`
     }
 
     emailHtml += `
@@ -1339,14 +1346,13 @@ export async function notifyDeadlineChangeToStaff(
     `
 
     await sendEmailUtility({
-      to: vadodaraEmail,
-      subject: `Deadline Updated: ${call.title}`,
+      to: staffEmail,
+      subject: `Updated Interest Registration Deadline: ${call.title}`,
       from: "rdc",
-      attachments: emailAttachments,
       html: emailHtml,
     })
 
-    console.log(`✅ Deadline change notification email sent successfully to ${vadodaraEmail} for call: ${call.title}`)
+    console.log(`✅ Deadline change notification email sent successfully to ${staffEmail} for call: ${call.title}`)
 
     await logActivity("INFO", "Deadline change notification sent", { callId, title: call.title })
 
@@ -1992,6 +1998,10 @@ export async function updateEmrFinalStatus(interestId: string, status: 'Sanction
 
 export async function markEmrAttendance(callId: string, absentApplicantIds: string[], absentEvaluatorUids: string[]): Promise<{ success: boolean; error?: string }> {
   try {
+    const session = await checkAuth({ role: ['admin', 'super-admin', 'cro'] });
+    if (!session.authenticated) return { success: false, error: "Session expired. Please refresh the page. If the issue persists, log out and log back in." };
+    if (!session.authorized) return { success: false, error: "Unauthorized. Admin access required." };
+
     const batch = adminDb.batch();
 
     // Handle absent applicants
@@ -2044,13 +2054,13 @@ export async function sendPptReminderEmails(callId: string): Promise<{ success: 
     // Filter in code to find who needs a reminder
     const interestsToRemind = snapshot.docs.filter(doc => {
       const interest = doc.data() as EmrInterest;
-      const needsReminder = (interest.status === 'Registered' || interest.status === 'Evaluation Pending');
-      const hasNotUploaded = !interest.pptUrl;
-      return needsReminder && hasNotUploaded;
+      const needsReminder = ['Registered', 'PPT Submitted', 'Evaluation Pending', 'Awaiting Rescheduling', 'Revision Needed'].includes(interest.status);
+      const hasMissingDocs = !interest.pptUrl || !interest.proposalUrl;
+      return needsReminder && hasMissingDocs;
     });
 
     if (interestsToRemind.length === 0) {
-      return { success: true, sentCount: 0, error: 'All applicants have either uploaded their presentations or are not in a state to be reminded.' };
+      return { success: true, sentCount: 0, error: 'All applicants have either uploaded their presentations and proposals or are not in a state to be reminded.' };
     }
 
     const reminderPromises = interestsToRemind.map(doc => {
@@ -2063,13 +2073,14 @@ export async function sendPptReminderEmails(callId: string): Promise<{ success: 
 
         const deadlineText = isValidDate
           ? `Your submission deadline is <strong>${formatInTimeZone(parseISO(pptDeadline!), 'Asia/Kolkata', 'PPpp (z)')}</strong>.`
-          : 'Please upload your presentation & Project Proposal at your earliest convenience to be considered for an evaluation slot. In case you do not wish to apply for call, please withdraw your interest from the portal.';
+          : 'Please upload your <strong>Presentation & Project Proposal</strong> at your earliest convenience to be considered for an evaluation slot. Both documents are mandatory. In case you do not wish to apply for call, please withdraw your interest from the portal.';
 
         const emailHtml = `
             <div ${EMAIL_STYLES.background}>
+              ${EMAIL_STYLES.logo}
               <p style="color:#ffffff;">Dear ${interest.userName},</p>
-              <p style="color:#cccccc;">
-                This is a friendly reminder to upload your presentation for the EMR funding call, "<strong style="color:#ffffff;">${call.title}</strong>".
+              <p style="color:#e0e0e0;">
+                This is a reminder that your mandatory documents (<strong>Presentation and Project Proposal</strong>) are still pending for the EMR call "<strong style="color:#ffffff;">${call.title}</strong>".
               </p>
               <p style="color:#e0e0e0;">${deadlineText}</p>
               ${EMAIL_STYLES.footer}

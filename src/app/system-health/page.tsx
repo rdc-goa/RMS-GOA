@@ -21,6 +21,7 @@ interface HealthCheckResult {
     firestore: TestResult
     auth: TestResult
     storage: TestResult
+    rtdb: TestResult
     serviceAccount: TestResult
   }
   debug: {
@@ -29,9 +30,11 @@ interface HealthCheckResult {
       hasClientEmail: boolean;
       hasPrivateKey: boolean;
       hasStorageBucket: boolean;
+      hasDatabaseUrl: boolean;
     }
   }
 }
+
 
 export default function SystemHealthPage() {
   const [healthData, setHealthData] = useState<HealthCheckResult | null>(null)
@@ -163,13 +166,52 @@ export default function SystemHealthPage() {
                   {renderEnvVarStatus("FIREBASE_CLIENT_EMAIL", healthData.debug.environment.hasClientEmail)}
                   {renderEnvVarStatus("FIREBASE_PRIVATE_KEY", healthData.debug.environment.hasPrivateKey)}
                   {renderEnvVarStatus("NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET", healthData.debug.environment.hasStorageBucket)}
+                  {renderEnvVarStatus("NEXT_PUBLIC_FIREBASE_DATABASE_URL", healthData.debug.environment.hasDatabaseUrl)}
                 </div>
               </div>
             </CardContent>
           </Card>
 
           <div className="grid gap-6 md:grid-cols-2">
+            {/* Realtime Database Test */}
+            <Card className={healthData.tests.rtdb?.status === "error" ? "border-red-200" : ""}>
+              <CardHeader>
+                <CardTitle className="flex items-center justify-between">
+                  <span>Realtime Database</span>
+                  {getStatusIcon(healthData.tests.rtdb?.status)}
+                </CardTitle>
+                <CardDescription>Real-time data synchronization service</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-2">
+                  <div className="flex justify-between">
+                    <span>Status:</span>
+                    {getStatusBadge(healthData.tests.rtdb?.status)}
+                  </div>
+                  {healthData.tests.rtdb && (
+                    <>
+                      <div className="flex justify-between">
+                        <span>Can Read:</span>
+                        <span>{healthData.tests.rtdb.canRead ? "Yes" : "No"}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span>Can Write:</span>
+                        <span>{healthData.tests.rtdb.canWrite ? "Yes" : "No"}</span>
+                      </div>
+                      <p className="text-sm text-muted-foreground mt-2">{healthData.tests.rtdb.message}</p>
+                      {healthData.tests.rtdb.status === "error" && (
+                        <div className="mt-2 p-2 bg-red-50 dark:bg-red-950/20 rounded text-xs font-mono overflow-auto max-h-32 text-red-600 dark:text-red-400">
+                          {healthData.tests.rtdb.details}
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+
             {/* Service Account Test */}
+
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center justify-between">

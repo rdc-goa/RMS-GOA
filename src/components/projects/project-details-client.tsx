@@ -16,7 +16,6 @@ import { doc, updateDoc, addDoc, collection, getDoc, getDocs, where, query } fro
 import {
   awardInitialGrant,
   updateProjectStatus,
-  updateProjectWithRevision,
   updateProjectDuration,
   updateProjectEvaluators,
   notifyAdminsOnCompletionRequest,
@@ -28,8 +27,8 @@ import {
   getSystemSettings,
   generateSanctionOrder,
   adminUploadProposal,
+  generateRecommendationForm,
 } from "@/app/actions"
-import { generateRecommendationForm } from "@/app/document-actions"
 import { findUserByMisId } from '@/app/userfinding';
 import { useToast } from "@/hooks/use-toast"
 import { cn } from "@/lib/utils"
@@ -70,6 +69,7 @@ import { Label } from "@/components/ui/label"
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { useIsMobile } from "@/hooks/use-mobile"
+import { useAuth as useClientAuth } from '../contexts/AuthContext'
 
 import { Check, ChevronDown, Clock, X, DollarSign, FileCheck2, CalendarIcon, Edit, UserCog, Banknote, AlertCircle, Users, Loader2, Printer, Download, Plus, FileText, Trash2, UserCheck, Upload } from 'lucide-react'
 
@@ -82,7 +82,8 @@ import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover
 import { Calendar } from "@/components/ui/calendar"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { Checkbox } from "../ui/checkbox"
-import { uploadFileToServer } from '@/app/actions';
+import { uploadFileToServerAction, uploadFileToServer } from "@/services/storage-service";
+import { updateProjectWithRevision } from "@/services/project-service";
 
 interface ProjectDetailsClientProps {
   project: Project
@@ -100,6 +101,7 @@ const statusVariant: { [key: string]: "default" | "secondary" | "destructive" | 
   "Revision Needed": "secondary",
   "Pending Completion Approval": "secondary",
   "Not Recommended": "destructive",
+  "Revision Submitted": "secondary",
   Completed: "outline",
 }
 
@@ -160,7 +162,7 @@ const attendanceSchema = z.object({
   absentEvaluatorUids: z.array(z.string()),
 });
 
-const venues = ["VC Office"]
+const venues = ["RDC Committee Room, PIMSR"]
 
 const fileToDataUrl = (file: File): Promise<string> => {
   return new Promise((resolve, reject) => {
@@ -314,6 +316,7 @@ export function ProjectDetailsClient({ project: initialProject, allUsers, piUser
   const [proposalFile, setProposalFile] = useState<File | null>(null);
 
   const isMobile = useIsMobile();
+  const clientAuth = useClientAuth();
 
   // Co-PI management state
   const [coPiSearchTerm, setCoPiSearchTerm] = useState("")
@@ -372,6 +375,16 @@ export function ProjectDetailsClient({ project: initialProject, allUsers, piUser
   }, [initialProject.id, toast, onProjectUpdate]);
 
   const refetchEvaluations = useCallback(async () => {
+    if (!user || !clientAuth.initialLoadComplete) return;
+
+    const isPI = user.uid === project.pi_uid || user.email === project.pi_email;
+    const isAdmin = ["Super-admin", "admin"].includes(user.role);
+    const isAssignedEvaluator = project.meetingDetails?.assignedEvaluators?.includes(user.uid);
+
+    if (!isAdmin && !isPI && !isAssignedEvaluator) {
+      return;
+    }
+
     try {
       const evaluationsCol = collection(db, "projects", initialProject.id, "evaluations")
       const evaluationsSnapshot = await getDocs(evaluationsCol)
@@ -381,7 +394,7 @@ export function ProjectDetailsClient({ project: initialProject, allUsers, piUser
       console.error("Error refetching evaluations:", error)
       toast({ variant: "destructive", title: "Error", description: "Could not refresh evaluation data." })
     }
-  }, [initialProject.id, toast])
+  }, [initialProject.id, toast, user, project.pi_uid, project.pi_email, project.meetingDetails])
 
   useEffect(() => {
     setProject(initialProject)
@@ -405,11 +418,15 @@ export function ProjectDetailsClient({ project: initialProject, allUsers, piUser
 
   useEffect(() => {
     const fetchCoPiUsers = async () => {
-      if (project.coPiUids && project.coPiUids.length > 0) {
-        const usersRef = collection(db, "users")
-        const q = query(usersRef, where("__name__", "in", project.coPiUids))
-        const querySnapshot = await getDocs(q)
-        const fetchedUsers = querySnapshot.docs.map((coPiDoc) => ({ uid: coPiDoc.id, ...coPiDoc.data() }) as User)
+      const coPiUids = (project.coPiUids || []).filter((uid): uid is string => !!uid);
+      if (coPiUids.length > 0) {
+        const userDocs = await Promise.all(
+          coPiUids.map(uid => getDoc(doc(db, "users", uid)))
+        );
+        const fetchedUsers = userDocs
+          .filter(snap => snap.exists())
+          .map(snap => ({ uid: snap.id, ...snap.data() }) as User);
+
         setCoPiUsers(fetchedUsers)
         setCoPiList(fetchedUsers.map((u) => ({ uid: u.uid, name: u.name })))
       }
@@ -449,7 +466,7 @@ export function ProjectDetailsClient({ project: initialProject, allUsers, piUser
     return false
   }, [user, isSuperAdmin, isAssignedEvaluator, project.meetingDetails, systemSettings])
 
-  const showEvaluationForm = user && isAssignedEvaluator && project.status === 'Under Review';
+  const showEvaluationForm = user && isAssignedEvaluator && (project.status === 'Under Review' || project.status === 'Revision Submitted');
 
   const assignedEvaluatorsCount = project.meetingDetails?.assignedEvaluators?.length ?? 0;
   const absentEvaluatorsCount = project.meetingDetails?.absentEvaluators?.length ?? 0;
@@ -524,12 +541,23 @@ export function ProjectDetailsClient({ project: initialProject, allUsers, piUser
   }
 
   const handleAddCoPi = () => {
-    if (foundCoPi && !coPiList.some((coPi) => coPi.uid === foundCoPi.uid)) {
-      if (user && foundCoPi.uid === user.uid) {
-        toast({ variant: "destructive", title: "Cannot Add Self", description: "You cannot add yourself as a Co-PI." })
+    if (foundCoPi) {
+      if (!foundCoPi.uid) {
+        toast({
+          variant: "destructive",
+          title: "User Not Registered",
+          description: "This user has not registered on the portal yet. Please ask them to log in once to create their profile before adding them as a Co-PI."
+        })
         return
       }
-      setCoPiList([...coPiList, foundCoPi])
+
+      if (!coPiList.some((coPi) => coPi.uid === foundCoPi.uid)) {
+        if (user && foundCoPi.uid === user.uid) {
+          toast({ variant: "destructive", title: "Cannot Add Self", description: "You cannot add yourself as a Co-PI." })
+          return
+        }
+        setCoPiList([...coPiList, foundCoPi])
+      }
     }
     setFoundCoPi(null)
     setCoPiSearchTerm("")
@@ -713,9 +741,12 @@ export function ProjectDetailsClient({ project: initialProject, allUsers, piUser
     }
     setIsSubmittingRevision(true)
     try {
-      const dataUrl = await fileToDataUrl(revisedProposalFile);
+      const formData = new FormData();
+      formData.append('file', revisedProposalFile);
       const path = `revisions/${project.id}/${revisedProposalFile.name}`;
-      const uploadResult = await uploadFileToServer(dataUrl, path);
+      formData.append('path', path);
+
+      const uploadResult = await uploadFileToServerAction(formData);
 
       if (!uploadResult.success || !uploadResult.url) {
         throw new Error(uploadResult.error || "Revision upload failed")
@@ -1070,7 +1101,7 @@ export function ProjectDetailsClient({ project: initialProject, allUsers, piUser
                 {project.status === "Not Recommended" && <X className="mr-2 h-4 w-4" />}
                 {project.status}
               </Badge>
-              {isAdmin && project.status === "Under Review" && (
+              {isAdmin && (project.status === "Under Review" || project.status === "Revision Submitted") && (
                 <TooltipProvider>
                   <DropdownMenu>
                     <Tooltip>
@@ -1230,7 +1261,7 @@ export function ProjectDetailsClient({ project: initialProject, allUsers, piUser
               <div className="space-y-2 p-4 border rounded-lg bg-secondary/50">
                 <div className="flex justify-between items-start flex-wrap gap-2">
                   <h3 className="font-semibold text-lg">IMR Evaluation Meeting Details</h3>
-                  {isSuperAdmin && project.status === 'Under Review' && (
+                  {isAdmin && project.status === 'Under Review' && (
                     <Button variant="outline" size="sm" onClick={() => setIsAttendanceDialogOpen(true)}>
                       <UserCheck className="mr-2 h-4 w-4" /> Mark Attendance
                     </Button>
@@ -1639,7 +1670,7 @@ export function ProjectDetailsClient({ project: initialProject, allUsers, piUser
           </Form>
         </AlertDialogContent>
       </AlertDialog>
-      {isSuperAdmin && project.meetingDetails && (
+      {isAdmin && project.meetingDetails && (
         <AttendanceDialog
           isOpen={isAttendanceDialogOpen}
           onOpenChange={setIsAttendanceDialogOpen}

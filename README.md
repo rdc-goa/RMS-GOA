@@ -1,50 +1,55 @@
+# R&D Portal: A Comprehensive Research Management System
 
-# Research & Development Portal Parul University Goa.
+This is a comprehensive, full-stack web application designed to streamline and manage the entire research lifecycle at any university. It serves as a central hub for faculty, evaluators, and administrators to handle Intramural (IMR) and Extramural (EMR) research projects, user management, incentive claims, and grant tracking.
 
-This is a comprehensive, full-stack web application designed to streamline and manage the entire research lifecycle at Parul University Goa. It serves as a central hub for faculty, evaluators, and administrators to handle Intramural (IMR) and Extramural (EMR) research projects, user management, and grant tracking.
-
-The portal is built with a modern tech stack, leveraging the power of Next.js for the frontend and backend, Firebase for its powerful suite of backend services, and Google's Genkit for integrating cutting-edge AI features.
+Built with a modern, robust tech stack, the portal leverages the power of Next.js for a performant frontend and backend, Firebase for its powerful and scalable suite of services (Firestore, Authentication, Storage), and Google's Genkit for integrating cutting-edge AI features.
 
 ## ✨ Key Features
 
-### 1. Role-Based Access Control (RBAC)
-The portal provides a tailored experience for each user role, ensuring users only see what's relevant to them.
--   **Faculty:** The primary users of the portal. They can submit and track their own research projects, manage their public profile including a list of their publications, and register for external funding calls.
--   **Evaluators:** Assigned to review project proposals. They have access to a dedicated queue of projects assigned for review, can use AI-assisted tools for scoring, and submit structured feedback.
--   **CRO (Chief Research Officer):** Have oversight of all projects within their specific faculty. They can manage user roles, schedule meetings, and access faculty-specific analytics.
--   **Admin:** Have broad oversight of the entire system, including user management, project status updates, and system monitoring.
--   **Super-admin:** Has complete control over the entire system, including all admin privileges plus the ability to dynamically manage module access for all other users.
+### 1. Role-Based Access Control (RBAC) & User Management
+The portal provides a tailored experience for each user role, ensuring a secure and relevant interface.
 
-### 2. Intramural Research (IMR) Project Management
-A complete workflow for managing internal research project funding from submission to completion.
--   **Guided Proposal Submission:** A multi-step form for submitting detailed project proposals, including team information, abstracts, and necessary file uploads (proposal PDF, team CVs, ethics approvals).
--   **Status Tracking:** Real-time tracking of project status (Draft, Submitted, Under Review, Recommended, Not Recommended, In Progress, Completed, etc.).
--   **AI-Assisted Evaluation:** AI-generated prompts to help evaluators assess projects based on key criteria like relevance, methodology, feasibility, and innovation.
--   **Meeting Scheduling:** Admins and CROs can schedule IMR evaluation meetings for multiple submitted projects at once and automatically notify the Principal Investigators (PIs) via email.
--   **Grant Management:** A system for awarding grants, tracking fund utilization through transaction logging, and managing the disbursement process in phases.
+-   **Faculty:** The primary users of the portal. They can submit and track their own research projects, manage a public-facing profile including a comprehensive list of their publications, and register for external funding calls announced by the university.
+-   **Evaluators:** Assigned to review project proposals based on their expertise. They have access to a dedicated queue of projects, can use AI-assisted tools for scoring and feedback, and view their evaluation history.
+-   **CRO (Chief Research Officer):** Have oversight of all projects within their specific assigned faculties. They can manage user roles, schedule IMR meetings, and access faculty-specific analytics to monitor research trends.
+-   **Principal & HOD:** Institute and Department-level administrators with read-only oversight of all projects and analytics within their specific scope, enabling them to track research activity effectively.
+-   **Admin & Super-admin:** Have broad oversight of the entire system, including user management, project status updates, and system health monitoring. Super-admins have ultimate control, including dynamically managing module access for all other users.
 
-### 3. Extramural Research (EMR) Management
-A dedicated module to manage the lifecycle of externally funded research opportunities.
--   **EMR Calendar:** A central calendar listing all available external funding calls, complete with deadlines and details.
--   **Interest Registration:** Faculty can register their interest in a call and add Co-PIs to their team directly through the portal.
--   **Presentation Workflow:** A streamlined process for scheduling presentation slots, assigning evaluators, and allowing faculty to upload their presentation files before a hard deadline.
--   **Admin Oversight:** Super-admins can manage the entire EMR lifecycle, from adding new funding calls to tracking evaluation outcomes.
+### 2. Intramural Research (IMR) Project Workflow
+A complete, end-to-end workflow for managing internal research project funding from submission to completion.
 
-### 4. User Profiles & Publication Tracking
--   **Public Profiles:** Faculty can maintain a public-facing profile showcasing their research contributions, projects, and a comprehensive list of their publications. This profile is viewable by administrators and assigned evaluators.
--   **Publication Management:** A dedicated system for faculty to add, edit, and delete their research papers. The system intelligently handles co-authors, ensuring a single paper entry appears on the profiles of all its authors to reduce data redundancy.
--   **Automated Co-Author Linking:** When adding a paper, the system automatically checks for existing users or staff members by their university email, linking profiles and fetching names to streamline the process.
+-   **Guided Proposal Submission:** A multi-step form guides faculty through submitting detailed project proposals, including team information (with CV uploads for each member), abstracts, SDG alignment, and all necessary supporting documents. Drafts can be saved at any point.
+-   **Automated Meeting Scheduling:** Admins and CROs can schedule IMR evaluation meetings for multiple projects at once. The system automatically notifies all Principal Investigators and the assigned evaluation committee via email and in-app notifications.
+-   **AI-Assisted Evaluation:** Evaluators are provided with AI-generated prompts to help them assess projects based on key criteria like relevance, methodology, feasibility, and innovation, ensuring a structured and consistent review process.
+-   **Status Tracking & Revisions:** PIs can track their project's status in real-time (e.g., `Submitted`, `Under Review`, `Revision Needed`, `Recommended`). If revisions are requested, PIs can view comments and upload a revised proposal directly through the portal.
+-   **Comprehensive Grant Management:** For recommended projects, administrators can award grants, set sanction numbers, and manage the disbursement process in multiple phases. A detailed transaction log allows PIs to manage their budget and administrators to track fund utilization.
+
+### 3. Extramural Research (EMR) Management Workflow
+A dedicated module to manage the entire lifecycle of externally funded research opportunities.
+
+-   **EMR Calendar & Announcements:** A central calendar lists all available external funding calls, complete with deadlines and details. Super-admins can create new calls and trigger an email announcement to all staff members.
+-   **Streamlined Interest Registration:** Faculty can register their interest in a call and add Co-PIs to their team directly through the portal before the deadline.
+-   **Organized Presentation Workflow:** Administrators can schedule presentation slots for all registered applicants, assign an evaluation committee, and set a hard deadline for presentation uploads (typically 2 days prior to the meeting).
+-   **Centralized Evaluation:** Evaluators can access their queue, view applicant presentations, and submit their feedback through a structured form. Super-admins can then review all evaluations and make a final decision on the application's status.
+
+### 4. Digital Incentive Claim Workflow
+A fully digital process for submitting, tracking, and approving research incentives, eliminating paperwork and increasing transparency.
+
+-   **Multi-Category Claims:** Faculty can apply for incentives for a wide range of academic achievements, including Research Papers, Patents, Books & Book Chapters, Conference Presentations, Professional Memberships, and Article Processing Charges (APC).
+-   **Automated Incentive Calculation:** The system automatically calculates the tentative incentive amount based on the university's predefined policy, considering factors like author roles, publication quality (e.g., Q-rating), publisher type, and number of co-authors.
+-   **Configurable Multi-Stage Approval:** Claims are routed through a configurable multi-stage approval workflow, ensuring proper verification at each level (e.g., HOD, CRO, RDC Head). Approvers can view all relevant details and previous approval history before making a decision.
+-   **Intelligent Co-Author Management:** The system intelligently handles claims for publications with multiple internal authors. When one author submits a claim, the system notifies all other PU co-authors, who can then apply for their respective share from their own dashboard.
 
 ### 5. AI Integration (Powered by Google Genkit)
--   **Project Summarization:** Instantly generate concise summaries of complex project proposals to aid in quick reviews.
--   **Research Domain Suggestion:** AI analyzes a faculty member's publication history to suggest their core research domain for their public profile.
--   **Journal Website Finder:** An AI tool to find the official website of an academic journal based on its name, helping to verify publication sources.
+The portal is enhanced with several AI-powered features to assist users and streamline administrative tasks.
+-   **Project Summarization:** Instantly generate concise summaries of complex project proposals to aid evaluators and administrators in quick reviews.
+-   **Research Domain Suggestion:** AI analyzes a faculty member's publication history to suggest their core research domain, helping them build a strong public profile.
+-   **Journal Website Finder:** An AI tool to find the official website of an academic journal based on its name, helping to verify publication sources and details for incentive claims.
 
-### 6. System Administration
--   **User Management:** Admins can manage user roles and permissions, including assigning CROs to specific faculties.
--   **Module Management:** A Super-admin exclusive feature to dynamically assign access to different parts of the portal for each user.
--   **System Health Dashboard:** A dedicated page to monitor the connectivity and status of all integrated Firebase services (Firestore, Auth, Storage) in real-time.
--   **Bulk Data Upload:** Admins can upload historical project data from a formatted Excel file to integrate past records into the system.
+### 6. System Administration & Health
+-   **Dynamic Module Management:** A Super-admin exclusive feature to dynamically assign access to any part of the portal (e.g., "Manage Users", "Analytics") for any user, providing fine-grained permission control beyond the default roles.
+-   **System Health Dashboard:** A dedicated page to monitor the connectivity and status of all integrated Firebase services (Firestore, Auth, Storage) in real-time, ensuring system stability.
+-   **Bulk Data Upload:** Admins can upload historical project, incentive, and publication data from formatted Excel files to integrate past records into the system seamlessly.
 
 ## 🛠️ Tech Stack
 
@@ -54,7 +59,7 @@ A dedicated module to manage the lifecycle of externally funded research opportu
 -   **UI Components:** [ShadCN UI](https://ui.shadcn.com/)
 -   **AI Toolkit:** [Google Genkit](https://firebase.google.com/docs/genkit)
 -   **Database:** [Cloud Firestore](https://firebase.google.com/docs/firestore)
--   **Authentication:** [Firebase Authentication](https://firebase.google.com/docs/auth) with Google One Tap
+-   **Authentication:** [Firebase Authentication](https://firebase.google.com/docs/auth)
 -   **File Storage:** [Cloud Storage for Firebase](https://firebase.google.com/docs/storage)
 -   **Deployment:** [Firebase App Hosting](https://firebase.google.com/docs/hosting)
 -   **Email Service:** [Nodemailer](https://nodemailer.com/) with Gmail
@@ -96,11 +101,12 @@ This is the most critical step. The application will not run without the correct
 
 ```env
 # .env.local
-FIREBASE_AUTH_DOMAIN="[AUTH_DOMAIN]"
-FIREBASE_PROJECT_ID="[PROJECT_ID]"
-FIREBASE_STORAGE_BUCKET="[STORAGE_BUCKET]"
-FIREBASE_MESSAGING_SENDER_ID="[MESSAGING_SENDER_ID]"
-FIREBASE_APP_ID="[APP_ID]"
+NEXT_PUBLIC_FIREBASE_API_KEY="[API_KEY]"
+NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN="[AUTH_DOMAIN]"
+NEXT_PUBLIC_FIREBASE_PROJECT_ID="[PROJECT_ID]"
+NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET="[STORAGE_BUCKET]"
+NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID="[MESSAGING_SENDER_ID]"
+NEXT_PUBLIC_FIREBASE_APP_ID="[APP_ID]"
 ```
 
 #### Firebase Admin (Server-Side) Keys
@@ -114,16 +120,6 @@ FIREBASE_CLIENT_EMAIL="[client_email_from_json]"
 FIREBASE_PRIVATE_KEY="[private_key_from_json]"
 ```
 
-#### Google Sign-In (Client-Side)
-- Go to the [Google Cloud Console Credentials page](https://console.cloud.google.com/apis/credentials).
-- Find your "OAuth 2.0 Client ID" for your web application.
-- Copy the **Client ID**.
-
-```env
-# .env.local
-NEXT_PUBLIC_GOOGLE_CLIENT_ID="[YOUR_GOOGLE_OAUTH_CLIENT_ID]"
-```
-
 #### Email Service (Nodemailer)
 -   You'll need a Gmail account and an "App Password".
 -   Go to your **Google Account** -> **Security** -> **2-Step Verification** (must be enabled).
@@ -133,16 +129,6 @@ NEXT_PUBLIC_GOOGLE_CLIENT_ID="[YOUR_GOOGLE_OAUTH_CLIENT_ID]"
 # .env.local
 GMAIL_USER="your-gmail-address@gmail.com"
 GMAIL_APP_PASSWORD="your-16-character-app-password"
-```
-
-#### Optional API Keys
--   These are needed for fetching data from external academic sources. The application will function without them, but some features will be disabled.
-
-```env
-# .env.local
-SCOPUS_API_KEY=""
-WOS_API_KEY=""
-SPRINGER_API_KEY=""
 ```
 
 ### 4. Run the Development Server
@@ -155,32 +141,26 @@ npm run dev
 
 The application should now be running at [http://localhost:9002](http://localhost:9002).
 
-## 🚑 Troubleshooting
+## 📖 Supporting Documentation
 
-### Google Sign-In Error: `401: invalid_client`
+For more detailed information, please refer to the following documents:
 
-This is a common configuration error. It almost always means your Google OAuth Client ID is not correctly configured for the address you are running the app from.
-
-1.  **Go to the Google Cloud Console Credentials page:** [https://console.cloud.google.com/apis/credentials](https://console.cloud.google.com/apis/credentials).
-2.  **Select your Project** from the dropdown at the top of the page.
-3.  Find your OAuth 2.0 Client ID under the "OAuth 2.0 Client IDs" section and click on its name to edit it.
-4.  **Add Authorized JavaScript Origins:** Under the "Authorized JavaScript origins" section, click **"+ ADD URI"**.
-    -   For local development, add `http://localhost:9002`.
-    -   If you are using a different port, add `http://localhost:<YOUR_PORT>`.
-    -   For your deployed production site, add its full URL (e.g., `https://your-app-name.web.app`).
-5.  **Click Save**. It may take a few minutes for the changes to apply.
-6.  **Restart your local development server** after making these changes.
+-   **[Standard Operating Procedures (SOP)](./SOP.md):** Detailed step-by-step guides for all user roles.
+-   **[Incentive Policy](./INCENTIVE_POLICY.md):** The complete rules and calculation logic for all research incentives.
+-   **[Terms of Use](./TERMS_OF_USE.md):** The terms and conditions for using the portal.
+-   **[Privacy Policy](./src/PRIVACY_POLICY.md):** Our policy on data collection, use, and security.
 
 ## 📁 Project Structure
 
 -   `src/app/`: Next.js App Router pages, layouts, and route handlers.
--   `src/components/`: Reusable React components, organized by feature (e.g., `projects`, `emr`) and UI primitives from ShadCN UI (`ui`).
--   `src/lib/`: Core logic, including Firebase configuration (`config.ts`, `admin.ts`), security modules (`modules.ts`), and utility functions.
+-   `src/components/`: Reusable React components, organized by feature.
+-   `src/lib/`: Core logic, including Firebase configuration and utility functions.
 -   `src/ai/`: Contains all Genkit flows for AI-powered features.
 -   `public/`: Static assets like images and logos.
+-   `docs/`: Contains backend.json for datastructure details.
 -   `firestore.rules`: Security rules for the Firestore database.
 -   `apphosting.yaml`: Configuration for deployment to Firebase App Hosting.
--   `goastaffdata.xlsx`: These files in the root directory contain historical user and academic data used to pre-fill profiles.
+-   `staffdata.xlsx`: This file in the root directory contains historical user and academic data used to pre-fill profiles.
 
 ## ☁️ Deployment
 

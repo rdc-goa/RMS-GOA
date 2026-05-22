@@ -1,5 +1,7 @@
 'use client';
 
+import DOMPurify from 'isomorphic-dompurify';
+
 // This component centralizes the SOP content so it can be used in both the public SOP page and the dashboard dialog.
 // It uses dangerouslySetInnerHTML because the content is static and controlled, which is a safe use-case.
 // Using a library like react-markdown would be overkill for this simple, trusted content.

@@ -13,7 +13,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
 import { Download } from 'lucide-react';
-import * as XLSX from 'xlsx';
+import ExcelJS from 'exceljs';
 import { format } from 'date-fns';
 
 export default function ViewApplicationsPage() {
@@ -60,7 +60,7 @@ export default function ViewApplicationsPage() {
                     router.push('/dashboard');
                     return;
                 }
-                
+
                 setJob(jobData);
 
                 const appsQuery = query(collection(db, 'projectRecruitments', recruitmentId, 'applications'), orderBy('appliedAt', 'desc'));
@@ -78,7 +78,7 @@ export default function ViewApplicationsPage() {
         fetchData();
     }, [recruitmentId, user, router, toast]);
 
-    const handleExport = () => {
+    const handleExport = async () => {
         if (!applications.length) return;
         const dataToExport = applications.map(app => ({
             'Applicant Name': app.applicantName,
@@ -91,28 +91,44 @@ export default function ViewApplicationsPage() {
             'CV Link': app.cvUrl,
             'Cover Letter Link': app.coverLetterUrl || 'N/A',
         }));
-        const worksheet = XLSX.utils.json_to_sheet(dataToExport);
-        const workbook = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(workbook, worksheet, "Applications");
-        XLSX.writeFile(workbook, `applications_${job?.positionTitle.replace(/\s/g, '_')}.xlsx`);
+
+        const workbook = new ExcelJS.Workbook();
+        const worksheet = workbook.addWorksheet("Applications");
+
+        if (dataToExport.length > 0) {
+            const headers = Object.keys(dataToExport[0]);
+            worksheet.addRow(headers);
+            dataToExport.forEach(item => {
+                worksheet.addRow(Object.values(item));
+            });
+        }
+
+        const buffer = await workbook.xlsx.writeBuffer();
+        const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `applications_${job?.positionTitle.replace(/\s/g, '_')}.xlsx`;
+        a.click();
+        window.URL.revokeObjectURL(url);
     };
-    
+
     if (loading) {
-      return (
-        <div className="container mx-auto py-10">
-          <PageHeader title="Loading Applications..." description="Please wait..." />
-          <Skeleton className="h-64 w-full mt-8" />
-        </div>
-      );
+        return (
+            <div className="container mx-auto py-10">
+                <PageHeader title="Loading Applications..." description="Please wait..." />
+                <Skeleton className="h-64 w-full mt-8" />
+            </div>
+        );
     }
-    
+
     if (!job) return null;
 
     return (
         <div className="container mx-auto py-10">
             <PageHeader title={`Applicants for ${job.positionTitle}`} description={`Project: ${job.projectName}`} backButtonHref="/dashboard/post-a-job" backButtonText="Back to My Postings">
-                 <Button onClick={handleExport} disabled={applications.length === 0}>
-                    <Download className="mr-2 h-4 w-4" /> Export as XLSX
+                <Button onClick={handleExport} disabled={applications.length === 0}>
+                    <Download className="mr-2 h-4 w-4" /> Export as Excel
                 </Button>
             </PageHeader>
             <div className="mt-8">

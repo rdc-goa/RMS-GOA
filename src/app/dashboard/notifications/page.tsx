@@ -14,7 +14,7 @@ import { formatDistanceToNow } from 'date-fns';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogClose } from '@/components/ui/dialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
-import { manageCoAuthorRequest } from '@/app/bulkpapers';
+import { manageCoAuthorRequest } from '@/app/actions';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { AlertCircle } from 'lucide-react';
@@ -31,7 +31,7 @@ export default function NotificationsPage() {
   const [requestToReject, setRequestToReject] = useState<NotificationType | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 15;
-  
+
   // State for the acceptance dialog
   const [assignedRole, setAssignedRole] = useState<Author['role'] | ''>('');
   const [mainAuthorNewRole, setMainAuthorNewRole] = useState<Author['role'] | ''>('');
@@ -74,69 +74,69 @@ export default function NotificationsPage() {
 
   const handleMarkAsRead = async (notificationId: string) => {
     try {
-        const notifRef = doc(db, 'notifications', notificationId);
-        await updateDoc(notifRef, { isRead: true });
+      const notifRef = doc(db, 'notifications', notificationId);
+      await updateDoc(notifRef, { isRead: true });
     } catch (error) {
-        console.error("Error marking notification as read:", error);
-        toast({ variant: 'destructive', title: "Error", description: "Could not update notification." });
+      console.error("Error marking notification as read:", error);
+      toast({ variant: 'destructive', title: "Error", description: "Could not update notification." });
     }
   };
-  
+
   const handleRoleSelection = (selectedRole: Author['role']) => {
     setAssignedRole(selectedRole);
     if (!managingRequest || !user) return;
-    
+
     const { paper } = managingRequest;
     const mainAuthor = paper.authors.find(a => a.uid === user.uid);
-    
+
     const isFirstAuthorConflict = (selectedRole.includes('First Author') && mainAuthor?.role?.includes('First Author'));
     const isCorrespondingAuthorConflict = (selectedRole.includes('Corresponding Author') && mainAuthor?.role?.includes('Corresponding Author'));
-    
+
     if (isFirstAuthorConflict || isCorrespondingAuthorConflict) {
-        setRoleConflict(true);
+      setRoleConflict(true);
     } else {
-        setRoleConflict(false);
-        setMainAuthorNewRole('');
+      setRoleConflict(false);
+      setMainAuthorNewRole('');
     }
   };
 
   const handleOpenAcceptDialog = async (notification: NotificationType) => {
     if (!notification.paperId || !notification.requester) return;
     try {
-        const paperRef = doc(db, 'papers', notification.paperId);
-        const paperSnap = await getDoc(paperRef);
-        if (paperSnap.exists()) {
-            const paper = { id: paperSnap.id, ...paperSnap.data() } as ResearchPaper;
-            setManagingRequest({ notification, paper });
-            const requestedRole = notification.requester.role;
-            handleRoleSelection(requestedRole);
-        } else {
-            toast({ title: 'Error', description: 'Could not find the associated paper.', variant: 'destructive' });
-        }
+      const paperRef = doc(db, 'papers', notification.paperId);
+      const paperSnap = await getDoc(paperRef);
+      if (paperSnap.exists()) {
+        const paper = { id: paperSnap.id, ...paperSnap.data() } as ResearchPaper;
+        setManagingRequest({ notification, paper });
+        const requestedRole = notification.requester.role;
+        handleRoleSelection(requestedRole);
+      } else {
+        toast({ title: 'Error', description: 'Could not find the associated paper.', variant: 'destructive' });
+      }
     } catch (error) {
-        toast({ title: 'Error', description: 'Failed to fetch paper details.', variant: 'destructive' });
+      toast({ title: 'Error', description: 'Failed to fetch paper details.', variant: 'destructive' });
     }
   };
-  
+
   const handleConfirmAcceptRequest = async () => {
     if (!managingRequest || !assignedRole) {
-        toast({title: "Please assign a role to the requester.", variant: "destructive"});
-        return;
+      toast({ title: "Please assign a role to the requester.", variant: "destructive" });
+      return;
     }
     if (roleConflict && !mainAuthorNewRole) {
-        toast({title: "Please select a new role for yourself to resolve the conflict.", variant: "destructive"});
-        return;
+      toast({ title: "Please select a new role for yourself to resolve the conflict.", variant: "destructive" });
+      return;
     }
 
     const { notification } = managingRequest;
-    const result = await manageCoAuthorRequest(notification.paperId!, notification.requester!, 'accept', assignedRole, roleConflict ? mainAuthorNewRole : undefined);
-    
+    const result = await manageCoAuthorRequest(notification.paperId!, notification.requester!, 'accept', assignedRole as Author['role'], (roleConflict ? mainAuthorNewRole : undefined) as Author['role']);
+
     if (result.success) {
-        toast({title: "Co-Author Approved"});
-        await handleMarkAsRead(notification.id);
-        setManagingRequest(null);
+      toast({ title: "Co-Author Approved" });
+      await handleMarkAsRead(notification.id);
+      setManagingRequest(null);
     } else {
-        toast({title: "Error", description: result.error, variant: "destructive"});
+      toast({ title: "Error", description: result.error, variant: "destructive" });
     }
   };
 
@@ -144,11 +144,11 @@ export default function NotificationsPage() {
     if (!requestToReject) return;
     const result = await manageCoAuthorRequest(requestToReject.paperId!, requestToReject.requester!, 'reject');
     if (result.success) {
-        toast({title: "Request Rejected"});
-        await handleMarkAsRead(requestToReject.id);
-        setRequestToReject(null);
+      toast({ title: "Request Rejected" });
+      await handleMarkAsRead(requestToReject.id);
+      setRequestToReject(null);
     } else {
-        toast({title: "Error", description: result.error, variant: "destructive"});
+      toast({ title: "Error", description: result.error, variant: "destructive" });
     }
   };
 
@@ -162,14 +162,14 @@ export default function NotificationsPage() {
   const getAvailableRolesForMainAuthor = (paper?: ResearchPaper, requesterAssignedRole?: Author['role']): Author['role'][] => {
     if (!paper || !requesterAssignedRole) return AUTHOR_ROLES;
     const myCurrentRole = paper.authors.find(a => a.uid === user?.uid)?.role;
-    
+
     let availableRoles = AUTHOR_ROLES.filter(r => r !== myCurrentRole);
 
     if (requesterAssignedRole.includes('First Author')) {
-        availableRoles = availableRoles.filter(r => !r.includes('First Author'));
+      availableRoles = availableRoles.filter(r => !r.includes('First Author'));
     }
     if (requesterAssignedRole.includes('Corresponding Author')) {
-        availableRoles = availableRoles.filter(r => !r.includes('Corresponding Author'));
+      availableRoles = availableRoles.filter(r => !r.includes('Corresponding Author'));
     }
 
     return availableRoles;
@@ -181,27 +181,27 @@ export default function NotificationsPage() {
     if (title.includes('Review') || title.includes('Not Recommended')) return GanttChartSquare;
     return Bell;
   }
-  
-  const getNotificationLink = (notification: NotificationType): string | null => {
-      // For EMR meeting notifications, link to the management page
-      if (notification.title.toLowerCase().includes('emr') && notification.title.toLowerCase().includes('scheduled')) {
-          const callId = notification.projectId; // projectId holds the callId in this case
-          if (callId) {
-            return `/dashboard/emr-management/${callId}`;
-          }
-      }
-      
-      // For general project notifications
-      if (notification.projectId && !notification.projectId.startsWith('/')) {
-        return `/dashboard/project/${notification.projectId}`;
-      }
-      
-      // For links that are already full paths
-      if (notification.projectId?.startsWith('/')) {
-        return notification.projectId;
-      }
 
-      return null;
+  const getNotificationLink = (notification: NotificationType): string | null => {
+    // For EMR meeting notifications, link to the management page
+    if (notification.title.toLowerCase().includes('emr') && notification.title.toLowerCase().includes('scheduled')) {
+      const callId = notification.projectId; // projectId holds the callId in this case
+      if (callId) {
+        return `/dashboard/emr-management/${callId}`;
+      }
+    }
+
+    // For general project notifications
+    if (notification.projectId && !notification.projectId.startsWith('/')) {
+      return `/dashboard/project/${notification.projectId}`;
+    }
+
+    // For links that are already full paths
+    if (notification.projectId?.startsWith('/')) {
+      return notification.projectId;
+    }
+
+    return null;
   };
 
   const buttonText = `Confirm & Add as ${assignedRole}`
@@ -218,21 +218,21 @@ export default function NotificationsPage() {
                   <Loader2 className="h-8 w-8 animate-spin" />
                 </div>
               ) : notifications.length === 0 ? (
-                 <div className="text-center py-12 text-muted-foreground">
-                    <Bell className="mx-auto h-12 w-12" />
-                    <p className="mt-4">You have no new notifications.</p>
-                  </div>
+                <div className="text-center py-12 text-muted-foreground">
+                  <Bell className="mx-auto h-12 w-12" />
+                  <p className="mt-4">You have no new notifications.</p>
+                </div>
               ) : (
-                 <div className="space-y-4">
+                <div className="space-y-4">
                   {paginatedNotifications.map((notification) => {
                     const Icon = getIcon(notification.title);
                     const link = getNotificationLink(notification);
-                    
+
                     const NotificationContent = () => (
                       <div className="flex-1 min-w-0">
                         <p className="font-semibold break-words">{notification.title}</p>
                         <p className="text-sm text-muted-foreground mt-1">
-                            {formatDistanceToNow(new Date(notification.createdAt), { addSuffix: true })}
+                          {formatDistanceToNow(new Date(notification.createdAt), { addSuffix: true })}
                         </p>
                       </div>
                     );
@@ -241,14 +241,14 @@ export default function NotificationsPage() {
                       <div className="flex items-center gap-2 self-start sm:self-center flex-shrink-0">
                         {!notification.isRead && notification.type !== 'coAuthorRequest' && (
                           <Button variant="ghost" size="sm" onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleMarkAsRead(notification.id); }}>
-                              Mark as read
+                            Mark as read
                           </Button>
                         )}
                         {!notification.isRead && notification.type === 'coAuthorRequest' && (
-                           <>
-                             <Button size="sm" onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleOpenAcceptDialog(notification); }}><Check className="h-4 w-4 mr-2"/>Accept</Button>
-                             <Button size="sm" variant="destructive" onClick={(e) => { e.preventDefault(); e.stopPropagation(); setRequestToReject(notification); }}><X className="h-4 w-4 mr-2"/>Reject</Button>
-                           </>
+                          <>
+                            <Button size="sm" onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleOpenAcceptDialog(notification); }}><Check className="h-4 w-4 mr-2" />Accept</Button>
+                            <Button size="sm" variant="destructive" onClick={(e) => { e.preventDefault(); e.stopPropagation(); setRequestToReject(notification); }}><X className="h-4 w-4 mr-2" />Reject</Button>
+                          </>
                         )}
                       </div>
                     );
@@ -256,20 +256,19 @@ export default function NotificationsPage() {
                     return (
                       <div
                         key={notification.id}
-                        className={`flex items-start gap-4 rounded-lg border p-4 ${
-                          !notification.isRead ? "bg-accent/50" : ""
-                        }`}
+                        className={`flex items-start gap-4 rounded-lg border p-4 ${!notification.isRead ? "bg-accent/50" : ""
+                          }`}
                       >
                         <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/10 text-primary mt-1 flex-shrink-0">
                           <Icon className="h-5 w-5" />
                         </div>
                         <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2 flex-1 min-w-0">
                           {link && notification.type !== 'coAuthorRequest' ? (
-                              <Link href={link} className="flex-1 min-w-0" onClick={() => handleMarkAsRead(notification.id)}>
-                                <NotificationContent />
-                              </Link>
-                          ) : (
+                            <Link href={link} className="flex-1 min-w-0" onClick={() => handleMarkAsRead(notification.id)}>
                               <NotificationContent />
+                            </Link>
+                          ) : (
+                            <NotificationContent />
                           )}
                           <ActionButtons />
                         </div>
@@ -278,7 +277,7 @@ export default function NotificationsPage() {
                   })}
                 </div>
               )}
-              
+
               {notifications.length > itemsPerPage && (
                 <div className="flex items-center justify-between pt-6">
                   <div className="text-sm text-muted-foreground">
@@ -317,7 +316,7 @@ export default function NotificationsPage() {
           <DialogHeader>
             <DialogTitle>Accept '{managingRequest?.notification.requester?.role}' Request</DialogTitle>
             <DialogDescription>
-                {managingRequest?.notification.requester?.name} has requested to be added as the <span className="font-bold">{managingRequest?.notification.requester?.role}</span>.
+              {managingRequest?.notification.requester?.name} has requested to be added as the <span className="font-bold">{managingRequest?.notification.requester?.role}</span>.
             </DialogDescription>
           </DialogHeader>
           <div className="py-4 space-y-4">
@@ -330,24 +329,24 @@ export default function NotificationsPage() {
                 </SelectContent>
               </Select>
             </div>
-            
+
             {roleConflict && (
-                <Alert variant="destructive">
-                    <AlertCircle className="h-4 w-4" />
-                    <AlertTitle>Role Conflict Detected!</AlertTitle>
-                    <AlertDescription>
-                        You are also assigned as the {assignedRole}. To resolve this, please select a new role for yourself.
-                        <div className="mt-4">
-                            <Label>Your New Role</Label>
-                            <Select value={mainAuthorNewRole} onValueChange={(value) => setMainAuthorNewRole(value as Author['role'])}>
-                                <SelectTrigger><SelectValue placeholder="Select your new role" /></SelectTrigger>
-                                <SelectContent>
-                                    {getAvailableRolesForMainAuthor(managingRequest?.paper, assignedRole as Author['role']).map(role => <SelectItem key={role} value={role}>{role}</SelectItem>)}
-                                </SelectContent>
-                            </Select>
-                        </div>
-                    </AlertDescription>
-                </Alert>
+              <Alert variant="destructive">
+                <AlertCircle className="h-4 w-4" />
+                <AlertTitle>Role Conflict Detected!</AlertTitle>
+                <AlertDescription>
+                  You are also assigned as the {assignedRole}. To resolve this, please select a new role for yourself.
+                  <div className="mt-4">
+                    <Label>Your New Role</Label>
+                    <Select value={mainAuthorNewRole} onValueChange={(value) => setMainAuthorNewRole(value as Author['role'])}>
+                      <SelectTrigger><SelectValue placeholder="Select your new role" /></SelectTrigger>
+                      <SelectContent>
+                        {getAvailableRolesForMainAuthor(managingRequest?.paper, assignedRole as Author['role']).map(role => <SelectItem key={role} value={role}>{role}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </AlertDescription>
+              </Alert>
             )}
           </div>
           <DialogFooter>
@@ -356,19 +355,19 @@ export default function NotificationsPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-      
-       <AlertDialog open={!!requestToReject} onOpenChange={() => setRequestToReject(null)}>
-            <AlertDialogContent>
-                <AlertDialogHeader>
-                    <AlertDialogTitle>Are you sure you want to reject this request?</AlertDialogTitle>
-                    <AlertDialogDescription>This action cannot be undone. The user will not be added as a co-author.</AlertDialogDescription>
-                </AlertDialogHeader>
-                <AlertDialogFooter>
-                    <AlertDialogCancel>Cancel</AlertDialogCancel>
-                    <AlertDialogAction onClick={handleRejectRequest} className="bg-destructive hover:bg-destructive/90">Confirm Reject</AlertDialogAction>
-                </AlertDialogFooter>
-            </AlertDialogContent>
-        </AlertDialog>
+
+      <AlertDialog open={!!requestToReject} onOpenChange={() => setRequestToReject(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Are you sure you want to reject this request?</AlertDialogTitle>
+            <AlertDialogDescription>This action cannot be undone. The user will not be added as a co-author.</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleRejectRequest} className="bg-destructive hover:bg-destructive/90">Confirm Reject</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   );
 }

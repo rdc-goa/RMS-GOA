@@ -9,7 +9,7 @@ type ErrorEvents = {
 
 // A simple, type-safe event emitter for handling specific error types.
 // We are using the 'events' package, which is a Node.js core module polyfilled by Next.js for the client.
-class TypedEventEmitter<T> {
+class TypedEventEmitter<T extends Record<string, (...args: any[]) => void>> {
   private emitter = new EventEmitter();
 
   emit<K extends keyof T>(event: K, ...args: Parameters<T[K]>): boolean {

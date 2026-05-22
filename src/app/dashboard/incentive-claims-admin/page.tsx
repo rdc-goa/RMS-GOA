@@ -15,12 +15,10 @@ import {
   DropdownMenuLabel,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { db } from '@/lib/config';
-import { collection, getDocs, doc, orderBy, query } from 'firebase/firestore';
-import type { IncentiveClaim } from '@/types';
+import type { IncentiveClaim, User } from '@/types';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
-import { updateIncentiveClaimStatus } from '@/app/actions';
+import { updateIncentiveClaimStatus, fetchAllClaimsAction } from '@/app/actions';
 
 const STATUSES: IncentiveClaim['status'][] = ['Pending', 'Accepted', 'Rejected'];
 
@@ -32,10 +30,7 @@ export default function ManageIncentiveClaimsPage() {
   const fetchClaims = useCallback(async () => {
     setLoading(true);
     try {
-      const claimsCollection = collection(db, 'incentiveClaims');
-      const q = query(claimsCollection, orderBy('submissionDate', 'desc'));
-      const claimSnapshot = await getDocs(q);
-      const claimList = claimSnapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as IncentiveClaim));
+      const claimList = await fetchAllClaimsAction({ role: 'admin' } as User);
       setClaims(claimList);
     } catch (error) {
       console.error("Error fetching claims:", error);

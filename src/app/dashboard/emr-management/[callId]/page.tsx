@@ -10,7 +10,6 @@ import { PageHeader } from '@/components/page-header';
 import { Skeleton } from '@/components/ui/skeleton';
 import { EmrManagementClient } from '@/components/emr/emr-management-client';
 import { format, parseISO } from 'date-fns';
-import { Popover } from '@/components/ui/popover'; // Fix: Added Popover import
 
 export default function EmrManagementPage() {
     const params = useParams();
@@ -19,7 +18,6 @@ export default function EmrManagementPage() {
     const { toast } = useToast();
 
     const [call, setCall] = useState<FundingCall | null>(null);
-    const [interests, setInterests] = useState<EmrInterest[]>([]);
     const [allUsers, setAllUsers] = useState<User[]>([]);
     const [currentUser, setCurrentUser] = useState<User | null>(null);
     const [loading, setLoading] = useState(true);
@@ -51,12 +49,10 @@ export default function EmrManagementPage() {
         try {
             // Fetch all necessary data in parallel
             const callDocRef = doc(db, 'fundingCalls', callId);
-            const interestsQuery = query(collection(db, 'emrInterests'), where('callId', '==', callId));
             const usersQuery = query(collection(db, 'users'));
 
-            const [callDoc, interestsSnapshot, usersSnapshot] = await Promise.all([
+            const [callDoc, usersSnapshot] = await Promise.all([
                 getDoc(callDocRef),
-                getDocs(interestsQuery),
                 getDocs(usersQuery),
             ]);
 
@@ -67,7 +63,6 @@ export default function EmrManagementPage() {
             }
 
             setCall({ id: callDoc.id, ...callDoc.data() } as FundingCall);
-            setInterests(interestsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as EmrInterest)));
             setAllUsers(usersSnapshot.docs.map(doc => ({ uid: doc.id, ...doc.data() } as User)));
 
         } catch (error) {
@@ -85,7 +80,7 @@ export default function EmrManagementPage() {
         }
     }, [fetchData, currentUser]);
 
-    if (loading || !call || !currentUser) {
+    if (loading) {
         return (
             <div className="container mx-auto py-10">
                 <PageHeader title="Loading EMR Management..." description="Please wait while we fetch the details." />
@@ -96,20 +91,36 @@ export default function EmrManagementPage() {
         );
     }
 
+    if (!currentUser) return null;
+
+    if (!call) {
+        return (
+            <div className="container mx-auto py-10 text-center">
+                <PageHeader 
+                    title="Error: Call Not Found" 
+                    description="The requested funding call does not exist or has been removed." 
+                    backButtonHref="/dashboard/emr-management"
+                    backButtonText="Go Back"
+                />
+            </div>
+        );
+    }
+
     const formattedDeadline = call.applyDeadline ? format(parseISO(call.applyDeadline), 'PPP') : 'N/A';
+    const creator = allUsers.find(u => u.uid === call.createdBy);
+    const createdByName = creator ? creator.name : (call.createdBy === 'Super-admin' ? 'Super-admin' : (call.createdBy || 'N/A'));
 
     return (
         <div className="container mx-auto py-10">
             <PageHeader
                 title={`Manage: ${call.title}`}
-                description={`Agency: ${call.agency} | Agency Deadline: ${formattedDeadline}`}
+                description={`Call ID: ${call.callIdentifier || 'N/A'} | Agency: ${call.agency} | Added by: ${createdByName} | Agency Deadline: ${formattedDeadline}`}
                 backButtonHref="/dashboard/emr-management"
                 backButtonText="Back to All Calls"
             />
             <div className="mt-8">
                 <EmrManagementClient
                     call={call}
-                    interests={interests}
                     allUsers={allUsers}
                     currentUser={currentUser}
                     onActionComplete={fetchData}

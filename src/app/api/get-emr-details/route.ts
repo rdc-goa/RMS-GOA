@@ -43,7 +43,12 @@ export async function GET(request: NextRequest) {
 
       return NextResponse.json(
         { success: true, data: { call: filteredCall } },
-        { headers: corsHeaders }
+        { 
+          headers: {
+            ...corsHeaders,
+            'Cache-Control': 'public, s-maxage=1800, stale-while-revalidate=3600',
+          }
+        }
       );
     } else {
       const callsSnapshot = await adminDb
@@ -66,7 +71,12 @@ export async function GET(request: NextRequest) {
 
       return NextResponse.json(
         { success: true, data: { calls } },
-        { headers: corsHeaders }
+        { 
+          headers: {
+            ...corsHeaders,
+            'Cache-Control': 'public, s-maxage=1800, stale-while-revalidate=3600',
+          }
+        }
       );
     }
   } catch (error: any) {
@@ -105,7 +115,12 @@ export async function POST(request: NextRequest) {
 
       return NextResponse.json(
         { success: true, data: { call: filteredCall } },
-        { headers: corsHeaders }
+        { 
+          headers: {
+            ...corsHeaders,
+            'Cache-Control': 'public, s-maxage=1800, stale-while-revalidate=3600',
+          }
+        }
       );
     } else {
       const callsSnapshot = await adminDb

@@ -10,8 +10,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import Link from 'next/link';
-import { Download, Trash2, CalendarClock, Eye, MoreHorizontal, MessageSquare, Loader2, FileUp, FileText as ViewIcon, Edit, Upload, UserCheck, UserPlus, Search, Send, CalendarDays, ChevronRight, Plus } from 'lucide-react';
-import * as XLSX from 'xlsx';
+import { Download, Trash2, CalendarClock, Eye, MoreHorizontal, MessageSquare, Loader2, FileUp, FileText as ViewIcon, Edit, Upload, UserCheck, UserPlus, Search, Send, CalendarDays, ChevronRight, Plus, CheckCircle, XCircle } from 'lucide-react';
+import ExcelJS from 'exceljs';
 import { Textarea } from '../ui/textarea';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage, FormDescription } from '../ui/form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -112,6 +112,7 @@ function RegisterUserDialog({ call, adminUser, isOpen, onOpenChange, onRegisterS
     const [isSearching, setIsSearching] = useState(false);
 
     const [pptFile, setPptFile] = useState<File | null>(null);
+    const [proposalFile, setProposalFile] = useState<File | null>(null);
 
     const handleSearch = async () => {
         if (!searchTerm.trim()) return;
@@ -127,20 +128,32 @@ function RegisterUserDialog({ call, adminUser, isOpen, onOpenChange, onRegisterS
     };
 
     const handleRegister = async (userToRegister: User) => {
-        if (!pptFile) {
-            toast({ variant: 'destructive', title: 'Error', description: 'Please upload a presentation (PPT) first.' });
+        if (!pptFile || !proposalFile) {
+            toast({ variant: 'destructive', title: 'Error', description: 'Please upload both presentation (PPT) and project proposal (PDF/ZIP).' });
             return;
         }
         if (pptFile.size > 10 * 1024 * 1024) {
             toast({ variant: 'destructive', title: 'Error', description: 'Presentation size must be less than 10MB.' });
             return;
         }
+        if (proposalFile.size > 15 * 1024 * 1024) {
+            toast({ variant: 'destructive', title: 'Error', description: 'Proposal size must be less than 15MB.' });
+            return;
+        }
         setIsSubmitting(true);
         try {
-            const dataUrl = await fileToDataUrl(pptFile);
-            const result = await registerEmrInterest(call.id, userToRegister, { dataUrl, fileName: pptFile.name }, [], { adminUid: adminUser.uid, adminName: adminUser.name });
+            const pptDataUrl = await fileToDataUrl(pptFile);
+            const proposalDataUrl = await fileToDataUrl(proposalFile);
+            const result = await registerEmrInterest(
+                call.id,
+                userToRegister,
+                { dataUrl: pptDataUrl, fileName: pptFile.name },
+                { dataUrl: proposalDataUrl, fileName: proposalFile.name },
+                [],
+                { adminUid: adminUser.uid, adminName: adminUser.name }
+            );
             if (result.success) {
-                toast({ title: 'Success', description: `${userToRegister.name} has been registered for the call.` });
+                toast({ title: 'Success', description: `${userToRegister.name} has been registered for the call with mandatory documents.` });
                 onRegisterSuccess();
                 onOpenChange(false);
             } else {
@@ -164,7 +177,13 @@ function RegisterUserDialog({ call, adminUser, isOpen, onOpenChange, onRegisterS
                     <div className="space-y-2">
                         <Label>User Presentation (PPT/PDF) <span className="text-destructive">*</span></Label>
                         <Input type="file" accept=".ppt,.pptx,.pdf" onChange={(e) => setPptFile(e.target.files?.[0] || null)} />
-                        <p className="text-xs text-muted-foreground">Uploading a presentation (PPT or PDF) is mandatory for EMR registration. (Max size: 10MB)</p>
+                        <p className="text-xs text-muted-foreground">Mandatory for EMR registration. (Max size: 10MB)</p>
+                    </div>
+
+                    <div className="space-y-2 border-t pt-4">
+                        <Label>Project Proposal (PDF/ZIP) <span className="text-destructive">*</span></Label>
+                        <Input type="file" accept=".pdf,.zip" onChange={(e) => setProposalFile(e.target.files?.[0] || null)} />
+                        <p className="text-xs text-muted-foreground">Mandatory for EMR registration. (Max size: 15MB)</p>
                     </div>
 
                     <div className="flex items-center gap-2">
@@ -179,7 +198,7 @@ function RegisterUserDialog({ call, adminUser, isOpen, onOpenChange, onRegisterS
                                         <p className="font-semibold">{user.name}</p>
                                         <p className="text-xs text-muted-foreground">{user.email}</p>
                                     </div>
-                                    <Button size="sm" onClick={() => handleRegister(user)} disabled={isSubmitting || !pptFile}>
+                                    <Button size="sm" onClick={() => handleRegister(user)} disabled={isSubmitting || !pptFile || !proposalFile}>
                                         {isSubmitting ? 'Registering...' : 'Register'}
                                     </Button>
                                 </div>
@@ -539,6 +558,9 @@ export function EmrManagementClient({ call, allUsers, currentUser, onActionCompl
 
     const [interests, setInterests] = useState<EmrInterest[]>([]);
     const [loadingInterests, setLoadingInterests] = useState(false);
+    const [lastVisibleDoc, setLastVisibleDoc] = useState<QueryDocumentSnapshot<DocumentData> | null>(null);
+    const [hasMore, setHasMore] = useState(true);
+    const pageSize = 10;
 
     const [isDeleting, setIsDeleting] = useState(false);
     const [interestToUpdate, setInterestToUpdate] = useState<EmrInterest | null>(null);
@@ -556,32 +578,43 @@ export function EmrManagementClient({ call, allUsers, currentUser, onActionCompl
     const [isSendingReminders, setIsSendingReminders] = useState(false);
 
 
-    const fetchInterests = useCallback(async () => {
+    const fetchInterests = useCallback(async (isLoadMore = false) => {
+        if (loadingInterests || (!hasMore && isLoadMore)) return;
         setLoadingInterests(true);
         try {
-            const interestsQuery = query(
+            let interestsQuery = query(
                 collection(db, 'emrInterests'),
                 where('callId', '==', call.id),
-                orderBy('userName', 'asc')
+                orderBy('userName', 'asc'),
+                limit(pageSize)
             );
+
+            if (isLoadMore && lastVisibleDoc) {
+                interestsQuery = query(interestsQuery, startAfter(lastVisibleDoc));
+            }
 
             const snapshot = await getDocs(interestsQuery);
             const newInterests = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as EmrInterest));
 
-            setInterests(newInterests);
+            if (isLoadMore) {
+                setInterests(prev => [...prev, ...newInterests]);
+            } else {
+                setInterests(newInterests);
+            }
+
+            setLastVisibleDoc(snapshot.docs[snapshot.docs.length - 1] || null);
+            setHasMore(snapshot.docs.length === pageSize);
         } catch (error) {
             console.error("Error fetching interests:", error);
-            reportSystemError(error, currentUser);
+            reportSystemError(error, currentUser, `Fetching EMR interests/registrations for call: ${call.title}`);
             toast({ variant: 'destructive', title: 'Error', description: 'Could not fetch registrations.' });
         } finally {
             setLoadingInterests(false);
         }
-    }, [call.id, currentUser, toast]);
+    }, [call.id, hasMore, lastVisibleDoc, loadingInterests, toast]);
 
     useEffect(() => {
-        // We only want to fetch once on mount or when call.id changes.
         fetchInterests();
-        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [call.id]);
 
 
@@ -673,7 +706,7 @@ export function EmrManagementClient({ call, allUsers, currentUser, onActionCompl
     };
 
 
-    const handleExport = () => {
+    const handleExport = async () => {
         const dataToExport = interests.map(interest => {
             const interestedUser = userMap.get(interest.userId);
             return {
@@ -687,10 +720,25 @@ export function EmrManagementClient({ call, allUsers, currentUser, onActionCompl
             };
         });
 
-        const worksheet = XLSX.utils.json_to_sheet(dataToExport);
-        const workbook = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(workbook, worksheet, 'Registrations');
-        XLSX.writeFile(workbook, `registrations_${call.title.replace(/\s+/g, '_')}.xlsx`);
+        const workbook = new ExcelJS.Workbook();
+        const worksheet = workbook.addWorksheet('Registrations');
+
+        if (dataToExport.length > 0) {
+            const headers = Object.keys(dataToExport[0]);
+            worksheet.addRow(headers);
+            dataToExport.forEach(item => {
+                worksheet.addRow(Object.values(item));
+            });
+        }
+
+        const buffer = await workbook.xlsx.writeBuffer();
+        const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `registrations_${call.title.replace(/\s+/g, '_')}.xlsx`;
+        a.click();
+        window.URL.revokeObjectURL(url);
     };
 
     const filteredInterests = useMemo(() => {
@@ -712,7 +760,11 @@ export function EmrManagementClient({ call, allUsers, currentUser, onActionCompl
     }, [call.meetingDetails?.assignedEvaluators, allUsers]);
 
     const pendingPptUploads = useMemo(() => {
-        return interests.filter(i => !i.pptUrl).length;
+        return interests.filter(i => {
+            const needsReminder = ['Registered', 'PPT Submitted', 'Evaluation Pending', 'Awaiting Rescheduling', 'Revision Needed'].includes(i.status);
+            const hasMissingDocs = !i.pptUrl || !i.proposalUrl;
+            return needsReminder && hasMissingDocs;
+        }).length;
     }, [interests]);
 
 
@@ -766,7 +818,7 @@ export function EmrManagementClient({ call, allUsers, currentUser, onActionCompl
                     <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
                         <div>
                             <CardTitle>
-                                Applicant Registrations ({interests.length})
+                                Applicant Registrations ({interests.length}{hasMore ? '+' : ''})
                             </CardTitle>
                             <CardDescription>
                                 Review and manage all applicants for this call.
@@ -774,7 +826,7 @@ export function EmrManagementClient({ call, allUsers, currentUser, onActionCompl
                         </div>
 
                         <div className="flex flex-wrap items-center gap-2">
-                            {!meetingIsScheduled && currentUser.designation !== 'Head of Goa Campus' && (
+                            {unscheduledApplicantsExist && currentUser.designation !== 'Head of Goa Campus' && (
                                 <Button onClick={() => setIsScheduleDialogOpen(true)}>
                                     <CalendarClock className="mr-2 h-4 w-4" />
                                     Schedule Meeting
@@ -817,7 +869,7 @@ export function EmrManagementClient({ call, allUsers, currentUser, onActionCompl
                                 disabled={interests.length === 0}
                             >
                                 <Download className="mr-2 h-4 w-4" />
-                                Export XLSX
+                                Export Excel
                             </Button>
                         </div>
                     </div>
@@ -839,6 +891,7 @@ export function EmrManagementClient({ call, allUsers, currentUser, onActionCompl
                                     <TableHead className="hidden lg:table-cell">Interest ID</TableHead>
                                     <TableHead>Principal Investigator</TableHead>
                                     <TableHead className="hidden xl:table-cell">Co-PIs</TableHead>
+                                    <TableHead className="hidden lg:table-cell">Evaluators</TableHead>
                                     <TableHead>Status</TableHead>
                                     <TableHead>Documents</TableHead>
                                     <TableHead className="text-right">Actions</TableHead>
@@ -847,7 +900,7 @@ export function EmrManagementClient({ call, allUsers, currentUser, onActionCompl
                             <TableBody>
                                 {filteredInterests.length === 0 ? (
                                     <TableRow>
-                                        <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
+                                        <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
                                             {loadingInterests ? <Loader2 className="h-8 w-8 animate-spin mx-auto" /> : 'No registrations found.'}
                                         </TableCell>
                                     </TableRow>
@@ -881,7 +934,7 @@ export function EmrManagementClient({ call, allUsers, currentUser, onActionCompl
                                                         interest.coPiNames.map((name, i) => {
                                                             const coPiDetail = interest.coPiDetails?.find(d => d.name === name || d.email === interest.coPiEmails?.[i]);
                                                             const coPiUser = allUsers.find(u => u.email === coPiDetail?.email || (coPiDetail?.uid && u.uid === coPiDetail.uid));
-                                                            const campus = coPiUser?.campus || 'Vadodara';
+                                                            const campus = coPiUser?.campus || 'Goa';
 
                                                             const coPiProfileLink = coPiDetail?.misId ? (campus === 'Goa' ? `/goa/${coPiDetail.misId}` : `/profile/${coPiDetail.misId}`) : null;
 
@@ -900,9 +953,44 @@ export function EmrManagementClient({ call, allUsers, currentUser, onActionCompl
                                                     )}
                                                 </div>
                                             </TableCell>
+                                            <TableCell className="hidden lg:table-cell">
+                                                <div className="flex flex-col gap-1">
+                                                    {interest.assignedEvaluators && interest.assignedEvaluators.length > 0 ? (
+                                                        interest.assignedEvaluators.map((uid, i) => {
+                                                            const evaluator = userMap.get(uid);
+                                                            const name = evaluator?.name || 'Unknown User';
+                                                            const hasEvaluated = interest.evaluatedBy?.includes(uid);
+                                                            const isAbsent = interest.absentEvaluators?.includes(uid);
+                                                            
+                                                            let variant: "default" | "outline" | "secondary" | "destructive" = "outline";
+                                                            let tooltip = "Pending Evaluation";
+                                                            
+                                                            if (hasEvaluated) {
+                                                                variant = "default";
+                                                                tooltip = "Evaluation Submitted";
+                                                            } else if (isAbsent) {
+                                                                variant = "destructive";
+                                                                tooltip = "Marked Absent";
+                                                            }
+
+                                                            return (
+                                                                <div key={i} className="flex items-center" title={tooltip}>
+                                                                    <Badge variant={variant} className="w-fit text-[10px] truncate max-w-[120px]">
+                                                                        {name}
+                                                                    </Badge>
+                                                                    {hasEvaluated && <CheckCircle className="h-3 w-3 ml-1 text-green-600 flex-shrink-0" />}
+                                                                    {isAbsent && <XCircle className="h-3 w-3 ml-1 text-red-600 flex-shrink-0" />}
+                                                                </div>
+                                                            );
+                                                        })
+                                                    ) : (
+                                                        <span className="text-xs text-muted-foreground">None</span>
+                                                    )}
+                                                </div>
+                                            </TableCell>
                                             <TableCell>
                                                 <Badge variant={
-                                                    interest.status === 'Sanctioned' ? 'default' :
+                                                    interest.status === 'Sanctioned' || interest.status === 'Recommended' ? 'default' :
                                                         (interest.status === 'Not Recommended' || interest.status === 'Not Sanctioned') ? 'destructive' : 'secondary'
                                                 } className="text-[10px] px-1 h-5">
                                                     {interest.status}
@@ -994,6 +1082,12 @@ export function EmrManagementClient({ call, allUsers, currentUser, onActionCompl
                                                                 <DropdownMenuItem onClick={() => handleOpenRemarksDialog(interest, 'Sanctioned')}>
                                                                     Sanctioned
                                                                 </DropdownMenuItem>
+                                                                <DropdownMenuItem onClick={() => handleOpenRemarksDialog(interest, 'Recommended')}>
+                                                                    Recommended
+                                                                </DropdownMenuItem>
+                                                                <DropdownMenuItem onClick={() => handleOpenRemarksDialog(interest, 'Revision Submitted')}>
+                                                                    Revision Submitted
+                                                                </DropdownMenuItem>
                                                                 <DropdownMenuItem onClick={() => handleOpenRemarksDialog(interest, 'Not Recommended')}>
                                                                     Rejected
                                                                 </DropdownMenuItem>
@@ -1030,6 +1124,14 @@ export function EmrManagementClient({ call, allUsers, currentUser, onActionCompl
                             </TableBody>
                         </Table>
                     </div>
+                    {hasMore && (
+                        <div className="flex justify-center py-4">
+                            <Button variant="outline" size="sm" onClick={() => fetchInterests(true)} disabled={loadingInterests}>
+                                {loadingInterests ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <ChevronRight className="h-4 w-4 mr-2 rotate-90" />}
+                                Load More
+                            </Button>
+                        </div>
+                    )}
                 </CardContent>
 
                 <ScheduleMeetingDialog

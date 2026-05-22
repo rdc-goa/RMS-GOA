@@ -13,7 +13,7 @@ export function Logo({ variant = 'public' }: LogoProps) {
           src="https://pinxoxpbufq92wb4.public.blob.vercel-storage.com/Research%20%26%20Development%20%E2%80%A8Cell%20b.svg"
           alt="RDC Logo"
           width={250}
-          height={70}
+          height={60}
           className="block dark:hidden group-data-[collapsible=icon]:hidden"
           priority
         />
@@ -22,7 +22,7 @@ export function Logo({ variant = 'public' }: LogoProps) {
           src="https://pinxoxpbufq92wb4.public.blob.vercel-storage.com/Research%20%26%20Development%20%E2%80%A8Cell%20W.svg"
           alt="RDC Logo"
           width={250}
-          height={70}
+          height={60}
           className="hidden dark:block group-data-[collapsible=icon]:hidden"
           priority
         />
@@ -38,18 +38,18 @@ export function Logo({ variant = 'public' }: LogoProps) {
   return (
     <div className="flex items-center justify-center p-2" style={{ minHeight: 49 }}>
       <Image
-        src="https://pinxoxpbufq92wb4.public.blob.vercel-storage.com/RDC-PU-LOGO-BLACK.svg"
+        src="https://atkqjlzikx23ms5d.public.blob.vercel-storage.com/PU%20Goa%20Black.png"
         alt="RDC Logo"
-        width={350}
-        height={100}
+        width={240}
+        height={63}
         className="block dark:hidden"
         priority
       />
       <Image
-        src="https://lhdlkrfbkon55i6u.public.blob.vercel-storage.com/Pu%20Goa%20White.png"
+        src="https://atkqjlzikx23ms5d.public.blob.vercel-storage.com/Pu%20Goa%20White.png"
         alt="RDC Logo"
-        width={250}
-        height={100}
+        width={240}
+        height={63}
         className="hidden dark:block"
         priority
       />

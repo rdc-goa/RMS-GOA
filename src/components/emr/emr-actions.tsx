@@ -57,6 +57,9 @@ const registerInterestSchema = z.object({
     ppt: z.any()
         .refine(files => files?.length > 0, "Presentation (PPT) is mandatory.")
         .refine(files => files?.[0]?.size <= 10 * 1024 * 1024, "Presentation size must be less than 10MB."),
+    proposal: z.any()
+        .refine(files => files?.length > 0, "Project Proposal is mandatory.")
+        .refine(files => files?.[0]?.size <= 15 * 1024 * 1024, "Proposal size must be less than 15MB."),
 });
 
 const submitToAgencySchema = z.object({
@@ -314,15 +317,28 @@ function RegisterInterestDialog({ call, user, isOpen, onOpenChange, onRegisterSu
         setIsSubmitting(true);
         try {
             const pptFile = values.ppt[0];
-            const dataUrl = await new Promise<string>((resolve) => {
+            const pptDataUrl = await new Promise<string>((resolve) => {
                 const reader = new FileReader();
                 reader.onloadend = () => resolve(reader.result as string);
                 reader.readAsDataURL(pptFile);
             });
 
-            const result = await registerEmrInterest(call.id, user, { dataUrl, fileName: pptFile.name }, coPiList);
+            const proposalFile = values.proposal[0];
+            const proposalDataUrl = await new Promise<string>((resolve) => {
+                const reader = new FileReader();
+                reader.onloadend = () => resolve(reader.result as string);
+                reader.readAsDataURL(proposalFile);
+            });
+
+            const result = await registerEmrInterest(
+                call.id, 
+                user, 
+                { dataUrl: pptDataUrl, fileName: pptFile.name }, 
+                { dataUrl: proposalDataUrl, fileName: proposalFile.name },
+                coPiList
+            );
             if (result.success) {
-                toast({ title: 'Interest Registered!', description: 'Your interest has been successfully recorded.' });
+                toast({ title: 'Interest Registered!', description: 'Your interest has been successfully recorded with mandatory documents.' });
                 onRegisterSuccess();
                 onOpenChange(false);
             } else {
@@ -464,6 +480,27 @@ function RegisterInterestDialog({ call, user, isOpen, onOpenChange, onRegisterSu
                                             </FormControl>
                                             <FormDescription>
                                                 Uploading a presentation (PPT or PDF) is mandatory to register interest. (Max size: 10MB)
+                                            </FormDescription>
+                                            <FormMessage />
+                                        </FormItem>
+                                    )}
+                                />
+                                <FormField
+                                    name="proposal"
+                                    control={form.control}
+                                    render={({ field: { onChange, value, ...rest } }) => (
+                                        <FormItem>
+                                            <FormLabel>Project Proposal (PDF/ZIP) <span className="text-destructive">*</span></FormLabel>
+                                            <FormControl>
+                                                <Input
+                                                    type="file"
+                                                    accept=".pdf,.zip"
+                                                    onChange={(e) => onChange(e.target.files)}
+                                                    {...rest}
+                                                />
+                                            </FormControl>
+                                            <FormDescription>
+                                                Uploading a project proposal (PDF or ZIP) is mandatory. (Max size: 15MB)
                                             </FormDescription>
                                             <FormMessage />
                                         </FormItem>

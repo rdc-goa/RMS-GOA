@@ -51,4 +51,4 @@ We may update Our Privacy Policy from time to time. We will notify You of any ch
 
 ## 6. Contact Us
 
-If you have any questions about this Privacy Policy, You can contact us at: **[rdc@goa.paruluniversity.ac.in](mailto:rdc@goa.paruluniversity.ac.in)**
+If you have any questions about this Privacy Policy, You can contact us at: **[helpdesk.rdc@paruluniversity.ac.in](mailto:helpdesk.rdc@paruluniversity.ac.in)**

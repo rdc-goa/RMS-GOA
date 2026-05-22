@@ -551,6 +551,34 @@ export default function ManageUsersPage() {
           </Select>
       </div>
 
+      {selectedUsers.length > 0 && (
+        <div className="bg-muted/50 border rounded-lg p-3 mb-4 flex items-center justify-between animate-in fade-in slide-in-from-top-1">
+          <div className="text-sm">
+            <span className="font-semibold">{selectedUsers.length}</span> users selected 
+            {selectedUsers.length === paginatedUsers.length && sortedAndFilteredUsers.length > itemsPerPage && (
+              <>
+                <span className="mx-2">|</span>
+                <Button 
+                  variant="link" 
+                  className="p-0 h-auto font-bold text-primary" 
+                  onClick={() => setSelectedUsers(sortedAndFilteredUsers.map(u => u.uid))}
+                >
+                  Select all {sortedAndFilteredUsers.length} users matching this filter
+                </Button>
+              </>
+            )}
+          </div>
+          <Button 
+            variant="ghost" 
+            size="sm" 
+            onClick={() => setSelectedUsers([])}
+            className="text-xs h-8"
+          >
+            Clear Selection
+          </Button>
+        </div>
+      )}
+
       <div className="mt-4">
         <Card>
           <CardContent className="pt-6">
@@ -563,7 +591,7 @@ export default function ManageUsersPage() {
                         checked={isAllSelected}
                         onCheckedChange={(checked) => {
                           if (checked) {
-                            setSelectedUsers(paginatedUsers.map(u => u.uid));
+                            setSelectedUsers(sortedAndFilteredUsers.map(u => u.uid));
                           } else {
                             setSelectedUsers([]);
                           }
@@ -670,15 +698,7 @@ export default function ManageUsersPage() {
                                           </DropdownMenuSubContent>
                                       </DropdownMenuPortal>
                                   </DropdownMenuSub>
-                                  {user.designation === 'Head of Goa Campus' ? (
-                                      <DropdownMenuItem onClick={() => handleRoleChange(user.uid, 'faculty', { designation: 'faculty', campus: 'Goa' })}>
-                                          Dismiss as Head of Goa Campus
-                                      </DropdownMenuItem>
-                                  ) : (
-                                      <DropdownMenuItem onClick={() => handleRoleChange(user.uid, 'admin', { designation: 'Head of Goa Campus', campus: 'Goa'})}>
-                                          Assign as Head of Goa Campus
-                                      </DropdownMenuItem>
-                                  )}
+
                                 </>
                               )}
                               {isCurrentUserSuperAdmin && user.role === 'CRO' && (
@@ -727,7 +747,7 @@ export default function ManageUsersPage() {
                 const isActionsDisabled = isCurrentUserLoggedIn || (isPrimarySuperAdmin && currentUser?.email !== PRIMARY_SUPER_ADMIN_EMAIL);
                 const profileLink = user.campus === 'Goa' ? `/goa/${user.misId}` : `/profile/${user.misId}`;
                 return (
-                  <Card key={user.uid} className="flex flex-col h-full">
+                  <Card key={user.uid} className="flex flex-col">
                     <CardHeader className="flex-row items-start justify-between gap-4 pb-2">
                         <div className="flex items-center gap-2">
                            <Checkbox
@@ -776,7 +796,7 @@ export default function ManageUsersPage() {
                                         </DropdownMenuSubContent>
                                     </DropdownMenuPortal>
                                 </DropdownMenuSub>
-                                {user.designation === 'Head of Goa Campus' ? ( <DropdownMenuItem onClick={() => handleRoleChange(user.uid, 'faculty', { designation: 'faculty', campus: 'Goa' })}>Dismiss as Head of Goa Campus</DropdownMenuItem>) : (<DropdownMenuItem onClick={() => handleRoleChange(user.uid, 'admin', { designation: 'Head of Goa Campus', campus: 'Goa'})}>Assign as Head of Goa Campus</DropdownMenuItem>)}
+
                               </>
                             )}
                             {isCurrentUserSuperAdmin && user.role === 'CRO' && (
@@ -846,7 +866,12 @@ export default function ManageUsersPage() {
            {selectedUsers.length > 0 && isCurrentUserSuperAdmin && (
               <CardFooter className="p-4 border-t sticky bottom-0 bg-background/95">
                 <div className="flex items-center gap-4">
-                  <span className="text-sm text-muted-foreground">{selectedUsers.length} user(s) selected</span>
+                  <div className="flex flex-col">
+                    <span className="text-sm font-semibold">{selectedUsers.length} user(s) selected</span>
+                    {selectedUsers.length === sortedAndFilteredUsers.length && (
+                      <span className="text-xs text-muted-foreground italic">All matching users selected</span>
+                    )}
+                  </div>
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
                       <Button variant="outline" disabled={isBulkSubmitting}>

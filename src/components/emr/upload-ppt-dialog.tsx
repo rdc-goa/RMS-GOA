@@ -79,22 +79,10 @@ export function UploadPptDialog({ isOpen, onOpenChange, interest, call, user, ad
         }
     };
     
-    const handleDelete = async () => {
-        setIsUploading(true);
-        try {
-            const result = await removeEmrPpt(interest.id);
-            if(result.success) {
-                toast({ title: 'Success', description: 'Your presentation has been removed.' });
-                onUploadSuccess();
-            } else {
-                 throw new Error(result.error);
-            }
-        } catch(error: any) {
-            toast({ variant: 'destructive', title: 'Deletion Failed', description: error.message || 'An unexpected error occurred.' });
-        } finally {
-            setIsUploading(false);
-        }
-    };
+    /* 
+       REMOVED: handleDelete - Mandatory documents cannot be deleted once registered.
+       Users must use the 'Replace' functionality instead.
+    */
 
     const deadlineWithTime = interest.meetingSlot?.pptDeadline ? parseISO(interest.meetingSlot.pptDeadline) : null;
     const isDeadlinePast = deadlineWithTime ? isAfter(new Date(), deadlineWithTime) : false;
@@ -134,9 +122,6 @@ export function UploadPptDialog({ isOpen, onOpenChange, interest, call, user, ad
                           <a href={interest.pptUrl} target="_blank" rel="noopener noreferrer" className="text-primary font-medium hover:underline flex items-center gap-2">
                              <File className="h-4 w-4"/> View Current Presentation
                           </a>
-                          {!isUploadDisabled && (
-                              <Button variant="destructive" size="sm" onClick={handleDelete} disabled={isUploading}><Trash2 className="h-4 w-4"/></Button>
-                          )}
                        </div>
                     )}
                     <Input type="file" accept=".ppt, .pptx" onChange={handleFileChange} disabled={isUploadDisabled && !isRevision && !isSuperAdmin} />

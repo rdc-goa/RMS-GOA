@@ -199,7 +199,7 @@ export default function MyProjectsPage() {
       setHasMoreEmr(snapshot.docs.length === itemsPerPage)
     } catch (error: any) {
       console.error("Error fetching EMR interests:", error)
-      reportSystemError(error, user)
+      reportSystemError(error, user, "Fetching my EMR interests (registrations)");
       toast({ variant: "destructive", title: "Error", description: "Could not fetch EMR interests." })
     } finally {
       setLoading(false)

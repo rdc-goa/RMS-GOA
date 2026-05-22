@@ -39,11 +39,13 @@ import { RichTextEditor } from '@/components/ui/rich-text-editor';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Badge } from '@/components/ui/badge';
-import { Calendar as CalendarIcon, Edit, Plus, Users, ChevronLeft, ChevronRight, Link as LinkIcon, Loader2, Upload, NotebookText, Send, Trash2, Download, UserPlus, Search } from 'lucide-react';
+import { Calendar as CalendarIcon, Edit, Plus, Users, ChevronLeft, ChevronRight, Link as LinkIcon, Loader2, Upload, NotebookText, Send, Trash2, Download, UserPlus, Search, Check } from 'lucide-react';
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import type { FundingCall, User, EmrInterest, EmrEvaluation } from '@/types';
 import { format, differenceInDays, differenceInHours, differenceInMinutes, parseISO, startOfMonth, endOfMonth, eachDayOfInterval, getDay, addMonths, subMonths, isAfter, setHours, setMinutes, setSeconds, isBefore } from 'date-fns';
 import { uploadFileToServer } from '@/app/actions';
 import { createFundingCall, announceEmrCall, registerEmrInterest, updateFundingCall } from '@/app/emr-actions';
+import DOMPurify from 'isomorphic-dompurify';
 import Link from 'next/link';
 import { cn } from '@/lib/utils';
 import { Checkbox } from '../ui/checkbox';
@@ -51,6 +53,7 @@ import { EmrActions } from './emr-actions';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
 import { useIsMobile } from '@/hooks/use-mobile';
+import { useAuth as useClientAuth } from '../contexts/AuthContext';
 
 import { findUserByMisId } from '@/app/userfinding';
 import { RadioGroup, RadioGroupItem } from '../ui/radio-group';
@@ -74,7 +77,7 @@ const callSchema = z.object({
   applyDeadline: z.date({ required_error: 'Application deadline is required.'}),
   interestDeadline: z.date({ required_error: 'Interest registration deadline is required.'}),
   detailsUrl: z.string().url('Please enter a valid URL.').optional().or(z.literal('')),
-  attachments: z.any().optional(),
+  driveLink: z.string().url('Please enter a valid URL.').optional().or(z.literal('')),
   notifyAllStaff: z.boolean().default(false).optional(),
   notifyDeadlineChange: z.boolean().default(false).optional(),
 }).refine(data => data.interestDeadline <= data.applyDeadline, {
@@ -98,6 +101,7 @@ function RegisterUserDialog({ call, adminUser, isOpen, onOpenChange, onRegisterS
     const [foundUsers, setFoundUsers] = useState<any[]>([]);
     const [isSearching, setIsSearching] = useState(false);
     const [pptFile, setPptFile] = useState<File | null>(null);
+    const [proposalFile, setProposalFile] = useState<File | null>(null);
 
 
     const handleSearch = async () => {
@@ -114,20 +118,33 @@ function RegisterUserDialog({ call, adminUser, isOpen, onOpenChange, onRegisterS
     };
 
     const handleRegister = async (userToRegister: User) => {
-        if (!pptFile) {
-            toast({ variant: 'destructive', title: 'Error', description: 'Please upload a presentation (PPT) first.' });
+        if (!pptFile || !proposalFile) {
+            toast({ variant: 'destructive', title: 'Error', description: 'Please upload both presentation (PPT) and project proposal (PDF/ZIP).' });
             return;
         }
         if (pptFile.size > 10 * 1024 * 1024) {
             toast({ variant: 'destructive', title: 'Error', description: 'Presentation size must be less than 10MB.' });
             return;
         }
+        if (proposalFile.size > 15 * 1024 * 1024) {
+            toast({ variant: 'destructive', title: 'Error', description: 'Proposal size must be less than 15MB.' });
+            return;
+        }
         setIsSubmitting(true);
 
         try {
-            const result = await registerEmrInterest(call.id, userToRegister, { dataUrl: await fileToDataUrl(pptFile!), fileName: pptFile!.name }, [], { adminUid: adminUser.uid, adminName: adminUser.name });
+            const pptDataUrl = await fileToDataUrl(pptFile);
+            const proposalDataUrl = await fileToDataUrl(proposalFile);
+            const result = await registerEmrInterest(
+                call.id, 
+                userToRegister, 
+                { dataUrl: pptDataUrl, fileName: pptFile.name }, 
+                { dataUrl: proposalDataUrl, fileName: proposalFile.name },
+                [], 
+                { adminUid: adminUser.uid, adminName: adminUser.name }
+            );
             if (result.success) {
-                toast({ title: 'Success', description: `${userToRegister.name} has been registered for the call.` });
+                toast({ title: 'Success', description: `${userToRegister.name} has been registered for the call with mandatory documents.` });
                 onRegisterSuccess();
                 onOpenChange(false);
             } else {
@@ -149,7 +166,13 @@ function RegisterUserDialog({ call, adminUser, isOpen, onOpenChange, onRegisterS
                     <div className="space-y-2">
                         <Label>User Presentation (PPT/PDF) <span className="text-destructive">*</span></Label>
                         <Input type="file" accept=".ppt,.pptx,.pdf" onChange={(e) => setPptFile(e.target.files?.[0] || null)} />
-                        <p className="text-xs text-muted-foreground">Uploading a presentation (PPT or PDF) is mandatory for EMR registration. (Max size: 10MB)</p>
+                        <p className="text-xs text-muted-foreground">Mandatory for EMR registration. (Max size: 10MB)</p>
+                    </div>
+
+                    <div className="space-y-2 border-t pt-4">
+                        <Label>Project Proposal (PDF/ZIP) <span className="text-destructive">*</span></Label>
+                        <Input type="file" accept=".pdf,.zip" onChange={(e) => setProposalFile(e.target.files?.[0] || null)} />
+                        <p className="text-xs text-muted-foreground">Mandatory for EMR registration. (Max size: 15MB)</p>
                     </div>
 
                     <div className="flex items-center gap-2">
@@ -164,7 +187,7 @@ function RegisterUserDialog({ call, adminUser, isOpen, onOpenChange, onRegisterS
                                         <p className="font-semibold">{user.name}</p>
                                         <p className="text-xs text-muted-foreground">{user.email}</p>
                                     </div>
-                                    <Button size="sm" onClick={() => handleRegister(user)} disabled={isSubmitting || !pptFile}>
+                                    <Button size="sm" onClick={() => handleRegister(user)} disabled={isSubmitting || !pptFile || !proposalFile}>
                                         {isSubmitting ? 'Registering...' : 'Register'}
                                     </Button>
                                 </div>
@@ -193,6 +216,8 @@ export function AddEditCallDialog({
   const { toast } = useToast();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [agencies, setAgencies] = useState<string[]>([]);
+  const [openAgencies, setOpenAgencies] = useState(false);
   const isMobile = useIsMobile();
 
   const form = useForm<z.infer<typeof callSchema>>({
@@ -217,32 +242,37 @@ export function AddEditCallDialog({
         detailsUrl: '',
         interestDeadline: setMinutes(setHours(new Date(), 17), 0),
         applyDeadline: undefined,
-        attachments: undefined,
+        driveLink: '',
         notifyAllStaff: true,
         notifyDeadlineChange: false,
       });
     }
   }, [existingCall, form]);
 
+  useEffect(() => {
+    const fetchAgencies = async () => {
+      try {
+        const q = query(collection(db, 'fundingCalls'));
+        const querySnapshot = await getDocs(q);
+        const uniqueAgencies = new Set<string>();
+        querySnapshot.forEach((doc) => {
+          const data = doc.data() as FundingCall;
+          if (data.agency) {
+            uniqueAgencies.add(data.agency);
+          }
+        });
+        setAgencies(Array.from(uniqueAgencies).sort());
+      } catch (error) {
+        console.error("Error fetching agencies:", error);
+      }
+    };
+    fetchAgencies();
+  }, [isOpen]);
+
   const handleSaveCall = async (values: z.infer<typeof callSchema>) => {
     setIsSubmitting(true);
     try {
         const callDataForServer: any = { ...values };
-
-        // Only process attachments if they are valid File objects
-        if (values.attachments && values.attachments.length > 0 && 
-            values.attachments[0] instanceof File) {
-            const attachmentDataUrls = await Promise.all(
-                Array.from(values.attachments as FileList).map(async (file: File) => ({
-                    name: file.name,
-                    dataUrl: await fileToDataUrl(file),
-                }))
-            );
-            callDataForServer.attachments = attachmentDataUrls;
-        } else {
-            // Remove attachments if they're not valid files
-            delete callDataForServer.attachments;
-        }
 
         if (existingCall) {
             // Update logic
@@ -258,7 +288,7 @@ export function AddEditCallDialog({
             });
         } else {
             // Create logic
-            const result = await createFundingCall(callDataForServer);
+            const result = await createFundingCall(callDataForServer, user.uid);
             if (!result.success) {
                 throw new Error(result.error);
             }
@@ -300,7 +330,60 @@ export function AddEditCallDialog({
         <Form {...form}>
           <form id="add-edit-call-form" onSubmit={form.handleSubmit(handleSaveCall)} className="space-y-4 py-4 max-h-[70vh] overflow-y-auto pr-4">
              <FormField name="title" control={form.control} render={({ field }) => ( <FormItem><FormLabel>Call Title</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem> )} />
-             <FormField name="agency" control={form.control} render={({ field }) => ( <FormItem><FormLabel>Funding Agency</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem> )} />
+             <FormField 
+               name="agency" 
+               control={form.control} 
+               render={({ field }) => ( 
+                <FormItem className="flex flex-col">
+                  <FormLabel>Funding Agency</FormLabel>
+                   <Popover open={openAgencies} onOpenChange={setOpenAgencies}>
+                    <PopoverTrigger asChild>
+                      <FormControl>
+                        <div className="relative">
+                          <Input 
+                            {...field} 
+                            placeholder="Type or select an agency..."
+                            autoComplete="off"
+                          />
+                          <Button 
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
+                            onClick={() => setOpenAgencies(!openAgencies)}
+                          >
+                            <Search className="h-4 w-4 opacity-50" />
+                          </Button>
+                        </div>
+                      </FormControl>
+                    </PopoverTrigger>
+                    <PopoverContent className="p-0 pointer-events-auto" align="start" style={{ width: 'var(--radix-popover-trigger-width)' }} onKeyDown={(e) => e.stopPropagation()}>
+                       <Command>
+                        <CommandInput placeholder="Search existing agencies..." />
+                        <CommandList>
+                          <CommandEmpty>No results found.</CommandEmpty>
+                          <CommandGroup>
+                            {agencies.map((agency) => (
+                              <CommandItem
+                                key={agency}
+                                value={agency}
+                                onSelect={() => {
+                                  field.onChange(agency);
+                                  setOpenAgencies(false);
+                                }}
+                              >
+                                <Check className={cn("mr-2 h-4 w-4", agency === field.value ? "opacity-100" : "opacity-0")} />
+                                {agency}
+                              </CommandItem>
+                            ))}
+                          </CommandGroup>
+                        </CommandList>
+                      </Command>
+                    </PopoverContent>
+                  </Popover>
+                  <FormMessage />
+                </FormItem> 
+              )} />
              <FormField name="description" control={form.control} render={({ field }) => ( <FormItem><FormLabel>Description</FormLabel><FormControl><RichTextEditor {...field} /></FormControl><FormMessage /></FormItem> )} />
              <FormField name="callType" control={form.control} render={({ field }) => ( <FormItem><FormLabel>Call Type</FormLabel><Select onValueChange={field.onChange} defaultValue={field.value}><FormControl><SelectTrigger><SelectValue placeholder="Select a type" /></SelectTrigger></FormControl><SelectContent><SelectItem value="Fellowship">Fellowship</SelectItem><SelectItem value="Grant">Grant</SelectItem><SelectItem value="Collaboration">Collaboration</SelectItem><SelectItem value="Other">Other</SelectItem></SelectContent></Select><FormMessage /></FormItem> )} />
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -328,7 +411,7 @@ export function AddEditCallDialog({
               )} />
             </div>
              <FormField name="detailsUrl" control={form.control} render={({ field }) => ( <FormItem><FormLabel>URL for Full Details</FormLabel><FormControl><Input type="url" {...field} /></FormControl><FormMessage /></FormItem> )} />
-             <FormField name="attachments" control={form.control} render={({ field: { onChange, value, ...rest }}) => ( <FormItem><FormLabel>Attachments (Optional)</FormLabel><FormControl><Input type="file" multiple onChange={(e) => onChange(e.target.files)} {...rest} /></FormControl><FormMessage /></FormItem> )} />
+             <FormField name="driveLink" control={form.control} render={({ field }) => ( <FormItem><FormLabel>Public Drive Link (Optional)</FormLabel><FormControl><Input type="url" placeholder="Paste Public Drive/OneDrive Link here" {...field} /></FormControl><FormMessage /></FormItem> )} />
               {existingCall && (
                  <FormField
                   control={form.control}
@@ -338,7 +421,7 @@ export function AddEditCallDialog({
                       <div className="space-y-0.5">
                         <FormLabel>Notify Deadline Change</FormLabel>
                         <FormDescription>
-                          Send an email notification to all staff about the updated registration deadlines (Interest and/or Agency).
+                          Send an email notification to all staff about the updated interest registration deadline.
                         </FormDescription>
                       </div>
                       <FormControl>
@@ -417,7 +500,7 @@ function ViewDescriptionDialog({ call }: { call: FundingCall }) {
                     <DialogDescription>Full description for the funding call from {call.agency}.</DialogDescription>
                 </DialogHeader>
                 <div className="max-h-[60vh] overflow-y-auto pr-4">
-                    <div className="prose prose-sm dark:prose-invert max-w-none" dangerouslySetInnerHTML={{ __html: call.description || 'No description provided.' }} />
+                    <div className="prose prose-sm dark:prose-invert max-w-none" dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(call.description || 'No description provided.') }} />
                 </div>
             </DialogContent>
         </Dialog>
@@ -425,7 +508,8 @@ function ViewDescriptionDialog({ call }: { call: FundingCall }) {
 }
 
 export function EmrCalendar({ user }: EmrCalendarProps) {
-    const { toast } = useToast();
+  const clientAuth = useClientAuth();
+  const { toast } = useToast();
     const [upcomingCalls, setUpcomingCalls] = useState<FundingCall[]>([]);
     const [pastCalls, setPastCalls] = useState<FundingCall[]>([]);
     const [userInterests, setUserInterests] = useState<EmrInterest[]>([]);
@@ -524,7 +608,8 @@ export function EmrCalendar({ user }: EmrCalendarProps) {
     }, [toast, user.uid]);
 
     const fetchPastCalls = useCallback(async (isLoadMore = false) => {
-        if (loadingPast || (!hasMorePast && isLoadMore)) return;
+      if (!clientAuth.initialLoadComplete) return;
+      if (loadingPast || (!hasMorePast && isLoadMore)) return;
         setLoadingPast(true);
         try {
             const nowISO = new Date().toISOString();
@@ -559,11 +644,12 @@ export function EmrCalendar({ user }: EmrCalendarProps) {
     }, [hasMorePast, lastVisibleDoc, loadingPast, toast]);
 
     useEffect(() => {
-        const unsubscribePromise = fetchData();
-        return () => {
-             unsubscribePromise.then(fn => fn && fn());
-        }
-    }, [fetchData]);
+      if (!clientAuth.initialLoadComplete) return;
+      const unsubscribePromise = fetchData();
+      return () => {
+         unsubscribePromise.then(fn => fn && fn());
+      }
+    }, [fetchData, clientAuth.initialLoadComplete]);
 
     useEffect(() => {
         if (activeTab === 'past' && pastCalls.length === 0) {
@@ -645,9 +731,7 @@ export function EmrCalendar({ user }: EmrCalendarProps) {
                     <div className="flex items-center gap-2 text-xs flex-wrap">
                         <ViewDescriptionDialog call={call} />
                         {call.detailsUrl && <Button variant="link" asChild className="p-0 h-auto text-xs"><a href={call.detailsUrl} target="_blank" rel="noopener noreferrer"><LinkIcon className="h-3 w-3 mr-1"/> View Full Details</a></Button>}
-                        {call.attachments && call.attachments.map((att, i) => (
-                            <Button key={i} variant="link" asChild className="p-0 h-auto text-xs"><a href={att.url} target="_blank" rel="noopener noreferrer"><Download className="h-3 w-3 mr-1"/>Download</a></Button>
-                        ))}
+                        {call.driveLink && <Button variant="link" asChild className="p-0 h-auto text-xs"><a href={call.driveLink} target="_blank" rel="noopener noreferrer"><LinkIcon className="h-3 w-3 mr-1"/> Access Documents</a></Button>}
                     </div>
                     {isSuperAdmin && !call.isAnnounced && !isCallClosed && (
                         <Button size="sm" variant="outline" className="h-8" onClick={() => { setSelectedCall(call); setIsAnnounceDialogOpen(true); }}>

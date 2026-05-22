@@ -1,5 +1,8 @@
 {
   "projects": {
-    "default": "rdc-goa-portal"
-  }
+    "default": "rdc-goa-portal",
+    "production": "rdc-goa-portal"
+  },
+  "targets": {},
+  "etags": {}
 }

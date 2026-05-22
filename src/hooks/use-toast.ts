@@ -143,8 +143,33 @@ function dispatch(action: Action) {
 
 type Toast = Omit<ToasterToast, "id">
 
+import { reportSystemError } from "@/lib/error-reporting"
+import { User } from "@/types"
+
 function toast({ ...props }: Toast) {
   const id = genId()
+
+  if (props.variant === 'destructive') {
+    // Trigger helpdesk reporting for error toasts
+    let user: User | null = null;
+    try {
+      const storedUser = typeof window !== 'undefined' ? localStorage.getItem('user') : null;
+      if (storedUser) user = JSON.parse(storedUser);
+    } catch (e) { }
+
+    const errorMessage = typeof props.description === 'string' ? props.description : 
+                        (typeof props.title === 'string' ? props.title : 'Error Toast triggered');
+
+    // Non-blocking report
+    reportSystemError(
+      {
+        message: errorMessage,
+        stack: new Error().stack // Capture where the toast was called from
+      },
+      user,
+      `Toast Error: ${props.title || 'Untitled'}`
+    ).catch(err => console.error("Failed to auto-report toast error:", err));
+  }
 
   const update = (props: ToasterToast) =>
     dispatch({

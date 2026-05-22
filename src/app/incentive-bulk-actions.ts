@@ -1,7 +1,7 @@
 
 'use server';
 
-import { adminDb } from '@/lib/admin';
+import { adminDb, adminRtdb } from '@/lib/admin';
 import type { IncentiveClaim, Author } from '@/types';
 
 type ResearchPaperUploadData = {
@@ -59,12 +59,18 @@ export async function bulkUploadIncentiveClaims(
   const errors: { title: string; reason: string }[] = [];
   
   if (claimType !== 'Research Papers') {
-      return { success: false, error: 'Bulk upload is currently only supported for Research Papers.' };
+      return { 
+          success: false, 
+          error: 'Bulk upload is currently only supported for Research Papers.',
+          data: { successfulClaims: [], totalRecords: records.length, errors: [{ title: 'System', reason: 'Unsupported claim type' }] }
+      };
   }
 
   const paperRecords = records as ResearchPaperUploadData[];
+  const rtdbSyncTasks: { id: string, data: any }[] = [];
 
   const claimsByTitle = paperRecords.reduce((acc, record) => {
+    // ... (rest of the reduce logic stays the same)
     const title = record['Title of Paper']?.trim();
     if (!title) {
         errors.push({ title: 'Unknown Title', reason: 'Row missing "Title of Paper".' });
@@ -84,6 +90,7 @@ export async function bulkUploadIncentiveClaims(
 
   for (const title in claimsByTitle) {
     try {
+      // ... (rest of the loop logic stays the same)
       const authorRecords = claimsByTitle[title];
       const mainAuthorRecord = authorRecords[0];
 
@@ -149,8 +156,10 @@ export async function bulkUploadIncentiveClaims(
       };
       
       const newClaimRef = claimsRef.doc();
-      batch.set(newClaimRef, claimData);
+      // We skip batch.set to avoid writing to Firestore
       
+      rtdbSyncTasks.push({ id: newClaimRef.id, data: claimData });
+
       // Add to successful claims list for reporting
       allAuthorDetails.forEach(author => {
           successfulClaims.push({
@@ -166,7 +175,23 @@ export async function bulkUploadIncentiveClaims(
   }
 
   try {
-      await batch.commit();
+      // Sync to Realtime Database
+      try {
+          const { sanitizeForRtdb } = await import('@/lib/rtdb-utils');
+          const syncPromises = rtdbSyncTasks.map(task => {
+              const sanitizedData = sanitizeForRtdb({
+                  id: task.id,
+                  ...task.data,
+                  lastSyncedAt: new Date().toISOString()
+              });
+              return adminRtdb.ref(`incentiveClaims/${task.id}`).set(sanitizedData);
+          });
+          await Promise.all(syncPromises);
+      } catch (rtdbError) {
+          console.error("RTDB Bulk Sync Error:", rtdbError);
+      }
+
+
       await logActivity('INFO', 'Bulk incentive claims processed', { successfulClaimsCount: successfulClaims.length, errors });
       return { 
           success: true, 
@@ -178,6 +203,11 @@ export async function bulkUploadIncentiveClaims(
       };
   } catch (error: any) {
       await logActivity('ERROR', 'Failed to commit bulk incentive claims', { error: error.message });
-      return { success: false, error: 'Failed to save claims to the database.' };
+      return { 
+          success: false, 
+          error: 'Failed to save claims to the database.',
+          data: { successfulClaims: [], totalRecords: records.length, errors: [{ title: 'System', reason: error.message }] }
+      };
   }
+
 }

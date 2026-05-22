@@ -1,0 +1,44 @@
+{
+  "rules": {
+    "incentiveClaims": {
+      ".indexOn": ["uid", "status"],
+      "active": {
+        "$claimId": {
+          ".read": "auth != null && (data.child('uid').val() === auth.uid || root.child('users').child(auth.uid).child('role').val() === 'admin' || root.child('users').child(auth.uid).child('role').val() === 'Super-admin' || root.child('users').child(auth.uid).child('role').val() === 'CRO')",
+          ".write": "auth != null && (root.child('users').child(auth.uid).child('role').val() === 'admin' || root.child('users').child(auth.uid).child('role').val() === 'Super-admin' || (!data.exists() && newData.child('uid').val() === auth.uid))",
+          ".validate": "!newData.exists() || newData.hasChildren(['uid', 'status'])"
+        }
+      },
+      "completed": {
+        "$claimId": {
+          ".read": "auth != null && (data.child('uid').val() === auth.uid || root.child('users').child(auth.uid).child('role').val() === 'admin' || root.child('users').child(auth.uid).child('role').val() === 'Super-admin' || root.child('users').child(auth.uid).child('role').val() === 'CRO')",
+          ".write": "auth != null && (root.child('users').child(auth.uid).child('role').val() === 'admin' || root.child('users').child(auth.uid).child('role').val() === 'Super-admin' || (!data.exists() && newData.child('uid').val() === auth.uid))",
+          ".validate": "!newData.exists() || newData.hasChildren(['uid', 'status'])"
+        }
+      },
+      "drafts": {
+        "$uid": {
+          "$claimId": {
+            ".read": "auth != null && (auth.uid === $uid || root.child('users').child(auth.uid).child('role').val() === 'admin' || root.child('users').child(auth.uid).child('role').val() === 'Super-admin' || root.child('users').child(auth.uid).child('role').val() === 'CRO')",
+            ".write": "auth != null && (auth.uid === $uid || root.child('users').child(auth.uid).child('role').val() === 'admin' || root.child('users').child(auth.uid).child('role').val() === 'Super-admin')",
+            ".validate": "!newData.exists() || newData.hasChildren(['uid', 'status'])"
+          }
+        }
+      },
+      "$claimId": {
+        ".read": "auth != null && (data.child('uid').val() === auth.uid || root.child('users').child(auth.uid).child('role').val() === 'admin' || root.child('users').child(auth.uid).child('role').val() === 'Super-admin' || root.child('users').child(auth.uid).child('role').val() === 'CRO')",
+        ".write": "auth != null && (root.child('users').child(auth.uid).child('role').val() === 'admin' || root.child('users').child(auth.uid).child('role').val() === 'Super-admin' || (!data.exists() && newData.child('uid').val() === auth.uid))",
+        ".validate": "!newData.exists() || newData.hasChildren(['uid', 'status'])"
+      }
+    },
+    "users": {
+      "$uid": {
+        ".read": "auth != null && (auth.uid === $uid || root.child('users').child(auth.uid).child('role').val() === 'admin')",
+        ".write": "auth != null && auth.uid === $uid"
+      }
+    },
+    "arpsSubmissions": {
+      ".indexOn": "academicYear"
+    }
+  }
+}

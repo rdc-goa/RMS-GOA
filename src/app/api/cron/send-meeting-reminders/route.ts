@@ -44,7 +44,7 @@ export async function GET(request: NextRequest) {
           html: `
                 <div style="background-color:#121212; color:#ffffff; font-family:Arial, sans-serif; padding:20px; border-radius:8px;">
                   <div style="text-align:center; margin-bottom:20px;">
-                    <img src="https://lhdlkrfbkon55i6u.public.blob.vercel-storage.com/Pu%20Goa%20White.png" alt="RDC-PU Logo" style="max-width:300px; height:auto;" />
+                    <img src="https://atkqjlzikx23ms5d.public.blob.vercel-storage.com/Pu%20Goa%20White.png" alt="RDC-PU Logo" style="max-width:300px; height:auto;" />
                   </div>
 
                   <p style="color:#ffffff;">Dear ${project.pi},</p>

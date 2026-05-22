@@ -1,31 +1,42 @@
-# Terms of Use
+# Terms of Use for the Research & Development Portal
 
-## Right of use
+**Last Updated:** {new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}
 
-You have the right to utilise this platform in any manner permissible by the site administrators, and University officials, you may not transfer to another individual any rights or access granted to you upon your registration. 
+Welcome to the Parul University Goa Research & Development (R&D) Portal. By accessing or using this service, you agree to be bound by these Terms of Use.
 
-## External Information 
+## 1. Right of Use
 
-The website may contain other information relating to non-Parul University Goa entities or any other companies, please note that for any such information, Parul University Goa does not endorse any such companies or recommend such entities for any purpose to our users accessing such sites shall strictly be at the user’s discretion.
+Upon successful registration, you are granted a non-transferable right to access and use this platform in a manner that is consistent with your assigned role and the university's policies. You may not transfer your access rights or account credentials to any other individual. Unauthorized use or access may result in the termination of your account.
 
-## Regarding Press Releases and external Publications
+## 2. User Responsibilities
 
-The website may contain press releases and publications about the University or related to the University from other sources, it shall be noted that upon placing reliance on such information it was believed to be accurate at the time and we disclaim any liability or obligation which may arise out of the untimeliness or any such discrepancies such publications.
+-   **Account Security:** You are responsible for maintaining the confidentiality of your password and for all activities that occur under your account.
+-   **Data Accuracy:** You are responsible for the accuracy and completeness of all information you submit to the portal, including project proposals, personal details, and incentive claims.
+-   **Compliance:** You agree to use the portal in compliance with all applicable university policies, and local and national laws.
 
-## Disclaimer
+## 3. External Information & Third-Party Links
 
-Any of the users or visitors to this site are advised not to assume or presume the accuracy, up to date , or completeness of the information provided in this site. Users are advised to get confirmation regarding the accuracy or credibility of such information with our concerned officials before placing any reliance or making any commitments.
+The website may contain information or links relating to non-Parul University Goa entities, such as funding agencies, academic publishers, or other companies. Please note that Parul University Goa does not endorse, guarantee, or recommend these external entities for any purpose. Accessing such third-party sites or relying on their information is strictly at your own discretion and risk.
 
-In providing this information, the University has taken due care, hence Parul University Goa hereby disclaims any warranty made whatsoever, either in an expressed manner or implied therein, including and not limiting any such warranties as to the title, non-infringement, merchantability, non-interruptions, relating to the usage of this site.
+## 4. Disclaimer of Warranties
 
-In furtherance of the same, the University hereby disclaims any warranty that this website will operate without any form of interruptions either technical or otherwise, which may be intended or unintended at any point during the use of this site. 
+The information and services on this portal are provided "as is". The University has taken due care in providing this information, but hereby disclaims any warranty, either expressed or implied, regarding the accuracy, completeness, or reliability of the information.
 
-We create no warranty as to the usefulness, adequacy, reliability, authenticity, of any information or content provided either original or outsourced, written or graphical, in relation to our services, products and operations.
+The University does not warrant that this website will operate without any interruptions, either technical or otherwise. We create no warranty as to the usefulness, adequacy, or authenticity of any information or content provided on the portal.
 
-Parul University Goa and its affiliated parties will not be held liable for any direct, indirect, special or consequential damages which may arise out of any manner of use, or reliance of any information provided on this site. Thus, you are advised to make use of this site at your own risk, with the necessary caution. Such damages may include but not limited to loss of business, loss of profits, arising out of any breach of contract, breach of warranty, tort (including negligence), product liability or otherwise relating to the use of this site. 
+## 5. Limitation of Liability
 
-This exclusion from liability shall also extend to any claims of copyright infringement on this site or any other claims made in whatsoever manner.
+Parul University Goa and its affiliated parties will not be held liable for any direct, indirect, special, or consequential damages which may arise out of any manner of use, or reliance on, any information provided on this site. This includes, but is not limited to, loss of business, loss of profits, or data corruption arising out of any breach of contract, breach of warranty, tort (including negligence), or otherwise relating to the use of this site. You are advised to make use of this site at your own risk.
 
-Any link from other sources including google search engine sources is simply for the convenience of the users and creates no obligation between Parul University Goa and such sites. In regards to any links provided on the site, the University disclaims any liability which may arise out of any inconvenience, or violations caused by any such sites, as they have only been provided for reference and for enhancing the user experience of our visitors.
+## 6. Use of Your Information
 
-We may use your information to respond to your inquiries, provide customer service support, send you important information about the services, and send you marketing communications (with your consent) via different channels, including but not limited to SMS, Email, RCS, WhatsApp, and Voice.
+We may use the information you provide to:
+-   Respond to your inquiries and provide customer support.
+-   Send you important information about the services, such as status updates on your submissions.
+-   Send you marketing or informational communications (with your consent where required) via different channels, including but not limited to SMS, Email, and WhatsApp.
+
+For more details, please review our **[Privacy Policy](src/PRIVACY_POLICY.md)**.
+
+## 7. Changes to Terms
+
+We reserve the right to modify these Terms of Use at any time. We will notify you of any changes by posting the new terms on this page. You are advised to review these Terms of Use periodically for any changes.

@@ -2,6 +2,7 @@
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
+import useSWR from 'swr';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Book, CheckCircle, Clock, Users, FileCheck2, FolderOpen, Calendar, Info } from 'lucide-react';
 import { ProjectList } from '@/components/projects/project-list';
@@ -9,6 +10,7 @@ import Link from 'next/link';
 import { Button } from '../ui/button';
 import { ArrowRight } from 'lucide-react';
 import { db } from '@/lib/config';
+import { useAuth as useClientAuth } from '../contexts/AuthContext';
 import { collection, getDocs, query, where,getCountFromServer, or } from 'firebase/firestore';
 import type { Project, User } from '@/types';
 import { Skeleton } from '../ui/skeleton';
@@ -25,26 +27,7 @@ interface DashboardStats {
   totalUsers: number;
 }
 
-export function AdminDashboard() {
-  const [stats, setStats] = useState<DashboardStats>({
-    totalImrProjects: 0,
-    totalEmrProjects: 0,
-    pendingReviews: 0,
-    completedProjects: 0,
-    totalUsers: 0,
-  });
-  const [recentProjects, setRecentProjects] = useState<Project[]>([]);
-  const [chartData, setChartData] = useState<{ group: string, projects: number }[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [user, setUser] = useState<User | null>(null);
-
-  useEffect(() => {
-    const storedUser = localStorage.getItem('user');
-    if (storedUser) {
-        setUser(JSON.parse(storedUser));
-    }
-  }, []);
-
+export function AdminDashboard({ user }: { user: User }) {
   const chartConfig = {
     projects: { label: 'Projects', color: 'hsl(var(--accent))' },
   } satisfies ChartConfig;
@@ -59,87 +42,89 @@ export function AdminDashboard() {
     return { aggregationKey: 'faculty', aggregationLabel: 'Faculty', chartTitle: 'Top Faculty Submissions' };
   }, [user]);
 
-  useEffect(() => {
-    if (!user) return;
+  const clientAuth = useClientAuth();
 
-    const fetchData = async () => {
-        setLoading(true);
-        try {
-            const projectsRef = collection(db, "projects");
-            const usersRef = collection(db, "users");
-            const emrInterestsRef = collection(db, "emrInterests");
-            
-            const isPrincipal = user.designation === 'Principal';
-            const isHod = user.designation === 'HOD';
-            const isCro = user.role === 'CRO';
+  const { data: dashboardData, isLoading: loading } = useSWR(
+    // Wait until client-side auth has finished initializing to avoid Firestore
+    // permission errors when requests are made without `request.auth` set.
+    (user && clientAuth.initialLoadComplete && clientAuth.user) ? ['admin-dashboard', user.uid, aggregationKey] : null,
+    async () => {
+        const projectsRef = collection(db, "projects");
+        const usersRef = collection(db, "users");
+        const emrInterestsRef = collection(db, "emrInterests");
+        
+        const isPrincipal = user.designation === 'Principal';
+        const isHod = user.designation === 'HOD';
+        const isCro = user.role === 'CRO';
 
-            let projectsQuery;
-            let allProjects: Project[] = [];
+        let projectsQuery;
+        let allProjects: Project[] = [];
 
-            if (isPrincipal && user.institute) {
-                projectsQuery = query(projectsRef, where('institute', '==', user.institute));
-                const snapshot = await getDocs(projectsQuery);
-                allProjects = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as Project));
-            } else if (isHod && user.department && user.institute) {
-                projectsQuery = query(projectsRef, where('departmentName', '==', user.department), where('institute', '==', user.institute));
-                const snapshot = await getDocs(projectsQuery);
-                allProjects = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as Project));
-            } else if (isCro && user.faculties && user.faculties.length > 0) {
-                projectsQuery = query(projectsRef, where('faculty', 'in', user.faculties));
-                 const snapshot = await getDocs(projectsQuery);
-                allProjects = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as Project));
-            } else { // Admin, Super-admin, or CRO with no faculties
-                projectsQuery = query(projectsRef);
-                 const snapshot = await getDocs(projectsQuery);
-                allProjects = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as Project));
-            }
-            
-            // Stats should also be filtered
-            let sanctionedEmrQuery = query(emrInterestsRef, or(where('status', '==', 'Sanctioned'), where('status', '==', 'SANCTIONED')));
-            if (isHod && user.department && user.institute) {
-                sanctionedEmrQuery = query(sanctionedEmrQuery, where('department', '==', user.department), where('institute', '==', user.institute));
-            }
-            
-            const [usersSnapshot, emrSnapshot] = await Promise.all([
-              getDocs(usersRef),
-              getCountFromServer(sanctionedEmrQuery)
-            ]);
-
-            const totalImrProjects = allProjects.length;
-            const totalEmrProjects = emrSnapshot.data().count;
-            const pendingReviews = allProjects.filter(p => p.status === 'Submitted' || p.status === 'Under Review' || p.status === 'Revision Submitted' || p.status === 'Pending Completion Approval').length;
-            const completedProjects = allProjects.filter(p => p.status === 'Completed').length;
-            const totalUsers = usersSnapshot.size;
-
-            setStats({ totalImrProjects, totalEmrProjects, pendingReviews, completedProjects, totalUsers });
-
-            const sortedProjects = allProjects
-                .sort((a, b) => new Date(b.submissionDate).getTime() - new Date(a.submissionDate).getTime())
-                .slice(0, 5);
-            setRecentProjects(sortedProjects);
-            
-             const groupCounts = Object.entries(
-                allProjects.reduce((acc, project) => {
-                    const key = project[aggregationKey as keyof Project] as string | undefined;
-                    if (key) {
-                        acc[key] = (acc[key] || 0) + 1;
-                    }
-                    return acc;
-                }, {} as Record<string, number>)
-            ).map(([group, count]) => ({ group, projects: count }))
-            .sort((a, b) => b.projects - a.projects)
-            .slice(0, 7);
-            setChartData(groupCounts);
-
-        } catch (error) {
-            console.error("Error fetching admin dashboard data:", error);
-        } finally {
-            setLoading(false);
+        if (isPrincipal && user.institute) {
+            projectsQuery = query(projectsRef, where('institute', '==', user.institute));
+            const snapshot = await getDocs(projectsQuery);
+            allProjects = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as Project));
+        } else if (isHod && user.department && user.institute) {
+            projectsQuery = query(projectsRef, where('departmentName', '==', user.department), where('institute', '==', user.institute));
+            const snapshot = await getDocs(projectsQuery);
+            allProjects = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as Project));
+        } else if (isCro && user.faculties && user.faculties.length > 0) {
+            projectsQuery = query(projectsRef, where('faculty', 'in', user.faculties));
+            const snapshot = await getDocs(projectsQuery);
+            allProjects = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as Project));
+        } else {
+            projectsQuery = query(projectsRef);
+            const snapshot = await getDocs(projectsQuery);
+            allProjects = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as Project));
         }
-    };
+        
+        let sanctionedEmrQuery = query(emrInterestsRef, or(where('status', '==', 'Sanctioned'), where('status', '==', 'SANCTIONED')));
+        if (isHod && user.department && user.institute) {
+            sanctionedEmrQuery = query(sanctionedEmrQuery, where('department', '==', user.department), where('institute', '==', user.institute));
+        }
+        
+        const [usersSnapshot, emrSnapshot] = await Promise.all([
+          getDocs(usersRef),
+          getCountFromServer(sanctionedEmrQuery)
+        ]);
 
-    fetchData();
-  }, [user, aggregationKey]);
+        const totalImrProjects = allProjects.length;
+        const totalEmrProjects = emrSnapshot.data().count;
+        const pendingReviews = allProjects.filter(p => p.status === 'Submitted' || p.status === 'Under Review' || p.status === 'Revision Submitted' || p.status === 'Pending Completion Approval').length;
+        const completedProjects = allProjects.filter(p => p.status === 'Completed').length;
+        const totalUsers = usersSnapshot.size;
+
+        const stats = { totalImrProjects, totalEmrProjects, pendingReviews, completedProjects, totalUsers };
+
+        const recentProjects = allProjects
+            .sort((a, b) => new Date(b.submissionDate).getTime() - new Date(a.submissionDate).getTime())
+            .slice(0, 5);
+        
+         const chartData = Object.entries(
+            allProjects.reduce((acc, project) => {
+                const key = project[aggregationKey as keyof Project] as string | undefined;
+                if (key) {
+                    acc[key] = (acc[key] || 0) + 1;
+                }
+                return acc;
+            }, {} as Record<string, number>)
+        ).map(([group, count]) => ({ group, projects: count }))
+        .sort((a, b) => b.projects - a.projects)
+        .slice(0, 7);
+
+        return { stats, recentProjects, chartData };
+    }
+  );
+
+  const stats = dashboardData?.stats || {
+    totalImrProjects: 0,
+    totalEmrProjects: 0,
+    pendingReviews: 0,
+    completedProjects: 0,
+    totalUsers: 0,
+  };
+  const recentProjects = dashboardData?.recentProjects || [];
+  const chartData = dashboardData?.chartData || [];
   
   const isPrincipal = user?.designation === 'Principal';
   const isHod = user?.designation === 'HOD';
@@ -193,7 +178,7 @@ export function AdminDashboard() {
             {statCards.map((card, index) => (
             <Card 
                 key={card.title} 
-                className="animate-in fade-in-0 slide-in-from-bottom-4 h-full"
+                className="animate-in fade-in-0 slide-in-from-bottom-4"
                 style={{ animationFillMode: 'backwards', animationDelay: `${index * 100}ms` }}
             >
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">

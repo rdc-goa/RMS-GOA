@@ -5,12 +5,13 @@ import { useState, useEffect } from "react"
 import { useParams } from "next/navigation"
 import { collection, query, where, getDocs, limit, orderBy, or } from "firebase/firestore"
 import { db } from "@/lib/config"
+import { reportSystemError } from "@/lib/error-reporting"
 import type { User, IncentiveClaim, Project, EmrInterest, FundingCall, ResearchPaper } from "@/types"
 import { PageHeader } from "@/components/page-header"
 import { ProfileClient } from "@/components/profile/profile-client"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Card, CardContent } from "@/components/ui/card"
-import { fetchEvaluatorProjectsForUser } from "@/app/actions"
+import { fetchEvaluatorProjectsForUser, getUserByMisId } from "@/app/actions"
 import { isToday, parseISO } from "date-fns"
 
 export default function ProfilePage() {
@@ -46,16 +47,12 @@ export default function ProfilePage() {
       setLoading(true)
       setError(null)
       try {
-        const usersRef = collection(db, "users")
-        const userQuery = query(usersRef, where("misId", "==", misId), limit(1))
-        const userSnapshot = await getDocs(userQuery)
-
-        if (userSnapshot.empty) {
+        // Fetch target user via server action to bypass client-side query restrictions on 'users' collection
+        const fetchedUser = await getUserByMisId(misId);
+        
+        if (!fetchedUser) {
           throw new Error("User not found.")
         }
-
-        const targetUserDoc = userSnapshot.docs[0]
-        const fetchedUser = { uid: targetUserDoc.id, ...targetUserDoc.data() } as User
 
         // --- Permission Check ---
         const isAdmin = ["Super-admin", "admin", "CRO"].includes(sessionUser.role)
@@ -86,7 +83,8 @@ export default function ProfilePage() {
           emrInterestsRef, 
           or(
             where("userId", "==", fetchedUser.uid), 
-            where("coPiUids", "array-contains", fetchedUser.uid)
+            where("coPiUids", "array-contains", fetchedUser.uid),
+            where("coPiEmails", "array-contains", fetchedUser.email.toLowerCase())
           )
         );
         const emrInterestsSnapshot = await getDocs(emrInterestsQuery);
@@ -147,12 +145,13 @@ export default function ProfilePage() {
         }
 
       } catch (err: any) {
+        console.error("Error fetching data:", err)
+        reportSystemError(err, sessionUser)
         if (err.code === "permission-denied") {
           setError("Access Denied: You do not have permission to view this profile.")
         } else {
           setError(err.message || "Failed to load profile data.")
         }
-        console.error(err)
       } finally {
         setLoading(false)
       }

@@ -17,6 +17,7 @@ type CalculationDetails = {
     applicantMultiplier?: number;
     rolePoints?: number;
     role?: 'PI' | 'Co-PI';
+    divisor?: number;
 };
 
 export interface ArpsData {
@@ -25,7 +26,7 @@ export interface ArpsData {
         weighted: number; 
         final: number; 
         contributingClaims: { 
-            claim: IncentiveClaim, 
+            claim: any, 
             score: number,
             calculation: CalculationDetails
         }[] 
@@ -35,7 +36,7 @@ export interface ArpsData {
         weighted: number; 
         final: number; 
         contributingClaims: { 
-            claim: IncentiveClaim, 
+            claim: any, 
             score: number,
             calculation: CalculationDetails
         }[] 
@@ -49,6 +50,28 @@ export interface ArpsData {
             score: number,
             calculation: CalculationDetails
         }[] 
+    };
+    consultancy?: {
+        raw: number;
+        weighted: number;
+        final: number;
+        contributingClaims: {
+            claim: any;
+            score: number;
+            calculation: any;
+        }[];
+    };
+    researchActivities?: {
+        raw: number;
+        weighted: number;
+        final: number;
+        contributingClaims: {
+            claim: any;
+            score: number;
+            calculation: any;
+        }[];
+        subtotals?: Record<string, number>;
+        cappedSubtotals?: Record<string, number>;
     };
     totalArps: number;
     grade: string;
@@ -142,6 +165,20 @@ export function ArpsResultsDisplay({ results, evaluationYear, evaluationWindow }
                                 <p className="text-muted-foreground font-medium">Evaluation Period</p>
                                 <p className="text-lg font-semibold">{evaluationWindow}</p>
                             </div>
+                            <div className="col-span-2 sm:col-span-1">
+                                <p className="text-muted-foreground font-medium text-center sm:text-left">Category</p>
+                                <div className="flex justify-center sm:justify-start">
+                                    <Badge className={cn(
+                                        "text-2xl px-6 py-2 font-bold mt-1",
+                                        grade.startsWith('SEE') && "bg-emerald-600 hover:bg-emerald-700",
+                                        grade.startsWith('EE') && "bg-blue-600 hover:bg-blue-700",
+                                        grade.startsWith('ME') && "bg-amber-600 hover:bg-amber-700",
+                                        grade.startsWith('DME') && "bg-slate-600 hover:bg-slate-700"
+                                    )}>
+                                        {grade}
+                                    </Badge>
+                                </div>
+                            </div>
                         </div>
                     </CardContent>
                 </Card>
@@ -174,13 +211,13 @@ export function ArpsResultsDisplay({ results, evaluationYear, evaluationWindow }
                                         <TableBody>
                                             {claim.claimType === 'Research Papers' ? (
                                                 <>
-                                                    <TableRow><TableCell className="w-[70%]">Base Points for article type '{claim.publicationType}'</TableCell><TableCell className="text-right font-mono">{calculation.base.toFixed(2)}</TableCell></TableRow>
+                                                    <TableRow><TableCell className="w-[70%]">Base Points for article type '{claim.publicationType}'</TableCell><TableCell className="text-right font-mono">{(calculation.base ?? 0).toFixed(2)}</TableCell></TableRow>
                                                     <TableRow><TableCell>× Quartile Multiplier for <strong>{claim.journalClassification}</strong></TableCell><TableCell className="text-right font-mono">{(calculation.multiplier ?? calculation.quartileMultiplier ?? 1).toFixed(2)}</TableCell></TableRow>
                                                     <TableRow><TableCell>× Your Role Multiplier as <strong>{getClaimant(claim)?.role}</strong> (Position: {claim.authorPosition})</TableCell><TableCell className="text-right font-mono">{calculation.authorMultiplier?.toFixed(2)}</TableCell></TableRow>
                                                 </>
                                             ) : (
                                                 <>
-                                                    <TableRow><TableCell className="w-[70%]">Base Points for {claim.claimType === 'Books' ? (claim.publicationType === 'Book Chapter' ? 'Scopus-indexed Book Chapter' : 'Scopus-indexed Book') : 'Scopus-indexed Conference Proceedings'}</TableCell><TableCell className="text-right font-mono">{calculation.base.toFixed(2)}</TableCell></TableRow>
+                                                    <TableRow><TableCell className="w-[70%]">Base Points for {claim.claimType === 'Books' ? (claim.publicationType === 'Book Chapter' ? 'Scopus-indexed Book Chapter' : 'Scopus-indexed Book') : 'Scopus-indexed Conference Proceedings'}</TableCell><TableCell className="text-right font-mono">{(calculation.base ?? 0).toFixed(2)}</TableCell></TableRow>
                                                     {calculation.divisor && calculation.divisor > 1 && (
                                                         <TableRow><TableCell>÷ Number of Editors ({calculation.divisor})</TableCell><TableCell className="text-right font-mono">÷ {calculation.divisor}</TableCell></TableRow>
                                                     )}
@@ -225,7 +262,7 @@ export function ArpsResultsDisplay({ results, evaluationYear, evaluationWindow }
                                     {claim.claimId && <Badge variant="outline">{claim.claimId}</Badge>}
                                 </div>
                                 <Table className="mt-2 text-sm"><TableBody>
-                                    <TableRow><TableCell className="w-[70%]">Base Points for status '<strong>{claim.currentStatus} ({claim.patentLocale})</strong>'</TableCell><TableCell className="text-right font-mono">{calculation.base.toFixed(2)}</TableCell></TableRow>
+                                    <TableRow><TableCell className="w-[70%]">Base Points for status '<strong>{claim.currentStatus} ({claim.patentLocale})</strong>'</TableCell><TableCell className="text-right font-mono">{(calculation.base ?? 0).toFixed(2)}</TableCell></TableRow>
                                     <TableRow><TableCell>× PU Applicant Multiplier (<strong>{claim.isPuSoleApplicant ? 'Sole' : 'Joint'} Applicant</strong>)</TableCell><TableCell className="text-right font-mono">{calculation.applicantMultiplier?.toFixed(2)}</TableCell></TableRow>
                                     <TableRow className="font-bold border-t-2 border-primary/20"><TableCell>= Raw Score for this Patent</TableCell><TableCell className="text-right font-mono">{score.toFixed(2)}</TableCell></TableRow>
                                 </TableBody></Table>

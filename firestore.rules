@@ -17,6 +17,21 @@ service cloud.firestore {
         return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'CRO';
     }
 
+    function isPrincipal() {
+      let user = get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+      return user.designation == 'Principal';
+    }
+
+    function isHOD() {
+      let user = get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+      return user.designation == 'HOD';
+    }
+
+    function isHeadOfGoaCampus() {
+      let user = get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+      return user.designation == 'Head of Goa Campus';
+    }
+
     function isOwner(userId) {
       return request.auth.uid == userId;
     }
@@ -37,8 +52,8 @@ service cloud.firestore {
       // Allow a user to create their own user document.
       allow create: if request.auth.uid == userId;
 
-      // Users can read their own profile, Admins/Super-admins can read any profile.
-      allow read: if isOwner(userId) || isAdmin();
+      // Authenticated users can read profiles to search/verify colleagues and process approvals.
+      allow read: if isSignedIn();
       
       // Users can update their own profile, but cannot change their role.
       // Admins/Super-admins can update any user profile.
@@ -52,12 +67,15 @@ service cloud.firestore {
       // Any signed-in user can create a project (as a draft).
       allow create: if isSignedIn();
 
-      // Read access: The PI, Co-PIs, assigned evaluators, and admins/CROs can read.
+      // Read access: The PI, Co-PIs, assigned evaluators, admins/CROs, principals, and HODs can read.
       allow read: if isSignedIn() && (
                     resource.data.pi_uid == request.auth.uid || 
                     request.auth.uid in resource.data.coPiUids ||
                     (resource.data.meetingDetails != null && request.auth.uid in resource.data.meetingDetails.assignedEvaluators) ||
-                    isAdmin() || isCRO()
+                    isAdmin() || isCRO() ||
+                    (isPrincipal() && resource.data.institute == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.institute) ||
+                    (isHOD() && resource.data.institute == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.institute && resource.data.departmentName == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.department) ||
+                    (isHeadOfGoaCampus() && resource.data.campus == 'Goa')
                   );
       
       // Update access: The PI can update their own project. Admins can update any project.
@@ -120,6 +138,11 @@ service cloud.firestore {
     // Health check collection is open for testing purposes.
     match /_health_check/{docId} {
       allow read, write: if true;
+    }
+
+    match /system_logs/{logId} {
+      allow read: if isSignedIn() && isAdmin();
+      allow write: if false;
     }
   }
 }

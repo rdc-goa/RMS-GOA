@@ -1,17 +1,16 @@
 
-
 import { adminDb } from '@/lib/admin';
 import { sendEmail } from '@/lib/email';
 import { format, subDays, startOfWeek, endOfWeek } from 'date-fns';
 
-const EMAIL_RECIPIENT = 'rdc@goa.paruluniversity.ac.in';
+const EMAIL_RECIPIENT = 'process.env.ADMIN_EMAIL';
 const EMAIL_STYLES = {
   background: 'style=\"background: linear-gradient(135deg, #0f2027, #203a43, #2c5364); color:#ffffff; font-family:Arial, sans-serif; padding:20px; border-radius:8px;\"',
-  logo: '<div style=\"text-align:center; margin-bottom:20px;\"><img src=\"https://lhdlkrfbkon55i6u.public.blob.vercel-storage.com/Pu%20Goa%20White.png\" alt=\"RDC Logo\" style=\"max-width:300px; height:auto;\" /></div>',
+  logo: '<div style=\"text-align:center; margin-bottom:20px;\"><img src=\"https://pinxoxpbufq92wb4.public.blob.vercel-storage.com/RDC-PU-LOGO-WHITE.png\" alt=\"RDC Logo\" style=\"max-width:300px; height:auto;\" /></div>',
   footer: '<p style=\"color:#b0bec5; margin-top: 30px;\">Best Regards,<br>Research & Development Cell Team,<br>Parul University Goa</p><p style=\"font-size:10px; color:#999999;\">This is automated. Report issues to helpdesk.</p>'
 };
 
-export async function POST() {
+export async function GET() {
   try {
     // Week: Mon-Sun UTC
     const now = new Date();
@@ -60,7 +59,7 @@ export async function POST() {
           <tr><td style="padding:10px; background:#2c3e50; color:#e0e0e0;"><strong>EMR Interests</strong></td><td style="padding:10px; background:#34495e;">${emrInterests}</td></tr>
           <tr><td style="padding:10px; background:#2c3e50; color:#e0e0e0;"><strong>EMR PPT Pending</strong></td><td style="padding:10px; background:#34495e; color:${emrPptPending > 0 ? '#ff5252' : '#00e676'};">${emrPptPending}</td></tr>
         </table>
-        <p style="color:#e0e0e0;">Dashboard: ${process.env.NEXT_PUBLIC_BASE_URL || 'https://rndprojects.paruluniversity.ac.in'}/dashboard</p>
+        <p style="color:#e0e0e0;">Dashboard: ${process.env.NEXT_PUBLIC_BASE_URL || 'https://rndprojects.goa.paruluniversity.ac.in'}/dashboard</p>
         ${EMAIL_STYLES.footer}
       </div>`;
 

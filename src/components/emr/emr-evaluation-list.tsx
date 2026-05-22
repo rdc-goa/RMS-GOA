@@ -54,7 +54,7 @@ export function EmrEvaluationList({ interests, calls, user, onActionComplete }: 
                                 <TableHead>Applicant</TableHead>
                                 <TableHead className="hidden sm:table-cell">Funding Call</TableHead>
                                 <TableHead>Presentation Date</TableHead>
-                                <TableHead>Presentation</TableHead>
+                                <TableHead>Documents</TableHead>
                                 <TableHead>My Status</TableHead>
                                 <TableHead className="text-right">Actions</TableHead>
                             </TableRow>
@@ -70,13 +70,22 @@ export function EmrEvaluationList({ interests, calls, user, onActionComplete }: 
                                             {interest.meetingSlot?.date ? format(parseISO(interest.meetingSlot.date), 'PP') : 'N/A'}
                                         </TableCell>
                                         <TableCell>
-                                            {interest.pptUrl ? (
-                                                <Button asChild variant="link" className="p-0 h-auto">
-                                                    <a href={interest.pptUrl} target="_blank" rel="noopener noreferrer">
-                                                        <FileText className="h-4 w-4 mr-1"/> View
-                                                    </a>
-                                                </Button>
-                                            ) : "Not Submitted"}
+                                            <div className="flex flex-col gap-1.5">
+                                                {interest.pptUrl ? (
+                                                    <Button asChild variant="link" className="p-0 h-auto justify-start font-normal">
+                                                        <a href={interest.pptUrl} target="_blank" rel="noopener noreferrer">
+                                                            <FileText className="h-4 w-4 mr-1 text-primary" /> PPT
+                                                        </a>
+                                                    </Button>
+                                                ) : <span className="text-xs text-muted-foreground">No PPT</span>}
+                                                {interest.proposalUrl ? (
+                                                    <Button asChild variant="link" className="p-0 h-auto justify-start font-normal">
+                                                        <a href={interest.proposalUrl} target="_blank" rel="noopener noreferrer">
+                                                            <FileText className="h-4 w-4 mr-1 text-primary" /> Proposal
+                                                        </a>
+                                                    </Button>
+                                                ) : null}
+                                            </div>
                                         </TableCell>
                                         <TableCell>
                                             {myEvaluation ? (

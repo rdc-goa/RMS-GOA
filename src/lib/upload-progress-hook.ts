@@ -62,11 +62,18 @@ export function useFileUploadProgress() {
         if (result.success && result.url) {
           uploadedUrls.push(result.url);
           setUploadProgress((prev) => ({ ...prev, [fileKey]: 100 }));
+          
+          if (result.provider === 'googledrive') {
+            toast({
+              title: 'Fallback Successful',
+              description: `${file.name} uploaded to Google Drive as a fallback.`,
+            });
+          }
         } else {
           toast({
             variant: 'destructive',
             title: 'Upload failed',
-            description: `Failed to upload ${file.name}`,
+            description: result.error || `Failed to upload ${file.name}`,
           });
         }
       } catch (error) {

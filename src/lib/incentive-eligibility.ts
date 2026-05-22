@@ -2,11 +2,13 @@ import type { IncentiveClaim, Author } from '@/types';
 
 function toAuthorPositionNumber(authorPosition?: string): number {
   if (!authorPosition) return 0;
-  const parsed = parseInt(authorPosition, 10);
+  // Strip any non-numeric characters (like 'th', 'rd', 'st') before parsing
+  const numericOnly = authorPosition.replace(/\D/g, '');
+  const parsed = parseInt(numericOnly, 10);
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
-function getClaimantRole(claim: Partial<IncentiveClaim>): Author['role'] | undefined {
+export function getClaimantRole(claim: Partial<IncentiveClaim>): Author['role'] | undefined {
   if (claim.authorType) {
     return claim.authorType as Author['role'];
   }
@@ -22,7 +24,7 @@ function getClaimantRole(claim: Partial<IncentiveClaim>): Author['role'] | undef
   return claimantByUid?.role;
 }
 
-function getClaimantAuthorPosition(claim: Partial<IncentiveClaim>): number {
+export function getClaimantAuthorPosition(claim: Partial<IncentiveClaim>): number {
   const explicitPosition = toAuthorPositionNumber(claim.authorPosition);
   if (explicitPosition > 0) return explicitPosition;
 

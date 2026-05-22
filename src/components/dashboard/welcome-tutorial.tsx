@@ -199,12 +199,20 @@ export function WelcomeTutorial({ user, isOpen, onOpenChange }: WelcomeTutorialP
     // Only mark tutorial as completed if it was the initial auto-popup, not a manually triggered one.
     if (isOpen === undefined) { 
         const result = await updateUserTutorialStatus(user.uid);
-        if (!result.success) {
-        toast({
-            variant: 'destructive',
-            title: 'Error',
-            description: result.error,
-        });
+        if (result.success) {
+            // Update localStorage to prevent re-opening on next load
+            const storedUser = localStorage.getItem('user');
+            if (storedUser) {
+                const parsedUser = JSON.parse(storedUser);
+                parsedUser.hasCompletedTutorial = true;
+                localStorage.setItem('user', JSON.stringify(parsedUser));
+            }
+        } else {
+            toast({
+                variant: 'destructive',
+                title: 'Error',
+                description: result.error,
+            });
         }
     }
   };

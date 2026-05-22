@@ -132,15 +132,29 @@
       ]
     },
     {
-      "collectionGroup": "users",
+      "collectionGroup": "emrInterests",
       "queryScope": "COLLECTION",
       "fields": [
         {
-          "fieldPath": "misId",
+          "fieldPath": "userId",
           "order": "ASCENDING"
         },
         {
-          "fieldPath": "campus",
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "emrInterests",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "coPiUids",
+          "arrayConfig": "CONTAINS"
+        },
+        {
+          "fieldPath": "status",
           "order": "ASCENDING"
         }
       ]

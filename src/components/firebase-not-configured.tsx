@@ -11,7 +11,7 @@ export function FirebaseNotConfigured() {
             <div>
               <CardTitle className="text-2xl text-destructive">Action Required: Configure Firebase</CardTitle>
               <CardDescription>
-                Your application is not connected to Firebase. Please add your credentials to the <code>.env</code> file.
+                Your application is not connected to Firebase. Please add your credentials to your environment variables.
               </CardDescription>
             </div>
           </div>

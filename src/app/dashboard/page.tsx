@@ -71,7 +71,7 @@ export default function DashboardPage() {
         <DashboardSkeleton />
       ) : (
         <>
-            {showAdminView && <AdminDashboard />}
+            {showAdminView && <AdminDashboard user={user} />}
             {showFacultyView && <FacultyDashboard user={user} />}
         </>
       )}

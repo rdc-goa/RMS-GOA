@@ -1,0 +1,32 @@
+# This file specifies files and directories that should be ignored by Google Cloud Build
+# Reference: https://cloud.google.com/sdk/gcloud/reference/topic/gcloudignore
+
+.gcloudignore
+.git
+.gitignore
+node_modules/
+.next/
+out/
+build/
+.vercel
+.vscode
+.idx
+firebase-debug.log
+firestore-debug.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# Large data/doc files that may not be needed in the build container
+*.pdf
+*.xlsx
+*.docx
+patch.txt
+
+# Local environment files
+#.env
+#.env.*
+!.env.production
+
+deploy.ps1

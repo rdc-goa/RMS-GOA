@@ -20,6 +20,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Calendar } from '@/components/ui/calendar';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { useToast } from '@/hooks/use-toast';
+import { useAuth as useClientAuth } from '../contexts/AuthContext';
 import { cn } from '@/lib/utils';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Input } from '@/components/ui/input';
@@ -42,6 +43,7 @@ const scheduleSchema = z.object({
 export function ScheduleMeetingForm() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
+  const clientAuth = useClientAuth();
   const [selectedProjects, setSelectedProjects] = useState<string[]>([]);
   const [allUsers, setAllUsers] = useState<User[]>([]);
   const { toast } = useToast();
@@ -55,6 +57,7 @@ export function ScheduleMeetingForm() {
   });
 
   const fetchRequiredData = useCallback(async () => {
+    if (!clientAuth.initialLoadComplete) return;
     setLoading(true);
     try {
       const projectsQuery = query(
@@ -62,7 +65,7 @@ export function ScheduleMeetingForm() {
         where('status', '==', 'Submitted'),
         orderBy('submissionDate', 'desc')
       );
-
+      
       const usersQuery = query(collection(db, 'users'));
 
       const [projectsSnapshot, usersSnapshot] = await Promise.all([
@@ -72,7 +75,7 @@ export function ScheduleMeetingForm() {
 
       const projectList = projectsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Project));
       const userList = usersSnapshot.docs.map(doc => ({ uid: doc.id, ...doc.data() } as User));
-
+      
       setProjects(projectList);
       setAllUsers(userList);
     } catch (error) {
@@ -86,7 +89,7 @@ export function ScheduleMeetingForm() {
   useEffect(() => {
     fetchRequiredData();
   }, [fetchRequiredData]);
-
+  
   const evaluators = allUsers.filter(u => ['CRO', 'admin', 'Super-admin'].includes(u.role));
 
   const handleSelectAll = (checked: boolean) => {
@@ -114,17 +117,19 @@ export function ScheduleMeetingForm() {
     const meetingDetails = {
       date: format(data.date, 'yyyy-MM-dd'),
       time: data.time,
-      venue: "VC Office",
+      venue: "RDC Committee Room, PIMSR",
       evaluatorUids: data.evaluatorUids,
+      mode: "Offline" as const,
     };
-
+    
     const projectsToSchedule = projects
       .filter(p => selectedProjects.includes(p.id))
-      .map(p => ({
-        id: p.id,
-        pi_uid: p.pi_uid,
-        title: p.title,
-        pi_email: p.pi_email
+      .map(p => ({ 
+          id: p.id, 
+          pi: p.pi,
+          pi_uid: p.pi_uid, 
+          title: p.title, 
+          pi_email: p.pi_email 
       }));
 
     const result = await scheduleMeeting(projectsToSchedule, meetingDetails);
@@ -138,7 +143,7 @@ export function ScheduleMeetingForm() {
       toast({ variant: 'destructive', title: 'Scheduling Failed', description: result.error || 'An unknown error occurred.' });
     }
   };
-
+  
   const usersMap = new Map(allUsers.map(u => [u.uid, u]));
 
   if (loading) {
@@ -185,33 +190,32 @@ export function ScheduleMeetingForm() {
                   const piUser = usersMap.get(project.pi_uid);
                   const profileLink = piUser?.campus === 'Goa' ? `/goa/${piUser.misId}` : `/profile/${piUser?.misId}`;
                   return (
-                    <TableRow key={project.id} data-state={selectedProjects.includes(project.id) ? "selected" : ""}>
-                      <TableCell>
-                        <Checkbox
-                          checked={selectedProjects.includes(project.id)}
-                          onCheckedChange={(checked) => handleSelectOne(project.id, !!checked)}
-                          aria-label={`Select project ${project.title}`}
-                        />
-                      </TableCell>
-                      <TableCell className="font-medium">{project.title}</TableCell>
-                      <TableCell>
+                  <TableRow key={project.id} data-state={selectedProjects.includes(project.id) ? "selected" : ""}>
+                    <TableCell>
+                      <Checkbox
+                        checked={selectedProjects.includes(project.id)}
+                        onCheckedChange={(checked) => handleSelectOne(project.id, !!checked)}
+                        aria-label={`Select project ${project.title}`}
+                      />
+                    </TableCell>
+                    <TableCell className="font-medium">{project.title}</TableCell>
+                    <TableCell>
                         <div>
-                          {piUser?.misId ? (
-                            <Link href={profileLink} target="_blank" className="text-primary hover:underline">
-                              {project.pi}
-                            </Link>
-                          ) : (
-                            project.pi
-                          )}
+                            {piUser?.misId ? (
+                                <Link href={profileLink} target="_blank" className="text-primary hover:underline">
+                                    {project.pi}
+                                </Link>
+                            ) : (
+                                project.pi
+                            )}
                         </div>
                         <div className="text-xs text-muted-foreground">
                           {piUser?.department || project.departmentName}, {piUser?.institute || project.institute}
                         </div>
-                      </TableCell>
-                      <TableCell>{new Date(project.submissionDate).toLocaleDateString()}</TableCell>
-                    </TableRow>
-                  )
-                })}
+                    </TableCell>
+                    <TableCell>{new Date(project.submissionDate).toLocaleDateString()}</TableCell>
+                  </TableRow>
+                )})}
               </TableBody>
             </Table>
           ) : (
@@ -221,7 +225,7 @@ export function ScheduleMeetingForm() {
           )}
         </CardContent>
       </Card>
-
+      
       <Card>
         <CardHeader>
           <CardTitle>Schedule Details</CardTitle>
@@ -269,41 +273,41 @@ export function ScheduleMeetingForm() {
                   </FormItem>
                 )}
               />
-              <FormField
-                control={form.control}
-                name="evaluatorUids"
-                render={({ field }) => (
-                  <FormItem className="flex flex-col">
-                    <FormLabel>Assign Evaluators</FormLabel>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button variant="outline" className="w-full justify-between">
-                          {field.value?.length > 0 ? `${field.value.length} selected` : "Select evaluators"}
-                          <ChevronDown className="h-4 w-4 opacity-50" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent className="w-[--radix-dropdown-menu-trigger-width]">
-                        <DropdownMenuLabel>Available Staff</DropdownMenuLabel>
-                        <DropdownMenuSeparator />
-                        {evaluators.map((evaluator) => (
-                          <DropdownMenuCheckboxItem
-                            key={evaluator.uid}
-                            checked={field.value?.includes(evaluator.uid)}
-                            onCheckedChange={(checked) => {
-                              return checked
-                                ? field.onChange([...(field.value || []), evaluator.uid])
-                                : field.onChange(field.value?.filter((id) => id !== evaluator.uid));
-                            }}
-                          >
-                            {evaluator.name}
-                          </DropdownMenuCheckboxItem>
-                        ))}
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+               <FormField
+                  control={form.control}
+                  name="evaluatorUids"
+                  render={({ field }) => (
+                    <FormItem className="flex flex-col">
+                      <FormLabel>Assign Evaluators</FormLabel>
+                       <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="outline" className="w-full justify-between">
+                            {field.value?.length > 0 ? `${field.value.length} selected` : "Select evaluators"}
+                            <ChevronDown className="h-4 w-4 opacity-50" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent className="w-[--radix-dropdown-menu-trigger-width]">
+                          <DropdownMenuLabel>Available Staff</DropdownMenuLabel>
+                          <DropdownMenuSeparator />
+                          {evaluators.map((evaluator) => (
+                            <DropdownMenuCheckboxItem
+                              key={evaluator.uid}
+                              checked={field.value?.includes(evaluator.uid)}
+                              onCheckedChange={(checked) => {
+                                return checked
+                                  ? field.onChange([...(field.value || []), evaluator.uid])
+                                  : field.onChange(field.value?.filter((id) => id !== evaluator.uid));
+                              }}
+                            >
+                              {evaluator.name}
+                            </DropdownMenuCheckboxItem>
+                          ))}
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
               <Button type="submit" className="w-full" disabled={form.formState.isSubmitting || selectedProjects.length === 0}>
                 {form.formState.isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                 Schedule for {selectedProjects.length} Project(s)

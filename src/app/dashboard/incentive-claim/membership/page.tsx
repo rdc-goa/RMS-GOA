@@ -8,8 +8,6 @@ export default function MembershipClaimPage() {
   return (
     <div className="container mx-auto max-w-5xl py-10">
       <PageHeader
-        title="Incentive Claim for Professional Body Membership"
-        description="Fill out the form below to apply for an incentive for your membership."
         backButtonHref="/dashboard/incentive-claim"
         backButtonText="Back to Claim Types"
       />

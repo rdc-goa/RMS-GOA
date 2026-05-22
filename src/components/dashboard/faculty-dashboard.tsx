@@ -1,7 +1,7 @@
 
 'use client';
 
-import { useState, useEffect } from 'react';
+import useSWR from 'swr';
 import Link from 'next/link';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -12,64 +12,52 @@ import { db } from '@/lib/config';
 import { collection, query, where, getDocs, or } from 'firebase/firestore';
 import { Skeleton } from '../ui/skeleton';
 import { EmrCalendar } from '../emr/emr-calendar';
-import { EmrActions } from '../emr/emr-actions';
-
+import { useAuth as useClientAuth } from '../contexts/AuthContext';
 
 export function FacultyDashboard({ user }: { user: User }) {
-  const [projects, setProjects] = useState<Project[]>([]);
-  const [emrInterests, setEmrInterests] = useState<EmrInterest[]>([]);
-  const [fundingCalls, setFundingCalls] = useState<FundingCall[]>([]);
-  const [loading, setLoading] = useState(true);
+  const clientAuth = useClientAuth();
+  const { data: dashboardData, isLoading: loading } = useSWR(
+    (user && clientAuth.initialLoadComplete) ? ['faculty-dashboard', user.uid] : null,
+    async () => {
+        // Fetch IMR Projects
+        const projectsRef = collection(db, 'projects');
+        const projectsQuery = query(
+          projectsRef,
+          or(
+            where('pi_uid', '==', user.uid),
+            where('coPiUids', 'array-contains', user.uid)
+          )
+        );
+        
+        // Fetch EMR Interests for the user
+        const interestsRef = collection(db, 'emrInterests');
+        const emrQuery = query(interestsRef, where('userId', '==', user.uid));
+        
+        // Fetch all funding calls to map titles
+        const callsRef = collection(db, 'fundingCalls');
+        const callsQuery = query(callsRef);
 
-  const fetchData = async () => {
-    if (!user) return;
-    setLoading(true);
-    try {
-      // Fetch IMR Projects
-      const projectsRef = collection(db, 'projects');
-      const projectsQuery = query(
-        projectsRef,
-        or(
-          where('pi_uid', '==', user.uid),
-          where('coPiUids', 'array-contains', user.uid)
-        )
-      );
-      
-      // Fetch EMR Interests for the user
-      const interestsRef = collection(db, 'emrInterests');
-      const emrQuery = query(interestsRef, where('userId', '==', user.uid));
-      
-      // Fetch all funding calls to map titles
-      const callsRef = collection(db, 'fundingCalls');
-      const callsQuery = query(callsRef);
+        const [projectsSnapshot, interestsSnapshot, callsSnapshot] = await Promise.all([
+            getDocs(projectsQuery),
+            getDocs(emrQuery),
+            getDocs(callsQuery)
+        ]);
 
-      const [projectsSnapshot, interestsSnapshot, callsSnapshot] = await Promise.all([
-          getDocs(projectsQuery),
-          getDocs(emrQuery),
-          getDocs(callsQuery)
-      ]);
+        const projects = projectsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Project));
+        const emrInterests = interestsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as EmrInterest));
+        const fundingCalls = callsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as FundingCall));
 
-      const userProjects = projectsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Project));
-      setProjects(userProjects);
-      
-      const userInterests = interestsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as EmrInterest));
-      setEmrInterests(userInterests);
-
-      const allCalls = callsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as FundingCall));
-      setFundingCalls(allCalls);
-
-    } catch (error) {
-      console.error("Failed to fetch dashboard data", error);
-    } finally {
-      setLoading(false);
+        return { projects, emrInterests, fundingCalls };
+    },
+    {
+        revalidateOnFocus: false,
+        dedupingInterval: 300000, // 5 minutes
     }
-  };
+  );
 
-
-  useEffect(() => {
-    fetchData();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user]);
+  const projects = dashboardData?.projects || [];
+  const emrInterests = dashboardData?.emrInterests || [];
+  const fundingCalls = dashboardData?.fundingCalls || [];
   
   const getCallById = (callId: string) => fundingCalls.find(c => c.id === callId);
 
@@ -113,7 +101,7 @@ export function FacultyDashboard({ user }: { user: User }) {
       ) : (
         <div className="grid gap-4 md:grid-cols-3">
           {statCards.map((card) => (
-            <Card key={card.title} className="h-full">
+            <Card key={card.title}>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                 <CardTitle className="text-sm font-medium">{card.title}</CardTitle>
                 <card.icon className="h-4 w-4 text-muted-foreground" />

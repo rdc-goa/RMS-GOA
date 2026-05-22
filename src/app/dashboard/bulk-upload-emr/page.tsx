@@ -2,7 +2,7 @@
 'use client';
 
 import { useState, useCallback, useEffect } from 'react';
-import * as XLSX from 'xlsx';
+import { readExcelFromBuffer } from '@/lib/excel-utils';
 import { PageHeader } from '@/components/page-header';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -12,7 +12,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { FileWarning, Upload, Loader2, XCircle, CheckCircle } from 'lucide-react';
 import { bulkUploadEmrProjects } from '@/app/emr-actions';
-import { getEmrInterests,  } from '@/app/emr-actions';
+import { getEmrInterests, } from '@/app/emr-actions';
 import { getAllUsers } from '@/app/actions';
 import HistoricalBulkUploads from './historical-bulk-uploads';
 import { EmrInterest, User } from '@/types';
@@ -68,27 +68,24 @@ export default function BulkUploadEmrPage() {
     setFileName(file.name);
     setUploadResult(null);
     const reader = new FileReader();
-    reader.onload = (event) => {
+    reader.onload = async (event) => {
       try {
-        const binaryStr = event.target?.result;
-        const workbook = XLSX.read(binaryStr, { type: 'binary', cellDates: true });
-        const sheetName = workbook.SheetNames[0];
-        const worksheet = workbook.Sheets[sheetName];
-        const jsonData = XLSX.utils.sheet_to_json<any>(worksheet);
+        const arrayBuffer = event.target?.result as ArrayBuffer;
+        const jsonData = await readExcelFromBuffer<any>(arrayBuffer);
 
         const requiredColumns = ['Name of the Project', 'Funding Agency', 'Total Amount', 'PI Name', 'Duration of Project'];
-        
+
         const firstRow = jsonData[0];
         if (!firstRow || !requiredColumns.every(col => col in firstRow)) {
-            toast({
-                variant: 'destructive',
-                title: 'Invalid File Format',
-                description: `The file must contain columns: ${requiredColumns.join(', ')}.`,
-                duration: 8000
-            });
-            setData([]);
-            setFileName('');
-            return;
+          toast({
+            variant: 'destructive',
+            title: 'Invalid File Format',
+            description: `The file must contain columns: ${requiredColumns.join(', ')}.`,
+            duration: 8000
+          });
+          setData([]);
+          setFileName('');
+          return;
         }
 
         setData(jsonData as EmrUploadData[]);
@@ -97,7 +94,7 @@ export default function BulkUploadEmrPage() {
         toast({ variant: 'destructive', title: 'File Error', description: 'Could not parse the uploaded file.' });
       }
     };
-    reader.readAsBinaryString(file);
+    reader.readAsArrayBuffer(file);
   };
 
   const handleUpload = async () => {
@@ -108,28 +105,28 @@ export default function BulkUploadEmrPage() {
     setIsLoading(true);
     setUploadResult(null);
     try {
-        // Sanitize the data to ensure it's a plain object array before sending to the server action
-        const plainData = JSON.parse(JSON.stringify(data));
-        const result = await bulkUploadEmrProjects(plainData);
+      // Sanitize the data to ensure it's a plain object array before sending to the server action
+      const plainData = JSON.parse(JSON.stringify(data));
+      const result = await bulkUploadEmrProjects(plainData);
 
-        if (result.success) {
-            setUploadResult(result.data);
-            if(result.data.successfulCount > 0) {
-                toast({ title: 'Upload Processed', description: `${result.data.successfulCount} EMR projects have been added.` });
-            }
-            if(result.data.failures.length > 0) {
-                toast({ variant: 'destructive', title: 'Some Uploads Failed', description: `Failed to upload ${result.data.failures.length} projects. See details below.` });
-            }
-            setData([]);
-            setFileName('');
-        } else {
-            throw new Error(result.error);
+      if (result.success) {
+        setUploadResult(result.data);
+        if (result.data.successfulCount > 0) {
+          toast({ title: 'Upload Processed', description: `${result.data.successfulCount} EMR projects have been added.` });
         }
+        if (result.data.failures.length > 0) {
+          toast({ variant: 'destructive', title: 'Some Uploads Failed', description: `Failed to upload ${result.data.failures.length} projects. See details below.` });
+        }
+        setData([]);
+        setFileName('');
+      } else {
+        throw new Error(result.error);
+      }
     } catch (error: any) {
-        console.error('Upload failed:', error);
-        toast({ variant: 'destructive', title: 'Upload Failed', description: error.message || 'An unexpected error occurred.' });
+      console.error('Upload failed:', error);
+      toast({ variant: 'destructive', title: 'Upload Failed', description: error.message || 'An unexpected error occurred.' });
     } finally {
-        setIsLoading(false);
+      setIsLoading(false);
     }
   };
 
@@ -164,30 +161,30 @@ export default function BulkUploadEmrPage() {
         {uploadResult && (
           <Card>
             <CardHeader>
-                <CardTitle>Upload Report</CardTitle>
-                <CardDescription>Summary of the EMR bulk upload process.</CardDescription>
+              <CardTitle>Upload Report</CardTitle>
+              <CardDescription>Summary of the EMR bulk upload process.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
-                <div>
-                    <h3 className="font-semibold flex items-center gap-2"><CheckCircle className="h-5 w-5 text-green-500" /> Successfully Added Projects ({uploadResult.successfulCount})</h3>
-                    {uploadResult.successfulCount === 0 && <p className="text-sm text-muted-foreground mt-2">No new projects were added.</p>}
-                    <p className="mt-2 text-sm text-muted-foreground">Projects linked to user profiles: {uploadResult.linkedUserCount}</p>
-                </div>
-                 {uploadResult.failures.length > 0 && (
-                     <Alert variant="destructive">
-                        <XCircle className="h-5 w-5" />
-                        <AlertTitle>Failed Uploads ({uploadResult.failures.length})</AlertTitle>
-                        <AlertDescription>
-                            <ul className="mt-2 list-disc pl-5 text-sm">
-                                {uploadResult.failures.map((f, i) => (
-                                    <li key={i}>
-                                        <strong>{f.projectTitle}</strong> (PI: {f.piName}) - <span className="italic">{f.error}</span>
-                                    </li>
-                                ))}
-                            </ul>
-                        </AlertDescription>
-                    </Alert>
-                 )}
+              <div>
+                <h3 className="font-semibold flex items-center gap-2"><CheckCircle className="h-5 w-5 text-green-500" /> Successfully Added Projects ({uploadResult.successfulCount})</h3>
+                {uploadResult.successfulCount === 0 && <p className="text-sm text-muted-foreground mt-2">No new projects were added.</p>}
+                <p className="mt-2 text-sm text-muted-foreground">Projects linked to user profiles: {uploadResult.linkedUserCount}</p>
+              </div>
+              {uploadResult.failures.length > 0 && (
+                <Alert variant="destructive">
+                  <XCircle className="h-5 w-5" />
+                  <AlertTitle>Failed Uploads ({uploadResult.failures.length})</AlertTitle>
+                  <AlertDescription>
+                    <ul className="mt-2 list-disc pl-5 text-sm">
+                      {uploadResult.failures.map((f, i) => (
+                        <li key={i}>
+                          <strong>{f.projectTitle}</strong> (PI: {f.piName}) - <span className="italic">{f.error}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </AlertDescription>
+                </Alert>
+              )}
             </CardContent>
           </Card>
         )}
@@ -199,28 +196,28 @@ export default function BulkUploadEmrPage() {
               <CardDescription>Review the data before uploading. A total of {data.length} records will be processed.</CardDescription>
             </CardHeader>
             <CardContent>
-                <div className="max-h-96 overflow-y-auto">
-                    <Table>
-                        <TableHeader>
-                        <TableRow>
-                            <TableHead>Project Name</TableHead>
-                            <TableHead>PI Name</TableHead>
-                            <TableHead>Funding Agency</TableHead>
-                            <TableHead className="text-right">Amount</TableHead>
-                        </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                        {data.map((row, index) => (
-                            <TableRow key={index}>
-                            <TableCell className="font-medium">{row['Name of the Project']}</TableCell>
-                            <TableCell>{row['PI Name']}</TableCell>
-                            <TableCell>{row['Funding Agency']}</TableCell>
-                            <TableCell className="text-right">₹{Number(row['Total Amount']).toLocaleString('en-IN')}</TableCell>
-                            </TableRow>
-                        ))}
-                        </TableBody>
-                    </Table>
-                </div>
+              <div className="max-h-96 overflow-y-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Project Name</TableHead>
+                      <TableHead>PI Name</TableHead>
+                      <TableHead>Funding Agency</TableHead>
+                      <TableHead className="text-right">Amount</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {data.map((row, index) => (
+                      <TableRow key={index}>
+                        <TableCell className="font-medium">{row['Name of the Project']}</TableCell>
+                        <TableCell>{row['PI Name']}</TableCell>
+                        <TableCell>{row['Funding Agency']}</TableCell>
+                        <TableCell className="text-right">₹{Number(row['Total Amount']).toLocaleString('en-IN')}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
             </CardContent>
           </Card>
         )}
@@ -243,4 +240,3 @@ export default function BulkUploadEmrPage() {
   );
 }
 
-    

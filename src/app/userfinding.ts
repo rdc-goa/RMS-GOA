@@ -1,8 +1,9 @@
+
 'use server';
 
 import { adminDb } from '@/lib/admin';
 import type { User, FoundUser } from '@/types';
-import { readStaffDataFromUrl, GOA_STAFF_DATA_URL, formatUserRecord } from '@/lib/staff-data';
+import { getStaffDataAction, searchStaffByNameAction } from '@/lib/staff-service';
 
 async function logActivity(level: 'INFO' | 'WARNING' | 'ERROR', message: string, context: Record<string, any> = {}) {
     try {
@@ -57,9 +58,9 @@ export async function findUserByMisId(
         const userData = doc.data() as User;
         const userResult: FoundUser = {
             uid: doc.id,
-            name: userData.name || 'Unknown',
-            email: userData.email || '',
-            misId: userData.misId || String(searchTerm),
+            name: userData.name,
+            email: userData.email,
+            misId: userData.misId!,
             campus: userData.campus || 'Goa',
         };
         if(userResult.email) {
@@ -71,9 +72,9 @@ export async function findUserByMisId(
         const userData = doc.data() as User;
         const userResult: FoundUser = {
             uid: doc.id,
-            name: userData.name || 'Unknown',
-            email: userData.email || '',
-            misId: userData.misId || 'N/A',
+            name: userData.name,
+            email: userData.email,
+            misId: userData.misId!,
             campus: userData.campus || 'Goa',
         };
         if(userResult.email && !allFound.has(userResult.email.toLowerCase())) {
@@ -81,54 +82,35 @@ export async function findUserByMisId(
         }
       });
   
-      // 2. Search staff data files directly by MIS ID
-      try {
-        const staffData = await readStaffDataFromUrl(GOA_STAFF_DATA_URL);
-        
-        staffData.forEach((staff) => {
-            const staffMisId = staff['MIS ID'] ? String(staff['MIS ID']).toLowerCase() : '';
-            const isMatch = (staffMisId === searchTerm.toLowerCase());
-            
-            if (isMatch && staff.Email && !allFound.has(staff.Email.toLowerCase())) {
-                const formatted = formatUserRecord(staff, 'Goa');
-                allFound.set(staff.Email.toLowerCase(), {
+      // 2. Search staff data via direct service call (Server-to-Server)
+      const staffResults = await getStaffDataAction({ misId: searchTerm, fetchAll: true });
+      
+      staffResults.forEach((staff) => {
+        if (staff.email && !allFound.has(staff.email.toLowerCase())) {
+            allFound.set(staff.email.toLowerCase(), {
+                uid: null,
+                name: staff.name,
+                email: staff.email,
+                misId: staff.misId,
+                campus: staff.campus,
+            });
+        }
+      });
+  
+      // 3. If no results yet, search by name via direct service call
+      if (allFound.size === 0) {
+        const nameResults = await searchStaffByNameAction(searchTerm);
+        nameResults.forEach((staff: any) => {
+            if (staff.email && !allFound.has(staff.email.toLowerCase())) {
+                allFound.set(staff.email.toLowerCase(), {
                     uid: null,
-                    name: formatted.name || 'Unknown',
-                    email: formatted.email.toLowerCase(),
-                    misId: formatted.misId || staffMisId,
-                    campus: formatted.campus || 'Goa',
+                    name: staff.name,
+                    email: staff.email,
+                    misId: staff.misId,
+                    campus: staff.campus
                 });
             }
         });
-      } catch (staffError) {
-        console.error("Error fetching staff data directly:", staffError);
-      }
-
-      // 3. If no results yet, search by name directly in Firestore (partial match)
-      if (allFound.size === 0) {
-        try {
-            const lowercasedName = searchTerm.toLowerCase();
-            // Note: This matches the previous API route logic for partial name search
-            const nameSearchSnapshot = await usersRef.orderBy('name').get();
-            
-            nameSearchSnapshot.docs.forEach((doc) => {
-                const userData = doc.data() as User;
-                const userName = userData.name || '';
-                if (userName.toLowerCase().includes(lowercasedName)) {
-                    if (userData.email && !allFound.has(userData.email.toLowerCase())) {
-                        allFound.set(userData.email.toLowerCase(), {
-                            uid: doc.id,
-                            name: userName,
-                            email: userData.email,
-                            misId: userData.misId || 'N/A',
-                            campus: userData.campus || 'Goa',
-                        });
-                    }
-                }
-            });
-        } catch (nameError) {
-            console.error("Error searching by name directly:", nameError);
-        }
       }
   
       const foundUsers = Array.from(allFound.values());

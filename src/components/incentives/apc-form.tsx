@@ -1,41 +1,37 @@
+"use client"
 
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
+import { useForm, useFieldArray } from 'react-hook-form'
+import { zodResolver } from '@hookform/resolvers/zod'
+import * as z from 'zod'
+import Link from "next/link"
+import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardFooter, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
+import { Input } from '@/components/ui/input'
+import { Textarea } from '@/components/ui/textarea'
+import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form'
+import { Checkbox } from '@/components/ui/checkbox'
+import { Label } from '@/components/ui/label'
+import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert'
+import { Separator } from '@/components/ui/separator'
+import { useRouter, useSearchParams } from 'next/navigation'
+import { useToast } from '@/hooks/use-toast'
+import { db } from '@/lib/config'
+import type { User, IncentiveClaim, Author, SystemSettings } from '@/types'
+import { getSystemSettings, getIncentiveClaimByIdAction } from '@/app/actions'
+import { uploadFileToApi } from '@/lib/upload-client'
+import { AuthorSearch } from './author-search'
+import { Loader2, AlertCircle, Info, Trash2, Bot, CheckCircle2, FileText, X, Globe, ChevronDown } from 'lucide-react'
+import { submitIncentiveClaimViaApi } from '@/lib/incentive-claim-client'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { calculateApcIncentive } from '@/app/incentive-calculation'
+import { fetchAdvancedScopusData } from '@/app/scopus-actions'
+import { fetchScienceDirectData } from '@/app/sciencedirect-actions'
+import { fetchWosDataByUrl } from '@/app/wos-actions'
+import { Table, TableHeader, TableRow, TableHead, TableBody, TableCell } from '../ui/table'
+import { Badge } from '../ui/badge'
 
-'use client';
-import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
-import { useForm, useFieldArray } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
-import * as z from 'zod';
-import Link from 'next/link';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardFooter, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
-import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
-import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
-import { Checkbox } from '@/components/ui/checkbox';
-import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
-import { Separator } from '@/components/ui/separator';
-import { useRouter, useSearchParams } from 'next/navigation';
-import { useToast } from '@/hooks/use-toast';
-import { db } from '@/lib/config';
-import { collection, addDoc, doc, setDoc, getDoc } from 'firebase/firestore';
-import type { User, IncentiveClaim, Author } from '@/types';
-import { checkPatentUniqueness } from '@/app/actions';
-import { uploadFileToApi } from '@/lib/upload-client';
-import { findUserByMisId } from '@/app/userfinding';
-import { Loader2, AlertCircle, Info, Plus, Trash2, Search, Bot, Edit } from 'lucide-react';
-import { submitIncentiveClaimViaApi } from '@/lib/incentive-claim-client';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { calculateApcIncentive } from '@/app/incentive-calculation';
-import { fetchAdvancedScopusData } from '@/app/scopus-actions';
-import { fetchScienceDirectData } from '@/app/sciencedirect-actions';
-import { fetchWosDataByUrl } from '@/app/wos-actions';
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogClose } from '@/components/ui/dialog';
-import { Label } from '@/components/ui/label';
-import { Table, TableHeader, TableRow, TableHead, TableBody, TableCell } from '../ui/table';
-import { Badge } from '../ui/badge';
-
-const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
+const MAX_FILE_SIZE = 10 * 1024 * 1024 // 10MB
 
 const authorSchema = z
   .object({
@@ -57,33 +53,53 @@ const apcSchema = z.object({
   apcIndexingStatus: z.array(z.string()).refine(value => value.some(item => item), { message: "You have to select at least one indexing status." }),
   apcQRating: z.enum(['Q1', 'Q2', 'Q3', 'Q4']).optional(),
   doi: z.string().optional(),
+  apcWosAccessionNumber: z.string().optional().or(z.literal('')),
   apcPaperTitle: z.string().min(5, 'Paper title is required.'),
   authors: z.array(authorSchema).min(1, 'At least one author is required.')
-  .refine(data => {
+    .refine(data => {
       const firstAuthors = data.filter(author => author.role === 'First Author' || author.role === 'First & Corresponding Author');
       return firstAuthors.length <= 1;
-  }, { message: 'Only one author can be designated as the First Author.', path: ['authors'] }),
+    }, { message: 'Only one author can be designated as the First Author.', path: ['authors'] }),
   apcTotalStudentAuthors: z.coerce.number().nonnegative("Number of students cannot be negative.").optional(),
   apcStudentNames: z.string().optional(),
   apcJournalDetails: z.string().min(5, 'Journal details are required.'),
   apcApcWaiverRequested: z.boolean().refine(val => val === true, {
     message: 'You must request an APC waiver and provide proof to be eligible.',
   }),
-  apcApcWaiverProof: z.any().refine(files => files?.length > 0, {
-    message: 'Proof of APC waiver request is required.',
-  }).refine(files => !files?.[0] || files?.[0]?.size <= MAX_FILE_SIZE, 'File must be less than 10 MB.'),
-  apcJournalWebsite: z.string().url('Please enter a valid URL.'),
+  apcApcWaiverProof: z.any().optional().refine(files => !files?.[0] || files?.[0]?.size <= MAX_FILE_SIZE, 'File must be less than 10 MB.'),
+  apcJournalWebsite: z.string().url('Please enter a valid URL.').optional().or(z.literal('')),
   apcIssnNo: z.string().min(5, 'ISSN is required.'),
   apcSciImpactFactor: z.coerce.number().optional(),
-  apcPublicationProof: z.any().refine((files) => files?.length > 0, 'Proof of publication is required.').refine(files => !files?.[0] || files?.[0]?.size <= MAX_FILE_SIZE, 'File must be less than 10 MB.'),
-  apcInvoiceProof: z.any().refine((files) => files?.length > 0, 'Proof of payment/invoice is required.').refine(files => !files?.[0] || files?.[0]?.size <= MAX_FILE_SIZE, 'File must be less than 10 MB.'),
+  apcPublicationProof: z.any().optional().refine(files => !files?.[0] || files?.[0]?.size <= MAX_FILE_SIZE, 'File must be less than 10 MB.'),
+  apcInvoiceProof: z.any().optional().refine(files => !files?.[0] || files?.[0]?.size <= MAX_FILE_SIZE, 'File must be less than 10 MB.'),
   apcPuNameInPublication: z.boolean().optional(),
   apcAmountClaimed: z.coerce.number().positive('Claimed amount must be positive.'),
   apcTotalAmount: z.coerce.number().positive('Total amount must be a positive number greater than 0.'),
   apcSelfDeclaration: z.boolean().refine(val => val === true, { message: 'You must agree to the self-declaration.' }),
+  authorPosition: z.enum(['1st', '2nd', '3rd', '4th', '5th', '6th', '7th', '8th', '9th', '10th']).optional(),
+  apcApcWaiverProofUrl: z.string().optional(),
+  apcPublicationProofUrl: z.string().optional(),
+  apcInvoiceProofUrl: z.string().optional(),
 }).refine(data => data.apcTypeOfArticle !== 'Other' || (!!data.apcOtherArticleType && data.apcOtherArticleType.length > 0), {
   message: 'Please specify the article type.',
   path: ['apcOtherArticleType'],
+}).refine(data => {
+  if (data.apcIndexingStatus.some(s => s.toLowerCase().includes('web of science'))) {
+    return !!data.apcWosAccessionNumber && data.apcWosAccessionNumber.length > 0;
+  }
+  return true;
+}, {
+  message: 'Web of Science Accession Number is required when Web of Science is selected.',
+  path: ['apcWosAccessionNumber'],
+}).refine(data => data.apcApcWaiverProofUrl || (data.apcApcWaiverProof && data.apcApcWaiverProof.length > 0), {
+  message: 'Proof of APC waiver request is required.',
+  path: ['apcApcWaiverProof'],
+}).refine(data => data.apcPublicationProofUrl || (data.apcPublicationProof && data.apcPublicationProof.length > 0), {
+  message: 'Proof of publication is required.',
+  path: ['apcPublicationProof'],
+}).refine(data => data.apcInvoiceProofUrl || (data.apcInvoiceProof && data.apcInvoiceProof.length > 0), {
+  message: 'Proof of payment/invoice is required.',
+  path: ['apcInvoiceProof'],
 });
 
 type ApcFormValues = z.infer<typeof apcSchema>;
@@ -92,118 +108,187 @@ const articleTypes = ['Research Paper Publication', 'Review Article', 'Letter to
 const coAuthorRoles: Author['role'][] = ['First Author', 'Corresponding Author', 'Co-Author', 'First & Corresponding Author'];
 
 const SPECIAL_POLICY_FACULTIES = [
-    "Faculty of Applied Sciences",
-    "Faculty of Medicine",
-    "Faculty of Homoeopathy",
-    "Faculty of Ayurved",
-    "Faculty of Nursing",
-    "Faculty of Pharmacy",
-    "Faculty of Physiotherapy",
-    "Faculty of Public Health",
-    "Faculty of Engineering & Technology"
+  "Faculty of Applied Sciences",
+  "Faculty of Medicine",
+  "Faculty of Homoeopathy",
+  "Faculty of Ayurved",
+  "Faculty of Nursing",
+  "Faculty of Pharmacy",
+  "Faculty of Physiotherapy",
+  "Faculty of Public Health",
+  "Faculty of Engineering & Technology"
 ];
 
-function ReviewDetails({ data, onEdit }: { data: ApcFormValues; onEdit: () => void }) {
-    const renderDetail = (label: string, value?: string | number | boolean | string[] | Author[]) => {
-        if (!value && value !== 0 && value !== false) return null;
-        
-        let displayValue: React.ReactNode = String(value);
-        if (typeof value === 'boolean') {
-            displayValue = value ? 'Yes' : 'No';
-        }
-        if (Array.isArray(value)) {
-            if (value.length > 0 && typeof value[0] === 'object' && value[0] !== null && 'name' in value[0]) {
-                 displayValue = (
-                    <div className="border rounded-lg overflow-hidden">
-                        <Table>
-                            <TableHeader>
-                                <TableRow>
-                                    <TableHead>Author Name</TableHead>
-                                    <TableHead>Role</TableHead>
-                                    <TableHead>Email</TableHead>
-                                </TableRow>
-                            </TableHeader>
-                            <TableBody>
-                                {(value as Author[]).map((author, idx) => (
-                                    <TableRow key={idx}>
-                                        <TableCell>{author.name}</TableCell>
-                                        <TableCell><Badge variant="secondary">{author.role}</Badge></TableCell>
-                                        <TableCell>{author.email}</TableCell>
-                                    </TableRow>
-                                ))}
-                            </TableBody>
-                        </Table>
-                    </div>
-                );
-            } else {
-                displayValue = (value as string[]).join(', ');
-            }
-        }
+function ReviewDetails({ data, onEdit, isSubmitting, totalIncentive }: { data: ApcFormValues; onEdit: () => void; isSubmitting: boolean; totalIncentive: number | null }) {
+  const apcWaiverProofFile = data.apcApcWaiverProof?.[0] as File | undefined;
+  const apcPublicationProofFile = data.apcPublicationProof?.[0] as File | undefined;
+  const apcInvoiceProofFile = data.apcInvoiceProof?.[0] as File | undefined;
 
-        return (
-            <div className="grid grid-cols-3 gap-2 py-1.5 items-start">
-                <dt className="font-semibold text-muted-foreground col-span-1">{label}</dt>
-                <dd className="col-span-2">{displayValue}</dd>
+  return (
+    <Card className="max-w-4xl mx-auto shadow-xl border-t-4 border-t-primary">
+      <CardHeader className="bg-muted/30">
+        <div className="flex justify-between items-center">
+          <div>
+            <CardTitle className="text-2xl flex items-center gap-2">
+              <CheckCircle2 className="h-6 w-6 text-primary" /> Review Your Application
+            </CardTitle>
+            <CardDescription>Please verify all details before final submission.</CardDescription>
+          </div>
+          <Button variant="outline" onClick={onEdit} disabled={isSubmitting}>Edit Form</Button>
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-6 pt-6 text-sm">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="space-y-4">
+            <div>
+              <p className="font-semibold text-muted-foreground uppercase text-[10px] tracking-wider mb-1">Article Type</p>
+              <p className="font-medium text-base">{data.apcTypeOfArticle === 'Other' ? data.apcOtherArticleType : data.apcTypeOfArticle}</p>
             </div>
-        );
-    };
+            <div>
+              <p className="font-semibold text-muted-foreground uppercase text-[10px] tracking-wider mb-1">Indexing Status</p>
+              <div className="flex flex-wrap gap-1.5 mt-1">
+                {data.apcIndexingStatus.map((status, i) => (
+                  <Badge key={i} variant="secondary">{status}</Badge>
+                ))}
+              </div>
+            </div>
+            <div>
+              <p className="font-semibold text-muted-foreground uppercase text-[10px] tracking-wider mb-1">Paper Title</p>
+              <p className="font-medium">{data.apcPaperTitle}</p>
+            </div>
+            <div>
+              <p className="font-semibold text-muted-foreground uppercase text-[10px] tracking-wider mb-1">Journal & ISSN</p>
+              <p className="font-medium">{data.apcJournalDetails}</p>
+              <p className="text-xs text-muted-foreground mt-0.5">ISSN: {data.apcIssnNo}</p>
+            </div>
+          </div>
 
-    const apcWaiverProofFile = data.apcApcWaiverProof?.[0] as File | undefined;
-    const apcPublicationProofFile = data.apcPublicationProof?.[0] as File | undefined;
-    const apcInvoiceProofFile = data.apcInvoiceProof?.[0] as File | undefined;
-
-    return (
-        <Card>
-            <CardHeader>
+          <div className="space-y-4">
+            <div>
+              <p className="font-semibold text-muted-foreground uppercase text-[10px] tracking-wider mb-1">Financial Summary</p>
+              <div className="bg-muted/50 p-3 rounded-xl border space-y-2">
                 <div className="flex justify-between items-center">
-                    <div>
-                        <CardTitle>Review Your Application</CardTitle>
-                        <CardDescription>Please review the details below before final submission.</CardDescription>
-                    </div>
-                    <Button variant="outline" onClick={onEdit}><Edit className="h-4 w-4 mr-2" /> Edit</Button>
+                  <span className="text-muted-foreground">Total Paid:</span>
+                  <span className="font-bold">₹{data.apcTotalAmount.toLocaleString('en-IN')}</span>
                 </div>
-            </CardHeader>
-            <CardContent className="space-y-4">
-                {renderDetail("Article Type", data.apcTypeOfArticle === 'Other' ? data.apcOtherArticleType : data.apcTypeOfArticle)}
-                {renderDetail("Indexing Status", data.apcIndexingStatus)}
-                {renderDetail("Q Rating", data.apcQRating)}
-                {renderDetail("Paper Title", data.apcPaperTitle)}
-                {renderDetail("Authors", data.authors)}
-                {renderDetail("Journal Details", data.apcJournalDetails)}
-                {renderDetail("Journal Website", data.apcJournalWebsite)}
-                {renderDetail("ISSN", data.apcIssnNo)}
-                {renderDetail("SCI Impact Factor", data.apcSciImpactFactor)}
-                {renderDetail("PU Name in Publication", data.apcPuNameInPublication)}
-                {renderDetail("Total Amount of APC (INR)", `₹${data.apcTotalAmount.toLocaleString('en-IN')}`)}
-                {renderDetail("Amount Claimed (INR)", `₹${data.apcAmountClaimed.toLocaleString('en-IN')}`)}
-                {renderDetail("Proof of APC Waiver Request", apcWaiverProofFile?.name)}
-                {renderDetail("Proof of Publication", apcPublicationProofFile?.name)}
-                {renderDetail("Proof of Invoice/Payment", apcInvoiceProofFile?.name)}
-            </CardContent>
-        </Card>
-    );
+                <div className="flex justify-between items-center">
+                  <span className="text-muted-foreground">Amount Claimed:</span>
+                  <span className="font-bold">₹{data.apcAmountClaimed.toLocaleString('en-IN')}</span>
+                </div>
+                {totalIncentive !== null && (
+                  <div className="flex justify-between items-center pt-2 border-t border-muted-foreground/20">
+                    <span className="text-primary font-semibold">Tentative Share:</span>
+                    <span className="font-black text-primary text-base">₹{totalIncentive.toLocaleString('en-IN')}</span>
+                  </div>
+                )}
+              </div>
+            </div>
+            <div>
+              <p className="font-semibold text-muted-foreground uppercase text-[10px] tracking-wider mb-1">Uploaded Proofs</p>
+              <div className="flex flex-col gap-1.5 mt-1">
+                <div className="flex items-center gap-2 bg-background p-2 rounded-lg border text-xs">
+                  <FileText className="h-3.5 w-3.5 text-primary" />
+                  <span className="truncate flex-1">Waiver: {apcWaiverProofFile?.name || "Attached"}</span>
+                </div>
+                <div className="flex items-center gap-2 bg-background p-2 rounded-lg border text-xs">
+                  <FileText className="h-3.5 w-3.5 text-primary" />
+                  <span className="truncate flex-1">Publication: {apcPublicationProofFile?.name || "Attached"}</span>
+                </div>
+                <div className="flex items-center gap-2 bg-background p-2 rounded-lg border text-xs">
+                  <FileText className="h-3.5 w-3.5 text-primary" />
+                  <span className="truncate flex-1">Invoice: {apcInvoiceProofFile?.name || "Attached"}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <Separator />
+
+        <div>
+          <p className="font-semibold text-muted-foreground uppercase text-[10px] tracking-wider mb-3">Author Details</p>
+          <div className="border rounded-xl overflow-hidden shadow-sm">
+            <Table>
+              <TableHeader className="bg-muted/50">
+                <TableRow>
+                  <TableHead className="py-2">Name</TableHead>
+                  <TableHead className="py-2">Role</TableHead>
+                  <TableHead className="py-2">Type</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {data.authors.map((author, idx) => (
+                  <TableRow key={idx}>
+                    <TableCell className="font-medium">{author.name}</TableCell>
+                    <TableCell><Badge variant="outline" className="text-[10px] py-0">{author.role}</Badge></TableCell>
+                    <TableCell>{author.isExternal ? <Badge variant="destructive" className="text-[10px] py-0">External</Badge> : <Badge className="text-[10px] py-0 bg-green-500 hover:bg-green-600">Internal</Badge>}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
 }
 
-export function ApcForm() {
-  const { toast } = useToast();
-  const router = useRouter();
-  const searchParams = useSearchParams();
-  const [user, setUser] = useState<User | null>(null);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [isFetching, setIsFetching] = useState(false);
-  const [bankDetailsMissing, setBankDetailsMissing] = useState(false);
-  const [orcidOrMisIdMissing, setOrcidOrMisIdMissing] = useState(false);
-  const [calculatedIncentive, setCalculatedIncentive] = useState<number | null>(null);
-  const [isLoadingDraft, setIsLoadingDraft] = useState(true);
-  const [currentStep, setCurrentStep] = useState(1);
-  
-  const [coPiSearchTerm, setCoPiSearchTerm] = useState('');
-  const [foundCoPis, setFoundCoPis] = useState<any[]>([]);
-  const [isSearching, setIsSearching] = useState(false);
-  const [externalAuthorName, setExternalAuthorName] = useState('');
-  const [externalAuthorEmail, setExternalAuthorEmail] = useState('');
-  const [externalAuthorRole, setExternalAuthorRole] = useState<Author['role']>('Co-Author');
-  const [isSelectionOpen, setIsSelectionOpen] = useState(false);
+export function ApcForm({ user }: { user: User }) {
+  const { toast } = useToast()
+  const router = useRouter()
+  const searchParams = useSearchParams()
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [isFetching, setIsFetching] = useState(false)
+  const [bankDetailsMissing, setBankDetailsMissing] = useState(false)
+  const [orcidOrMisIdMissing, setOrcidOrMisIdMissing] = useState(false)
+  const [calculatedIncentive, setCalculatedIncentive] = useState<number | null>(null)
+  const [isLoadingDraft, setIsLoadingDraft] = useState(true)
+  const [step, setStep] = useState<'edit' | 'review'>('edit')
+  const [showLogic, setShowLogic] = useState(false)
+  const [systemSettings, setSystemSettings] = useState<SystemSettings | null>(null);
+
+  useEffect(() => {
+    async function fetchSettings() {
+      const settings = await getSystemSettings();
+      setSystemSettings(settings);
+    }
+    fetchSettings();
+  }, []);
+
+  const getApcLogicBreakdown = (data: any) => {
+    const { apcIndexingStatus = [], apcQRating, apcTotalAmount, authors = [] } = data;
+    const internalAuthorsCount = authors.filter((a: any) => !a.isExternal).length || 1;
+    let actualPaid = 0;
+    if (apcTotalAmount) {
+      actualPaid = parseFloat(String(apcTotalAmount).replace(/[^0-9.]/g, '')) || 0;
+    }
+
+    let maxLimit = 0;
+    const hasScopus = apcIndexingStatus.some((s: string) => s.toLowerCase().includes('scopus') || s.toLowerCase().includes('web of science') || s.toLowerCase().includes('sci'));
+    if (hasScopus && apcQRating) {
+      switch (apcQRating) {
+        case 'Q1': maxLimit = 40000; break;
+        case 'Q2': maxLimit = 30000; break;
+        case 'Q3': maxLimit = 20000; break;
+        case 'Q4': maxLimit = 15000; break;
+      }
+    } else if (apcIndexingStatus.some((s: string) => s.includes('Web of Science indexed journals (ESCI)'))) {
+      maxLimit = 8000;
+    } else if (apcIndexingStatus.some((s: string) => s.includes('UGC-CARE Group-I'))) {
+      maxLimit = 5000;
+    }
+
+    const admissible = maxLimit > 0 ? Math.min(actualPaid, maxLimit) : actualPaid;
+    const finalAmount = Math.round(admissible / internalAuthorsCount);
+
+    return [
+      { label: '1. Max Policy Limit (by Indexing/Q-Rating)', value: `₹${maxLimit.toLocaleString('en-IN')}` },
+      { label: '2. Actual APC Amount Paid', value: `₹${actualPaid.toLocaleString('en-IN')}` },
+      { label: '3. Admissible Amount (Lesser of above)', value: `₹${admissible.toLocaleString('en-IN')}` },
+      { label: '4. Total Internal PU Authors', value: internalAuthorsCount },
+      { label: '5. Final Individual Share', value: `₹${finalAmount.toLocaleString('en-IN')}` }
+    ];
+  };
 
   const form = useForm<ApcFormValues>({
     resolver: zodResolver(apcSchema),
@@ -226,43 +311,36 @@ export function ApcForm() {
       apcAmountClaimed: 0,
       apcTotalAmount: 0,
       apcSelfDeclaration: false,
+      authorPosition: '1st',
     },
-  });
+  })
 
   const { fields, append, remove, update } = useFieldArray({
-      control: form.control,
-      name: "authors",
+    control: form.control,
+    name: "authors",
   });
 
   const isSpecialFaculty = useMemo(() =>
-    user?.faculty ? SPECIAL_POLICY_FACULTIES.includes(user.faculty) : false,
-    [user?.faculty]
+    user.faculty ? SPECIAL_POLICY_FACULTIES.includes(user.faculty) : false,
+    [user.faculty]
   );
 
   const availableIndexingStatuses = useMemo(() => {
     let statuses = ['Scopus', 'Web of science'];
     if (!isSpecialFaculty) {
-        statuses.push('Web of Science indexed journals (ESCI)', 'UGC-CARE Group-I');
+      statuses.push('Web of Science indexed journals (ESCI)', 'UGC-CARE Group-I');
     }
     return statuses;
   }, [isSpecialFaculty]);
 
-  const formValues = form.watch();
-
   const calculate = useCallback(async () => {
     const currentValues = form.getValues();
-    
     if (user && user.faculty) {
-      const dataForCalc = {
-        ...currentValues,
-        userEmail: user.email,
-      };
-      
+      const dataForCalc = { ...currentValues, userEmail: user.email };
       const result = await calculateApcIncentive(dataForCalc, isSpecialFaculty);
       if (result.success) {
         setCalculatedIncentive(result.amount ?? null);
       } else {
-        console.error("Incentive calculation failed:", result.error);
         setCalculatedIncentive(null);
       }
     }
@@ -270,584 +348,555 @@ export function ApcForm() {
 
   const timeoutRef = useRef<NodeJS.Timeout>();
 
-useEffect(() => {
-  const subscription = form.watch((value, { name, type }) => {
-    const fieldsForRecalculation = [
-      'apcTotalAmount', 'apcIndexingStatus', 'apcQRating', 'authors'
-    ];
-    
-    if (type === 'change' && fieldsForRecalculation.some(field => name?.includes(field))) {
-      if (timeoutRef.current) {
-        clearTimeout(timeoutRef.current);
+  useEffect(() => {
+    const subscription = form.watch((value, { name, type }) => {
+      const fieldsForRecalculation = ['apcTotalAmount', 'apcIndexingStatus', 'apcQRating', 'authors'];
+      if (type === 'change' && fieldsForRecalculation.some(field => name?.includes(field))) {
+        if (timeoutRef.current) clearTimeout(timeoutRef.current);
+        timeoutRef.current = setTimeout(() => calculate(), 300);
       }
-      timeoutRef.current = setTimeout(() => {
-        calculate();
-      }, 300);
-    }
-  });
-  
-  return () => {
-    subscription.unsubscribe();
-    if (timeoutRef.current) {
-      clearTimeout(timeoutRef.current);
-    }
-  };
-}, [form, calculate]);
+    });
+    return () => {
+      subscription.unsubscribe();
+      if (timeoutRef.current) clearTimeout(timeoutRef.current);
+    };
+  }, [form, calculate]);
 
   useEffect(() => {
-    const storedUser = localStorage.getItem('user');
-    if (storedUser) {
-      const parsedUser = JSON.parse(storedUser);
-      setUser(parsedUser);
-      setBankDetailsMissing(!parsedUser.bankDetails);
-      setOrcidOrMisIdMissing(!parsedUser.orcidId || !parsedUser.misId);
-
-      const isUserAlreadyAdded = form.getValues('authors').some(field => field.email.toLowerCase() === parsedUser.email.toLowerCase());
+    if (user) {
+      setBankDetailsMissing(!user.bankDetails);
+      setOrcidOrMisIdMissing(!user.orcidId || !user.misId);
+      const isUserAlreadyAdded = form.getValues('authors').some(field => field.email.toLowerCase() === user.email.toLowerCase());
       if (!isUserAlreadyAdded) {
-        append({ 
-            name: parsedUser.name, 
-            email: parsedUser.email,
-            uid: parsedUser.uid,
-            role: 'First Author',
-            isExternal: false,
-            status: 'approved',
+        append({
+          name: user.name,
+          email: user.email,
+          uid: user.uid,
+          role: 'First Author',
+          isExternal: false,
+          status: 'approved',
         });
       }
     }
     const claimId = searchParams.get('claimId');
-    if (!claimId) {
-        setIsLoadingDraft(false);
-    }
-  }, [append, form, searchParams]);
-  
+    if (!claimId) setIsLoadingDraft(false);
+  }, [append, form, searchParams, user]);
+
   useEffect(() => {
     const claimId = searchParams.get('claimId');
     if (claimId && user) {
-        const fetchDraft = async () => {
-            setIsLoadingDraft(true);
-            try {
-                const claimRef = doc(db, 'incentiveClaims', claimId);
-                const claimSnap = await getDoc(claimRef);
-                if (claimSnap.exists()) {
-                    const draftData = claimSnap.data() as IncentiveClaim;
-                    form.reset({
-                        ...draftData,
-                        apcApcWaiverProof: undefined,
-                        apcPublicationProof: undefined,
-                        apcInvoiceProof: undefined,
-                    });
-                } else {
-                    toast({ variant: 'destructive', title: 'Draft Not Found' });
-                }
-            } catch (error) {
-                toast({ variant: 'destructive', title: 'Error Loading Draft' });
-            } finally {
-                setIsLoadingDraft(false);
-            }
-        };
-        fetchDraft();
+      const fetchDraft = async () => {
+        setIsLoadingDraft(true);
+        try {
+          const result = await getIncentiveClaimByIdAction(claimId);
+          if (result.success && result.data) {
+            const draftData = result.data as any;
+            form.reset({
+              ...draftData,
+              authors: draftData.authors || [],
+              apcApcWaiverProof: undefined,
+              apcPublicationProof: undefined,
+              apcInvoiceProof: undefined,
+            });
+            setStep('edit');
+          } else {
+            toast({ variant: 'destructive', title: result.error || 'Draft Not Found' });
+          }
+        } catch (error) {
+          toast({ variant: 'destructive', title: 'Error Loading Draft' });
+        } finally {
+          setIsLoadingDraft(false);
+        }
+      };
+      fetchDraft();
     }
   }, [searchParams, user, form, toast]);
-  
-  const watchAuthors = form.watch('authors');
-  const firstAuthorExists = useMemo(() => 
-    watchAuthors.some(author => author.role === 'First Author' || author.role === 'First & Corresponding Author'),
-    [watchAuthors]
-  );
-  
-  const getAvailableRoles = (currentAuthor?: Author) => {
-    const isCurrentAuthorFirst = currentAuthor && (currentAuthor.role === 'First Author' || currentAuthor.role === 'First & Corresponding Author');
-    if (firstAuthorExists && !isCurrentAuthorFirst) {
-      return coAuthorRoles.filter(role => role !== 'First Author' && role !== 'First & Corresponding Author');
-    }
-    return coAuthorRoles;
-  };
-
-  const watchArticleType = form.watch('apcTypeOfArticle');
-  const watchWaiverRequested = form.watch('apcApcWaiverRequested');
-  const indexType = form.watch("apcIndexingStatus");
-
-  const handleProceedToReview = async () => {
-    const isValid = await form.trigger();
-    if (isValid) {
-      setCurrentStep(2);
-    } else {
-        toast({
-            variant: 'destructive',
-            title: 'Validation Error',
-            description: 'Please correct the errors before proceeding.',
-        });
-    }
-  };
-
-  const handleFetchData = async (source: 'scopus' | 'wos' | 'sciencedirect') => {
-    const doi = form.getValues('doi');
-    if (!doi) {
-      toast({ variant: 'destructive', title: 'No DOI Provided', description: 'Please enter a DOI to fetch data.' });
-      return;
-    }
-    if (!user) {
-      toast({ variant: 'destructive', title: 'Not Logged In', description: 'Could not identify the claimant.' });
-      return;
-    }
-
-    setIsFetching(true);
-    toast({ title: `Fetching ${source.toUpperCase()} Data`, description: 'Please wait, this may take a moment...' });
-    
-    try {
-        let result;
-        if (source === 'scopus') {
-            result = await fetchAdvancedScopusData(doi, user.name);
-        } else if (source === 'wos') {
-            result = await fetchWosDataByUrl(doi, user.name);
-        } else {
-            result = await fetchScienceDirectData(doi, user.name);
-        }
-
-        if (result.success && result.data) {
-            form.setValue('apcPaperTitle', result.data.paperTitle || '');
-            form.setValue('apcJournalDetails', result.data.journalName || '');
-            form.setValue('apcJournalWebsite', result.data.journalWebsite || '');
-            form.setValue('apcIssnNo', result.data.printIssn || result.data.electronicIssn || '');
-            
-            toast({ title: 'Success', description: `Form fields have been pre-filled from ${source.toUpperCase()}.` });
-            
-            if ('warning' in result && result.warning) {
-                toast({
-                    variant: 'default',
-                    title: 'Heads Up',
-                    description: result.warning,
-                    duration: 7000,
-                });
-            }
-
-        } else {
-            toast({ variant: 'destructive', title: 'Error', description: result.error || `Failed to fetch data from ${source.toUpperCase()}.` });
-        }
-    } catch (error: any) {
-        toast({ variant: 'destructive', title: 'Error', description: error.message || 'An unexpected error occurred.' });
-    } finally {
-        setIsFetching(false);
-    }
-  };
-
-  const handleSearchCoPi = async (searchTerm: string) => {
-    if (!searchTerm || searchTerm.length < 2) {
-      setFoundCoPis([]);
-      return;
-    }
-    setIsSearching(true);
-    try {
-        // Check if search term looks like a MIS ID (numeric or alphanumeric, max 10 chars)
-        const isMisIdSearch = /^[a-zA-Z0-9]+$/.test(searchTerm) && searchTerm.length <= 10;
-        
-        let url = '';
-        if (isMisIdSearch) {
-            url = `/api/find-users-by-name?misId=${encodeURIComponent(searchTerm)}`;
-        } else {
-            url = `/api/find-users-by-name?name=${encodeURIComponent(searchTerm)}`;
-        }
-        
-        const res = await fetch(url);
-        const result = await res.json();
-        if (result.success && result.users) {
-            setFoundCoPis(result.users);
-            setIsSelectionOpen(true);
-        } else {
-            setFoundCoPis([]);
-        }
-    } catch (error) {
-        toast({ variant: 'destructive', title: 'Search Failed', description: 'An error occurred while searching.' });
-    } finally {
-        setIsSearching(false);
-    }
-  };
-  
-  const handleAddCoPi = (selectedUser: any) => {
-    if (selectedUser && !fields.some(field => field.email.toLowerCase() === selectedUser.email.toLowerCase())) {
-        if (user && selectedUser.email.toLowerCase() === user.email.toLowerCase()) {
-            toast({ variant: 'destructive', title: 'Cannot Add Self', description: 'You are already listed as an author.' });
-            return;
-        }
-        append({ 
-            name: selectedUser.name, 
-            email: selectedUser.email,
-            uid: selectedUser.uid,
-            role: 'Co-Author',
-            isExternal: !selectedUser.uid,
-            status: 'pending',
-        });
-    }
-    setCoPiSearchTerm('');
-    setFoundCoPis([]);
-    setIsSelectionOpen(false);
-  };
-  
-  const addExternalAuthor = () => {
-    const name = externalAuthorName.trim();
-    const email = externalAuthorEmail.trim().toLowerCase();
-    if (!name) {
-        toast({ title: 'Name is required for external authors', variant: 'destructive' });
-        return;
-    }
-    if (email && fields.some(a => a.email?.toLowerCase() === email)) {
-        toast({ title: 'Author already added', variant: 'destructive' });
-        return;
-    }
-    append({ name, email: email || '', role: externalAuthorRole, isExternal: true, uid: null, status: 'pending' });
-    setExternalAuthorName('');
-    setExternalAuthorEmail('');
-    setExternalAuthorRole('Co-Author'); // Reset role selector
-  };
-
 
   const removeAuthor = (index: number) => {
-    const authorToRemove = fields[index];
-    if (authorToRemove.email === user?.email) {
-      toast({ variant: 'destructive', title: 'Action not allowed', description: 'You cannot remove yourself as the primary author.' });
+    if (fields[index].email.toLowerCase() === user.email.toLowerCase()) {
+      toast({ variant: 'destructive', title: 'Action blocked', description: 'You cannot remove yourself from the author list.' });
       return;
     }
     remove(index);
   };
 
   const updateAuthorRole = (index: number, role: Author['role']) => {
-    const currentAuthors = form.getValues('authors');
-    const author = currentAuthors[index];
+    const authors = form.getValues('authors');
     const isTryingToBeFirst = role === 'First Author' || role === 'First & Corresponding Author';
-    const isAnotherFirst = currentAuthors.some((a, i) => i !== index && (a.role === 'First Author' || a.role === 'First & Corresponding Author'));
-    
+    const isAnotherFirst = authors.some((a, i) => i !== index && (a.role === 'First Author' || a.role === 'First & Corresponding Author'));
     if (isTryingToBeFirst && isAnotherFirst) {
-        toast({ title: 'Conflict', description: 'Another author is already the First Author.', variant: 'destructive'});
-        return;
-    }
-    
-    update(index, { ...author, role });
-  };
-
-
-  async function handleSave(status: 'Draft' | 'Pending') {
-    if (!user || !user.faculty) {
-      toast({ variant: 'destructive', title: 'Error', description: 'User information not found. Please log in again.' });
+      toast({ title: 'Role Conflict', description: 'There can be only one First Author.', variant: 'destructive' });
       return;
     }
-    if (status === 'Pending' && (!user.bankDetails || !user.orcidId || !user.misId)) {
-        toast({
-            variant: 'destructive',
-            title: 'Profile Incomplete',
-            description: 'Please add your bank details, ORCID iD, and MIS ID in Settings before submitting a claim.',
-        });
-        return;
+    update(index, { ...authors[index], role });
+  };
+
+  const watchArticleType = form.watch('apcTypeOfArticle');
+  const watchWaiverRequested = form.watch('apcApcWaiverRequested');
+  const apcIndexingStatus = form.watch('apcIndexingStatus') || [];
+
+  const handleFetchData = async (source: 'scopus' | 'wos' | 'sciencedirect') => {
+    const doi = form.getValues('doi');
+    if (!doi) {
+      toast({ variant: 'destructive', title: 'Missing DOI', description: 'Please enter a DOI first.' });
+      return;
     }
-    
+    setIsFetching(true);
+    toast({ title: `Connecting to ${source.toUpperCase()}`, description: 'Retrieving article metadata...' });
+    try {
+      let result;
+      if (source === 'scopus') result = await fetchAdvancedScopusData(doi, user.name, user.uid);
+      else if (source === 'wos') result = await fetchWosDataByUrl(doi, user.name, user.uid);
+      else result = await fetchScienceDirectData(doi, user.name, user.uid);
+
+      if (result.success && result.data) {
+        form.setValue('apcPaperTitle', result.data.paperTitle || '');
+        form.setValue('apcJournalDetails', result.data.journalName || '');
+        form.setValue('apcJournalWebsite', (result.data && 'journalWebsite' in result.data) ? (result.data as any).journalWebsite : '');
+        form.setValue('apcIssnNo', result.data.printIssn || result.data.electronicIssn || '');
+        toast({ title: 'Auto-fill Complete', description: 'Form data updated successfully.' });
+      } else {
+        toast({ variant: 'destructive', title: 'Fetch Failed', description: result.error || 'Server did not return data.' });
+      }
+    } catch (error: any) {
+      toast({ variant: 'destructive', title: 'Connection Error', description: error.message });
+    } finally {
+      setIsFetching(false);
+    }
+  };
+
+  async function handleSave(status: 'Draft' | 'Pending') {
+    if (status === 'Pending' && (bankDetailsMissing || orcidOrMisIdMissing)) {
+      toast({ variant: 'destructive', title: 'Profile Incomplete', description: 'Update bank details and IDs in Settings first.' });
+      return;
+    }
+
     setIsSubmitting(true);
     try {
-        const data = form.getValues();
-        
-        const uploadFileHelper = async (file: File | undefined, folderName: string): Promise<string | undefined> => {
-          if (!file || !user) return undefined;
-          const path = `incentive-proofs/${user.uid}/${folderName}/${new Date().toISOString()}-${file.name}`;
-          const result = await uploadFileToApi(file, { path });
-          if (!result.success || !result.url) {
-          throw new Error(result.error || `File upload failed for ${folderName}`);
-          }
-          return result.url;
-        };
+      const data = form.getValues();
+      const upload = async (file: File | undefined, name: string) => {
+        if (!file) return undefined;
+        const result = await uploadFileToApi(file, { path: `incentive-proofs/${user.uid}/${name}` });
+        if (!result.success || !result.url) throw new Error(result.error || `Upload failed for ${name}`);
+        return result.url;
+      };
 
-        const [apcApcWaiverProofUrl, apcPublicationProofUrl, apcInvoiceProofUrl] = await Promise.all([
-            uploadFileHelper(data.apcApcWaiverProof?.[0], 'apc-waiver-proof'),
-            uploadFileHelper(data.apcPublicationProof?.[0], 'apc-publication-proof'),
-            uploadFileHelper(data.apcInvoiceProof?.[0], 'apc-invoice-proof'),
-        ]);
+      const [waiver, pub, inv] = await Promise.all([
+        upload(data.apcApcWaiverProof?.[0], 'apc-waiver'),
+        upload(data.apcPublicationProof?.[0], 'apc-pub'),
+        upload(data.apcInvoiceProof?.[0], 'apc-invoice'),
+      ]);
 
-        const { apcPublicationProof, apcInvoiceProof, apcApcWaiverProof, ...restOfData } = data;
+      const claimData: Omit<IncentiveClaim, 'id' | 'claimId'> = {
+        ...data,
+        calculatedIncentive: calculatedIncentive ?? undefined,
+        misId: user.misId || undefined,
+        orcidId: user.orcidId || undefined,
+        claimType: 'Seed Money for APC',
+        benefitMode: 'reimbursement',
+        uid: user.uid,
+        userName: user.name,
+        userEmail: user.email,
+        faculty: user.faculty || "N/A",
+        status,
+        submissionDate: new Date().toISOString(),
+        bankDetails: user.bankDetails || undefined,
+        apcApcWaiverProofUrl: waiver || data.apcApcWaiverProofUrl,
+        apcPublicationProofUrl: pub || data.apcPublicationProofUrl,
+        apcInvoiceProofUrl: inv || data.apcInvoiceProofUrl,
+      };
 
-        const claimData: Omit<IncentiveClaim, 'id' | 'claimId'> = {
-            ...restOfData,
-            calculatedIncentive,
-            misId: user.misId || null,
-            orcidId: user.orcidId || null,
-            claimType: 'Seed Money for APC',
-            benefitMode: 'reimbursement',
-            uid: user.uid,
-            userName: user.name,
-            userEmail: user.email,
-            faculty: user.faculty,
-            institute: user.institute || undefined,
-            status,
-            submissionDate: new Date().toISOString(),
-            bankDetails: user.bankDetails || null,
-        };
+      const result = await submitIncentiveClaimViaApi(claimData, searchParams.get('claimId') || undefined);
+      if (!result.success) throw new Error(result.error);
 
-        if (apcApcWaiverProofUrl) claimData.apcApcWaiverProofUrl = apcApcWaiverProofUrl;
-        if (apcPublicationProofUrl) claimData.apcPublicationProofUrl = apcPublicationProofUrl;
-        if (apcInvoiceProofUrl) claimData.apcInvoiceProofUrl = apcInvoiceProofUrl;
-        
-        const claimId = searchParams.get('claimId');
-        const result = await submitIncentiveClaimViaApi(claimData, claimId || undefined);
-
-        if (!result.success) {
-            throw new Error(result.error);
-        }
-        
-        const newClaimId = claimId || result.claimId;
-
-        if (status === 'Draft') {
-          toast({ title: 'Draft Saved!', description: "You can continue editing from the 'Incentive Claim' page." });
-          router.push(`/dashboard/incentive-claim/apc?claimId=${newClaimId}`);
-        } else {
-          toast({ title: 'Success', description: 'Your incentive claim for APC has been submitted.' });
-          router.push('/dashboard/incentive-claim');
-        }
+      toast({ title: status === 'Draft' ? 'Draft Saved' : 'Claim Submitted', description: 'Process completed successfully.' });
+      router.push('/dashboard/incentive-claim' + (status === 'Pending' ? '?tab=my-claims' : ''));
     } catch (error: any) {
-      console.error('Error submitting claim: ', error);
-      toast({ variant: 'destructive', title: 'Error', description: error.message || 'Failed to submit claim. Please try again.' });
+      toast({ variant: 'destructive', title: 'Action Failed', description: error.message });
     } finally {
       setIsSubmitting(false);
     }
   }
 
-  const onFinalSubmit = () => handleSave('Pending');
+  if (isLoadingDraft) return <div className="flex justify-center py-20"><Loader2 className="h-10 w-10 animate-spin text-primary" /></div>;
 
-  if (isLoadingDraft) {
-    return <Card className="p-8 flex justify-center items-center h-64"><Loader2 className="h-8 w-8 animate-spin" /></Card>;
-  }
-  
-  if (currentStep === 2) {
+  if (step === 'review') {
     return (
-        <Card>
-            <form onSubmit={form.handleSubmit(onFinalSubmit)}>
-                <CardContent className="pt-6">
-                    <ReviewDetails data={form.getValues()} onEdit={() => setCurrentStep(1)} />
-                </CardContent>
-                <CardFooter>
-                    <Button type="submit" disabled={isSubmitting || bankDetailsMissing || orcidOrMisIdMissing}>
-                        {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                        {isSubmitting ? 'Submitting...' : 'Submit Claim'}
-                    </Button>
-                </CardFooter>
-            </form>
-        </Card>
+      <div className="space-y-8 animate-in fade-in duration-500">
+        <ReviewDetails
+          data={form.getValues()}
+          onEdit={() => setStep('edit')}
+          isSubmitting={isSubmitting}
+          totalIncentive={calculatedIncentive}
+        />
+        <div className="flex justify-end max-w-4xl mx-auto gap-4">
+          <Button variant="ghost" onClick={() => setStep('edit')} disabled={isSubmitting}>Modify Details</Button>
+          <Button size="lg" onClick={() => handleSave('Pending')} disabled={isSubmitting} className="px-10 font-bold shadow-lg shadow-primary/20">
+            {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CheckCircle2 className="mr-2 h-4 w-4" />}
+            Finalize Submission
+          </Button>
+        </div>
+      </div>
     );
   }
 
   return (
-    <>
-    <Card>
-      <Form {...form}>
-        <form>
-          <CardContent className="space-y-8 pt-6">
+    <Card className="max-w-4xl mx-auto shadow-2xl border-t-4 border-t-primary overflow-hidden">
+      <CardHeader className="bg-primary/5 pb-8">
+        <div className="flex items-center justify-between">
+          <div className="space-y-1">
+            <CardTitle className="text-3xl font-bold tracking-tight text-primary uppercase">Seed Money for APC</CardTitle>
+            <CardDescription className="text-base">Apply for reimbursement of Article Processing Charges for high-impact journals.</CardDescription>
+          </div>
+          <div className="bg-primary/10 p-3 rounded-2xl shadow-inner">
+            <Globe className="h-10 w-10 text-primary" />
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent className="pt-8 bg-card">
+        <Form {...form}>
+          <form className="space-y-10">
             {(bankDetailsMissing || orcidOrMisIdMissing) && (
-                <Alert variant="destructive">
-                    <AlertCircle className="h-4 w-4" />
-                    <AlertTitle>Profile Incomplete</AlertTitle>
-                    <AlertDescription>
-                        An ORCID iD, MIS ID, and bank details are mandatory for submitting incentive claims. Please add them to your profile.
-                        <Button asChild variant="link" className="p-1 h-auto"><Link href="/dashboard/settings">Go to Settings</Link></Button>
-                    </AlertDescription>
-                </Alert>
+              <Alert variant="destructive" className="rounded-2xl border-2 animate-pulse">
+                <AlertCircle className="h-5 w-5" />
+                <AlertTitle className="font-bold">Profile Data Missing</AlertTitle>
+                <AlertDescription className="flex items-center justify-between">
+                  <span>ORCID, MIS ID, and Bank Details are required to process payments.</span>
+                  <Button asChild variant="link" className="text-destructive font-black underline p-0 h-auto">
+                    <Link href="/dashboard/settings">Update Profile</Link>
+                  </Button>
+                </AlertDescription>
+              </Alert>
             )}
 
-            <Alert>
-                <Info className="h-4 w-4" />
-                <AlertTitle>APC Reimbursement Policy</AlertTitle>
-                <AlertDescription>
-                    Admissible APC = (Lesser of (Actual APC Paid, Max Policy Limit)) ÷ Total Number of PU Authors.
-                    The author must request the Editor for an APC waiver and submit the proof along with this application.
-                </AlertDescription>
+            <Alert className="bg-primary/5 border-primary/20 rounded-2xl ring-1 ring-primary/10">
+              <Info className="h-5 w-5 text-primary" />
+              <AlertTitle className="text-primary font-bold">Policy Reminder</AlertTitle>
+              <AlertDescription className="text-xs space-y-1 mt-1">
+                <p>• Reimbursement is calculated based on the admissible APC or the max policy limit, whichever is lesser.</p>
+                <p>• You <strong>must</strong> have requested an APC waiver from the journal editor to be eligible.</p>
+              </AlertDescription>
             </Alert>
 
-            <div className="space-y-6">
-                <h3 className="font-semibold text-sm">ARTICLE & JOURNAL DETAILS</h3>
-                <FormField control={form.control} name="apcTypeOfArticle" render={({ field }) => ( <FormItem><FormLabel>Type of Article</FormLabel><FormControl><RadioGroup onValueChange={field.onChange} value={field.value} className="flex flex-col space-y-2 md:flex-row md:space-y-0 md:space-x-6">{articleTypes.map(type => (<FormItem key={type} className="flex items-center space-x-2 space-y-0"><FormControl><RadioGroupItem value={type} /></FormControl><FormLabel className="font-normal">{type}</FormLabel></FormItem>))}</RadioGroup></FormControl><FormMessage /></FormItem> )} />
-                {watchArticleType === 'Other' && <FormField name="apcOtherArticleType" control={form.control} render={({ field }) => ( <FormItem><FormLabel>Please specify other article type</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem> )} />}
-                <FormField name="apcIndexingStatus" control={form.control} render={({ field }) => ( <FormItem><FormLabel>Indexing/Listing status of the Journal</FormLabel>{availableIndexingStatuses.map(item => (<FormField key={item} control={form.control} name="apcIndexingStatus" render={({ field }) => ( <FormItem key={item} className="flex flex-row items-start space-x-3 space-y-0"><FormControl><Checkbox checked={field.value?.includes(item)} onCheckedChange={(checked) => { return checked ? field.onChange([...(field.value || []), item]) : field.onChange(field.value?.filter(value => value !== item)); }} /></FormControl><FormLabel className="font-normal">{item}</FormLabel></FormItem> )} />))}<FormMessage /></FormItem> )} />
-                <FormField name="apcQRating" control={form.control} render={({ field }) => ( <FormItem><FormLabel>Q Rating of the Journal</FormLabel><Select onValueChange={field.onChange} value={field.value}><FormControl><SelectTrigger><SelectValue placeholder="Select Q Rating" /></SelectTrigger></FormControl><SelectContent><SelectItem value="Q1">Q1</SelectItem><SelectItem value="Q2">Q2</SelectItem><SelectItem value="Q3">Q3</SelectItem><SelectItem value="Q4">Q4</SelectItem></SelectContent></Select><FormMessage /></FormItem> )} />
-                
+            <section className="space-y-6">
+              <div className="flex items-center gap-2 text-primary font-bold text-lg mb-4">
+                <div className="h-8 w-1.5 bg-primary rounded-full"></div>
+                Journal & Metadata
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                <FormField control={form.control} name="apcTypeOfArticle" render={({ field }) => (
+                  <FormItem className="space-y-3">
+                    <FormLabel className="text-base font-semibold">Article Type</FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value || ""}>
+                      <FormControl><SelectTrigger className="h-12 shadow-sm"><SelectValue placeholder="Select type" /></SelectTrigger></FormControl>
+                      <SelectContent>{articleTypes.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}</SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )} />
+
+                <FormField control={form.control} name="apcQRating" render={({ field }) => (
+                  <FormItem className="space-y-3">
+                    <FormLabel className="text-base font-semibold">Journal Q-Rating (Derive from Scopus/WoS)</FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value || ""}>
+                      <FormControl><SelectTrigger className="h-12 shadow-sm"><SelectValue placeholder="Select Quartile" /></SelectTrigger></FormControl>
+                      <SelectContent>{['Q1', 'Q2', 'Q3', 'Q4'].map(q => <SelectItem key={q} value={q}>{q}</SelectItem>)}</SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )} />
+              </div>
+
+              <FormField control={form.control} name="apcIndexingStatus" render={({ field }) => (
+                <FormItem className="space-y-3">
+                  <FormLabel className="text-base font-semibold">Indexing Status</FormLabel>
+                  <div className="flex flex-wrap gap-4 mt-2">
+                    {availableIndexingStatuses.map(status => (
+                      <Label key={status} className="flex items-center space-x-3 bg-muted/40 px-4 py-2.5 rounded-xl border border-muted-foreground/10 hover:bg-muted transition-all cursor-pointer [&:has([data-state=checked])]:border-primary [&:has([data-state=checked])]:bg-primary/5">
+                        <Checkbox checked={field.value?.includes(status)} onCheckedChange={(c) => c ? field.onChange([...(field.value || []), status]) : field.onChange(field.value?.filter(v => v !== status))} />
+                        <span className="text-sm font-medium">{status}</span>
+                      </Label>
+                    ))}
+                  </div>
+                  <FormMessage />
+                </FormItem>
+              )} />
+
+              <FormField control={form.control} name="doi" render={({ field }) => (
+                <FormItem className="space-y-2">
+                  <FormLabel className="text-base font-semibold">Digital Object Identifier (DOI)</FormLabel>
+                  <div className="flex flex-col sm:flex-row gap-2">
+                    <FormControl><Input placeholder="e.g. 10.1016/j.procbio.2023..." {...field} className="h-12 text-lg font-mono shadow-sm flex-1" /></FormControl>
+                    <div className="flex gap-2">
+                      {(apcIndexingStatus.length === 0 || apcIndexingStatus.some(s => s.toLowerCase().includes('scopus'))) && systemSettings?.apiIntegrations?.scopus !== false && (
+                        <Button type="button" variant="outline" size="icon" className="h-12 w-12 rounded-xl group" onClick={() => handleFetchData('scopus')} disabled={isFetching || !field.value} title="Fetch Scopus Data"><Bot className="h-6 w-6 group-hover:text-primary transition-colors" /></Button>
+                      )}
+                      {(apcIndexingStatus.length === 0 || apcIndexingStatus.some(s => s.toLowerCase().includes('web of science'))) && systemSettings?.apiIntegrations?.wos !== false && (
+                        <Button type="button" variant="outline" size="icon" className="h-12 w-12 rounded-xl group" onClick={() => handleFetchData('wos')} disabled={isFetching || !field.value} title="Fetch WoS Data"><Bot className="h-6 w-6 group-hover:text-amber-600 transition-colors" /></Button>
+                      )}
+                    </div>
+                  </div>
+                </FormItem>
+              )} />
+
+              {apcIndexingStatus.some(s => s.toLowerCase().includes('web of science')) && (
+                <FormField control={form.control} name="apcWosAccessionNumber" render={({ field }) => (
+                  <FormItem className="space-y-2 animate-in slide-in-from-top-2">
+                    <FormLabel className="text-base font-semibold text-primary">WoS Accession Number (Mandatory)</FormLabel>
+                    <FormControl><Input placeholder="e.g. WOS:000123456700001" {...field} className="h-12 shadow-sm border-primary/30 focus-visible:ring-primary rounded-xl" /></FormControl>
+                    <FormDescription className="text-xs">Unique identifier for your paper in the Web of Science Core Collection.</FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )} />
+              )}
+
+              <FormField name="apcPaperTitle" control={form.control} render={({ field }) => (
+                <FormItem className="space-y-2">
+                  <FormLabel className="text-base font-semibold">Final Published Title</FormLabel>
+                  <FormControl><Textarea placeholder="As it appears on the publication" {...field} className="min-h-[100px] text-lg leading-relaxed shadow-sm rounded-xl focus-visible:ring-primary" /></FormControl>
+                  <FormMessage />
+                </FormItem>
+              )} />
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                <FormField name="apcJournalDetails" control={form.control} render={({ field }) => (
+                  <FormItem className="space-y-2"><FormLabel className="text-base font-semibold">Full Journal Name</FormLabel><FormControl><Input {...field} className="h-12 shadow-sm" /></FormControl><FormMessage /></FormItem>
+                )} />
+                <FormField name="apcIssnNo" control={form.control} render={({ field }) => (
+                  <FormItem className="space-y-2"><FormLabel className="text-base font-semibold">ISSN / eISSN Number</FormLabel><FormControl><Input {...field} className="h-12 shadow-sm font-mono" /></FormControl><FormMessage /></FormItem>
+                )} />
+              </div>
+            </section>
+
+            <Separator className="my-10" />
+
+            <section className="space-y-6">
+              <div className="flex items-center gap-2 text-primary font-bold text-lg mb-4">
+                <div className="h-8 w-1.5 bg-primary rounded-full"></div> Authorship & Disclosure
+              </div>
+
+              <Alert className="bg-destructive/5 border-destructive/20 py-4 rounded-2xl ring-1 ring-destructive/10">
+                <AlertCircle className="h-5 w-5 text-destructive" />
+                <AlertTitle className="text-destructive font-black uppercase text-xs tracking-widest">Mandatory Authors Disclosure</AlertTitle>
+                <AlertDescription className="mt-2 text-sm font-medium">
+                  All authors must be listed. Missing authors discovered during verification will result in <span className="underline font-bold text-destructive">rejection</span>.
+                </AlertDescription>
+              </Alert>
+
+              <div className="bg-muted/20 p-6 rounded-2xl border border-dashed border-primary/30 space-y-4">
+                <div className="space-y-2">
+                  {fields.map((f, i) => (
+                    <div key={f.id} className="group flex items-center justify-between bg-background p-4 rounded-xl border shadow-sm animate-in slide-in-from-left-2 transition-all hover:border-primary/30">
+                      <div className="flex flex-col">
+                        <div className="flex items-center gap-2">
+                          <span className="font-bold text-sm">{f.name}</span>
+                          {f.isExternal && <Badge variant="outline" className="text-[9px] h-4">External</Badge>}
+                          {f.email.toLowerCase() === user.email.toLowerCase() && <Badge variant="secondary" className="text-[9px] h-4 bg-primary/10 text-primary border-none">You</Badge>}
+                        </div>
+                        <span className="text-[10px] text-muted-foreground font-medium">{f.email}</span>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <Select value={f.role} onValueChange={(r) => updateAuthorRole(i, r as Author['role'])}>
+                          <SelectTrigger className="h-9 w-[180px] bg-background shadow-sm rounded-lg text-xs"><SelectValue /></SelectTrigger>
+                          <SelectContent>{coAuthorRoles.map(r => <SelectItem key={r} value={r} className="text-xs">{r}</SelectItem>)}</SelectContent>
+                        </Select>
+                        <Button variant="ghost" size="icon" onClick={() => removeAuthor(i)} className="h-9 w-9 text-destructive hover:bg-destructive/10"><Trash2 className="h-4 w-4" /></Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <AuthorSearch authors={fields} onAdd={append} availableRoles={coAuthorRoles} currentUserEmail={user.email} />
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-8 pt-4">
                 <FormField
                   control={form.control}
-                  name="doi"
+                  name="authorPosition"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>DOI (Digital Object Identifier)</FormLabel>
-                      <div className="flex items-center gap-2">
-                          <FormControl>
-                              <Input placeholder="Enter DOI to auto-fill details" {...field} disabled={isSubmitting} />
-                          </FormControl>
-                          <Button type="button" variant="outline" onClick={() => handleFetchData('scopus')} disabled={isSubmitting || isFetching || !form.getValues('doi')} title="Fetch from Scopus"><Bot className="h-4 w-4" /> Scopus</Button>
-                          <Button type="button" variant="outline" onClick={() => handleFetchData('wos')} disabled={isSubmitting || isFetching || !form.getValues('doi')} title="Fetch from WoS"><Bot className="h-4 w-4" /> WoS</Button>
-                          <Button type="button" variant="outline" onClick={() => handleFetchData('sciencedirect')} disabled={isSubmitting || isFetching || !form.getValues('doi')} title="Fetch from ScienceDirect"><Bot className="h-4 w-4" /> SCI</Button>
-                      </div>
+                      <FormLabel className="text-sm font-semibold">Your Author Position</FormLabel>
+                      <Select onValueChange={field.onChange} value={field.value}>
+                        <FormControl>
+                          <SelectTrigger className="h-10 shadow-sm rounded-lg">
+                            <SelectValue placeholder="Position" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent className="rounded-xl">
+                          {['1st', '2nd', '3rd', '4th', '5th', '6th', '7th', '8th', '9th', '10th'].map((pos) => (
+                            <SelectItem key={pos} value={pos}>{pos}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
                       <FormMessage />
                     </FormItem>
                   )}
                 />
-                
-                <FormField name="apcPaperTitle" control={form.control} render={({ field }) => ( <FormItem><FormLabel>Title of the Paper</FormLabel><FormControl><Textarea {...field} /></FormControl><FormMessage /></FormItem> )} />
-                
-                <div className="space-y-4">
-                    <FormLabel>Author(s) & Roles</FormLabel>
-                    <div className="space-y-4">
-                        {fields.map((field, index) => (
-                            <div key={field.id} className="grid grid-cols-1 md:grid-cols-3 gap-4 border p-4 rounded-md items-end">
-                                <FormItem className="md:col-span-2">
-                                    <FormLabel>Name</FormLabel>
-                                    <FormControl><Input value={field.name} readOnly /></FormControl>
-                                </FormItem>
-                                <FormField
-                                    control={form.control}
-                                    name={`authors.${index}.role`}
-                                    render={({ field: roleField }) => (
-                                        <FormItem>
-                                            <FormLabel>Role</FormLabel>
-                                            <Select onValueChange={(value) => updateAuthorRole(index, value as Author['role'])} value={roleField.value}>
-                                                <FormControl><SelectTrigger><SelectValue placeholder="Select role" /></SelectTrigger></FormControl>
-                                                <SelectContent>{getAvailableRoles(form.getValues(`authors.${index}`)).map(role => (<SelectItem key={role} value={role}>{role}</SelectItem>))}</SelectContent>
-                                            </Select>
-                                            <FormMessage />
-                                        </FormItem>
-                                    )}
-                                />
-                                {index > 0 && (
-                                    <Button type="button" variant="destructive" className="md:col-start-4" onClick={() => remove(index)}>
-                                        <Trash2 className="h-4 w-4 mr-2" /> Remove
-                                    </Button>
-                                )}
-                            </div>
-                        ))}
-                    </div>
-                    
-                    <div className="space-y-2 p-3 border rounded-md">
-                        <FormLabel>Add Internal Co-Author</FormLabel>
-                        <div className="relative">
-                            <Input 
-                                placeholder="Search by Co-Author's Name or MIS ID" 
-                                value={coPiSearchTerm} 
-                                onChange={(e) => {
-                                    setCoPiSearchTerm(e.target.value);
-                                    handleSearchCoPi(e.target.value);
-                                }} 
-                            />
-                            {isSearching && <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 animate-spin" />}
-                        </div>
-                        {foundCoPis.length > 0 && isSelectionOpen && (
-                            <div className="relative">
-                                <div className="absolute w-full bg-background border rounded-md shadow-lg z-10 max-h-48 overflow-y-auto mt-1">
-                                    {foundCoPis.map(coPi => (
-                                        <div key={coPi.email} className="p-2 hover:bg-muted cursor-pointer" onClick={() => handleAddCoPi(coPi)}>
-                                            {coPi.name} ({coPi.misId})
-                                        </div>
-                                    ))}
-                                </div>
-                            </div>
-                        )}
-                    </div>
-                    <div className="space-y-2 p-3 border rounded-md">
-                        <FormLabel className="text-sm">Add External Co-Author</FormLabel>
-                        <div className="flex flex-col md:flex-row gap-2 mt-1">
-                            <Input value={externalAuthorName} onChange={(e) => setExternalAuthorName(e.target.value)} placeholder="External author's name"/>
-                            <Input value={externalAuthorEmail} onChange={(e) => setExternalAuthorEmail(e.target.value)} placeholder="External author's email (optional)"/>
-                            <Select value={externalAuthorRole} onValueChange={(value) => setExternalAuthorRole(value as Author['role'])}>
-                                <SelectTrigger><SelectValue/></SelectTrigger>
-                                <SelectContent>{getAvailableRoles(undefined).map(role => (<SelectItem key={role} value={role}>{role}</SelectItem>))}</SelectContent>
-                            </Select>
-                            <Button type="button" onClick={addExternalAuthor} variant="outline" size="icon" disabled={!externalAuthorName.trim()}><Plus className="h-4 w-4"/></Button>
-                        </div>
-                        <FormDescription className="!mt-2 text-destructive text-xs">
-                           Important: If an internal/external co-author is found at the approval stage that was not declared here, the claim will be rejected.
-                        </FormDescription>
-                    </div>
-                     <FormMessage>{form.formState.errors.authors?.message || form.formState.errors.authors?.root?.message}</FormMessage>
-                </div>
 
-                <FormField name="apcTotalStudentAuthors" control={form.control} render={({ field }) => ( <FormItem><FormLabel>Total Number of Student authors</FormLabel><FormControl><Input type="number" {...field} min="0" /></FormControl><FormMessage /></FormItem> )} />
-                <FormField name="apcStudentNames" control={form.control} render={({ field }) => ( <FormItem><FormLabel>Names of Student Authors</FormLabel><FormControl><Textarea placeholder="Comma-separated list of student names" {...field} /></FormControl><FormMessage /></FormItem> )} />
-                <FormField name="apcJournalDetails" control={form.control} render={({ field }) => ( <FormItem><FormLabel>Details of the Journal</FormLabel><FormControl><Textarea placeholder="Name, Vol, Page No., Year, DOI" {...field} /></FormControl><FormMessage /></FormItem> )} />
-                <FormField name="apcJournalWebsite" control={form.control} render={({ field }) => ( <FormItem><FormLabel>Journal Website</FormLabel><FormControl><Input type="url" {...field} /></FormControl><FormMessage /></FormItem> )} />
-                <FormField name="apcIssnNo" control={form.control} render={({ field }) => ( <FormItem><FormLabel>ISSN No.</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem> )} />
-                <FormField name="apcSciImpactFactor" control={form.control} render={({ field }) => ( <FormItem><FormLabel>SCI Impact Factor</FormLabel><FormControl><Input type="number" step="any" {...field} min="0" /></FormControl><FormMessage /></FormItem> )} />
-                <FormField name="apcPuNameInPublication" control={form.control} render={({ field }) => ( <FormItem><div className="flex items-center justify-between"><FormLabel>Is "PU" name present in the publication?</FormLabel><FormControl><Checkbox checked={field.value} onCheckedChange={field.onChange} /></FormControl></div><FormMessage /></FormItem> )} />
-                <FormField name="apcPublicationProof" control={form.control} render={({ field: { value, onChange, ...fieldProps } }) => ( <FormItem><FormLabel>Attachment Proof of publication (PDF)</FormLabel><FormControl><Input {...fieldProps} type="file" onChange={(e) => onChange(e.target.files)} accept="application/pdf" /></FormControl><FormMessage /></FormItem> )} />
-            </div>
+                <FormField
+                  control={form.control}
+                  name="apcPuNameInPublication"
+                  render={({ field }) => (
+                    <FormItem className="flex flex-row items-center justify-between rounded-xl border border-primary/10 bg-primary/5 p-4 shadow-sm hover:bg-primary/10 transition-all">
+                      <div className="space-y-0.5">
+                        <FormLabel className="text-sm font-bold">PU Affiliation Present?</FormLabel>
+                        <FormDescription className="text-[10px]">Is "Parul University Goa" mentioned?</FormDescription>
+                      </div>
+                      <FormControl>
+                        <Checkbox checked={field.value} onCheckedChange={field.onChange} />
+                      </FormControl>
+                    </FormItem>
+                  )}
+                />
+              </div>
+            </section>
 
-            <div className="space-y-6">
-                <h3 className="font-semibold text-sm">FINANCIAL & DECLARATION DETAILS</h3>
-                <FormField name="apcApcWaiverRequested" control={form.control} render={({ field }) => ( <FormItem><div className="flex items-center justify-between"><FormLabel>Whether APC waiver was requested <span className="text-destructive">*</span></FormLabel><FormControl><Checkbox checked={field.value} onCheckedChange={field.onChange} /></FormControl></div><FormMessage /></FormItem> )} />
-                {watchWaiverRequested && <FormField name="apcApcWaiverProof" control={form.control} render={({ field: { value, onChange, ...fieldProps } }) => ( <FormItem><FormLabel>Proof of APC waiver request</FormLabel><FormControl><Input {...fieldProps} type="file" onChange={(e) => onChange(e.target.files)} accept="application/pdf" /></FormControl><FormMessage /></FormItem> )} />}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <FormField
-                    name="apcTotalAmount"
-                    control={form.control}
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Total amount of APC (INR)</FormLabel>
-                        <FormControl>
-                          <Input
-                            type="text"
-                            inputMode="numeric"
-                            {...field}
-                            value={field.value ?? ''}
-                            onChange={(e) => {
-                              const value = e.target.value.replace(/[^0-9]/g, '');
-                              field.onChange(value === '' ? undefined : Number(value));
-                            }}
-                            placeholder="0"
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  <FormField
-                    name="apcAmountClaimed"
-                    control={form.control}
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Amount claimed (INR)</FormLabel>
-                        <FormControl>
-                          <Input
-                            type="text"
-                            inputMode="numeric"
-                            {...field}
-                            value={field.value ?? ''}
-                            onChange={(e) => {
-                              const value = e.target.value.replace(/[^0-9]/g, '');
-                              field.onChange(value === '' ? undefined : Number(value));
-                            }}
-                            placeholder="0"
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </div>
-                 {calculatedIncentive !== null && (
-                    <div className="p-4 bg-secondary rounded-md">
-                        <p className="text-sm font-medium">Tentative Eligible Incentive Amount: <span className="font-bold text-lg text-primary">₹{calculatedIncentive.toLocaleString('en-IN')}</span></p>
-                        <p className="text-xs text-muted-foreground">This is your individual share of the reimbursement based on the policy and number of PU authors.</p>
+            <Separator className="my-10" />
+
+            <section className="space-y-8">
+              <div className="flex items-center gap-2 text-primary font-bold text-lg mb-4">
+                <div className="h-8 w-1.5 bg-primary rounded-full"></div> Financial Claim Details
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                <FormField name="apcTotalAmount" control={form.control} render={({ field }) => (
+                  <FormItem className="space-y-3">
+                    <FormLabel className="text-base font-semibold">Total Paid to Journal (INR)</FormLabel>
+                    <FormControl><div className="relative"><span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground font-bold italic">₹</span><Input type="number" onWheel={(e) => (e.target as HTMLInputElement).blur()} {...field} className="h-12 pl-8 text-lg font-black shadow-sm" /></div></FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )} />
+
+                <FormField name="apcAmountClaimed" control={form.control} render={({ field }) => (
+                  <FormItem className="space-y-3">
+                    <FormLabel className="text-base font-semibold">Amount to Reimburse (INR)</FormLabel>
+                    <FormControl><div className="relative"><span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground font-bold italic">₹</span><Input type="number" onWheel={(e) => (e.target as HTMLInputElement).blur()} {...field} className="h-12 pl-8 text-lg font-black shadow-sm" /></div></FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )} />
+              </div>
+
+              {calculatedIncentive !== null && (
+                <Alert className="bg-primary/5 border-primary/20 py-6 rounded-3xl transition-all animate-in zoom-in-95 border-l-4 border-l-primary shadow-sm hover:shadow-md">
+                  <div className="flex flex-col gap-1.5">
+                    <p className="text-xs font-black text-primary uppercase tracking-widest flex items-center gap-2">
+                      <CheckCircle2 className="h-4 w-4" /> Estimated Incentive Amount
+                    </p>
+                    <h4 className="text-4xl font-black text-foreground tracking-tight py-1">₹{calculatedIncentive.toLocaleString('en-IN')}</h4>
+                    <p className="text-[10px] text-muted-foreground font-medium italic">Tentative individual share*</p>
+
+                    <div className="mt-4 border-t border-primary/10 pt-4">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="text-xs font-bold w-full flex justify-between items-center text-primary hover:bg-primary/10"
+                        onClick={() => setShowLogic(!showLogic)}
+                        type="button"
+                      >
+                        View Calculation Logic
+                        <ChevronDown className={`h-4 w-4 transition-transform duration-200 ${showLogic ? 'rotate-180' : ''}`} />
+                      </Button>
+
+                      {showLogic && (
+                        <div className="mt-3 p-4 bg-background rounded-xl border shadow-inner space-y-2 text-xs font-medium animate-in slide-in-from-top-2">
+                          {getApcLogicBreakdown(form.getValues()).map((step, idx) => (
+                            <div key={idx} className="flex justify-between items-center py-1 border-b last:border-0 border-muted">
+                              <span className="text-muted-foreground">{step.label}</span>
+                              <span className={idx === 4 ? "font-bold text-green-600" : "font-semibold"}>{step.value}</span>
+                            </div>
+                          ))}
+                          <div className="text-[9px] text-muted-foreground italic mt-2 !pt-2 text-center border-t border-muted opacity-70">
+                            *Logic matches official policy matrix evaluated by approvers during technical audit.
+                          </div>
+                        </div>
+                      )}
                     </div>
-                )}
-                <FormField name="apcInvoiceProof" control={form.control} render={({ field: { value, onChange, ...fieldProps } }) => ( <FormItem><FormLabel>Attachment Proof (Invoice, Receipt, Payment Proof & Abstract)</FormLabel><FormControl><Input {...fieldProps} type="file" onChange={(e) => onChange(e.target.files)} accept="application/pdf" /></FormControl><FormMessage /></FormItem> )} />
-                 <FormField control={form.control} name="apcSelfDeclaration" render={({ field }) => ( <FormItem className="flex flex-row items-start space-x-3 space-y-0 rounded-md border p-4"><FormControl><Checkbox checked={field.value} onCheckedChange={field.onChange} /></FormControl><div className="space-y-1 leading-none"><FormLabel>Self Declaration</FormLabel><FormMessage /><p className="text-xs text-muted-foreground">I hereby confirm that I have not applied/claimed for any incentive for the same application/publication earlier.</p></div></FormItem> )} />
-            </div>
-          </CardContent>
-          <CardFooter className="flex justify-between">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => handleSave('Draft')}
-              disabled={isSubmitting}
-            >
-              {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-              Save as Draft
-            </Button>
-            <Button type="button" onClick={handleProceedToReview} disabled={isSubmitting || bankDetailsMissing || orcidOrMisIdMissing}>
-                Proceed to Review
-            </Button>
-          </CardFooter>
-        </form>
-      </Form>
+                  </div>
+                </Alert>
+              )}
+
+              <Separator className="my-4 border-dashed" />
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-10">
+                <FormField name="apcPublicationProof" control={form.control} render={({ field: { value, onChange, ...rest } }) => (
+                  <FormItem className="space-y-3">
+                    <FormLabel className="font-bold flex items-center gap-2 underline decoration-primary decoration-2">
+                      <FileText className="h-4 w-4" /> Publication Proof
+                    </FormLabel>
+                    <FormControl>
+                      <Input type="file" accept=".pdf" className="h-12 border-dashed border-2 bg-muted/20" onChange={e => onChange(e.target.files)} {...rest} />
+                    </FormControl>
+                    <FormDescription className="text-[10px] text-muted-foreground">PDF format only. Max file size allowed: 10 MB.</FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )} />
+                <FormField name="apcInvoiceProof" control={form.control} render={({ field: { value, onChange, ...rest } }) => (
+                  <FormItem className="space-y-3">
+                    <FormLabel className="font-bold flex items-center gap-2 underline decoration-primary decoration-2">
+                      <FileText className="h-4 w-4" /> Financial Invoice
+                    </FormLabel>
+                    <FormControl>
+                      <Input type="file" accept=".pdf" className="h-12 border-dashed border-2 bg-muted/20" onChange={e => onChange(e.target.files)} {...rest} />
+                    </FormControl>
+                    <FormDescription className="text-[10px] text-muted-foreground">PDF format only. Max file size allowed: 10 MB.</FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )} />
+              </div>
+
+              <Separator className="my-4 border-dashed" />
+
+              <FormField name="apcApcWaiverRequested" control={form.control} render={({ field }) => (
+                <FormItem className="flex items-start space-x-4 space-y-0 p-6 bg-muted/40 rounded-3xl border border-dashed border-muted-foreground/30 ring-1 ring-inset ring-muted-foreground/5">
+                  <FormControl className="mt-1"><Checkbox checked={field.value} onCheckedChange={field.onChange} /></FormControl>
+                  <div className="space-y-2">
+                    <FormLabel className="text-sm font-black leading-tight">I have requested an APC waiver from the editor as per policy guidelines.</FormLabel>
+                    {field.value && (
+                      <div className="mt-4 animate-in slide-in-from-top-2">
+                        <FormField name="apcApcWaiverProof" control={form.control} render={({ field: { value, onChange, ...rest } }) => (
+                          <FormItem className="space-y-2">
+                            <FormDescription className="text-xs text-primary font-bold">
+                              Upload the email thread/confirmation of waiver inquiry:
+                            </FormDescription>
+                            <FormControl>
+                              <Input type="file" accept=".pdf" className="h-10 border-primary/30" onChange={e => onChange(e.target.files)} {...rest} />
+                            </FormControl>
+                            <FormDescription className="text-[10px] text-muted-foreground">PDF format only. Max file size allowed: 10 MB.</FormDescription>
+                            <FormMessage />
+                          </FormItem>
+                        )} />
+                      </div>
+                    )}
+                  </div>
+                </FormItem>
+              )} />
+            </section>
+
+            <Separator className="my-10" />
+
+            <FormField control={form.control} name="apcSelfDeclaration" render={({ field }) => (
+              <FormItem className="flex flex-row items-center space-x-3 space-y-0 bg-primary/5 p-6 rounded-3xl border border-primary/20 shadow-sm">
+                <FormControl><Checkbox checked={field.value} onCheckedChange={field.onChange} /></FormControl>
+                <div className="space-y-1">
+                  <FormLabel className="text-sm font-bold">Standard Self-Declaration</FormLabel>
+                  <p className="text-[10px] text-muted-foreground italic">I confirm that I have not applied for dual incentives for this publication under any other category or portal.</p>
+                  <FormMessage />
+                </div>
+              </FormItem>
+            )} />
+          </form>
+        </Form>
+      </CardContent>
+      <CardFooter className="flex justify-between p-8 bg-muted/30 border-t border-muted/50 gap-4">
+        <Button variant="ghost" size="lg" onClick={() => handleSave('Draft')} disabled={isSubmitting} className="rounded-2xl px-8 h-12 font-bold hover:bg-primary/5 text-primary">Save to Draft</Button>
+        <div className="flex gap-4">
+          <Button variant="outline" size="lg" onClick={() => router.back()} disabled={isSubmitting} className="rounded-2xl px-6 h-12">Cancel</Button>
+          <Button size="lg" onClick={form.handleSubmit(() => setStep('review'), (errors) => console.error("FORM ERRORS:", JSON.stringify(errors, null, 2)))} disabled={isSubmitting} className="rounded-2xl px-12 h-12 font-black shadow-xl shadow-primary/30 hover:shadow-primary/50 transition-all hover:scale-[1.02]">
+            {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Bot className="mr-2 h-4 w-4" />}
+            Review Application
+          </Button>
+        </div>
+      </CardFooter>
     </Card>
-    </>
-  );
+  )
 }

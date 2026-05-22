@@ -7,6 +7,8 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { db } from '@/lib/config';
 import { collection, query, orderBy, onSnapshot, doc, deleteDoc, updateDoc, where, getDocs } from 'firebase/firestore';
+import { getFundingCalls } from '@/app/emr-actions'
+import DOMPurify from 'isomorphic-dompurify'
 import { useToast } from '@/hooks/use-toast';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -156,7 +158,7 @@ export function AddEditCallDialog({
             toast({ title: 'Success', description: 'Funding call has been updated.' });
         } else {
             // Create logic
-            const result = await createFundingCall(callDataForServer);
+            const result = await createFundingCall(callDataForServer, user.uid);
             if (!result.success) {
                 throw new Error(result.error);
             }
@@ -236,7 +238,7 @@ export function AddEditCallDialog({
                       <div className="space-y-0.5">
                         <FormLabel>Notify Deadline Change</FormLabel>
                         <FormDescription>
-                          Send an email notification to all staff about the updated registration deadlines (Interest and/or Agency).
+                          Send an email notification to all staff about the updated interest registration deadline.
                         </FormDescription>
                       </div>
                       <FormControl>
@@ -315,7 +317,7 @@ function ViewDescriptionDialog({ call }: { call: FundingCall }) {
                     <DialogDescription>Full description for the funding call from {call.agency}.</DialogDescription>
                 </DialogHeader>
                 <div className="max-h-[60vh] overflow-y-auto pr-4">
-                    <div className="prose prose-sm dark:prose-invert max-w-none" dangerouslySetInnerHTML={{ __html: call.description || 'No description provided.' }} />
+                    <div className="prose prose-sm dark:prose-invert max-w-none" dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(call.description || 'No description provided.') }} />
                 </div>
             </DialogContent>
         </Dialog>

@@ -10,10 +10,11 @@ import type { User, IncentiveClaim, Author, ApprovalStage } from '@/types';
 import { Loader2, Printer, Check, X, Download, Bot, ExternalLink } from 'lucide-react';
 import Link from 'next/link';
 import { Tooltip, TooltipProvider, TooltipTrigger, TooltipContent } from '../ui/tooltip';
-import { generateOfficeNotingForClaim } from '@/app/document-actions';
+import { generateOfficeNotingForClaim } from '@/app/actions';
 import { isEligibleForFinancialDisbursement } from '@/lib/incentive-eligibility';
-import { IncentiveCalculationBreakdown } from './calculation-breakdown';
-import { Calculator } from 'lucide-react';
+import { calculateIncentiveBreakdown } from '@/lib/incentive-calculator';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Badge } from "@/components/ui/badge";
 
 
 function getVerificationMark(approval: ApprovalStage | null | undefined, fieldId: string) {
@@ -24,40 +25,39 @@ function getVerificationMark(approval: ApprovalStage | null | undefined, fieldId
     return null;
 }
 
-export function ClaimDetailsDialog({ claim, open, onOpenChange, currentUser, claimant, onTakeAction }: { claim: IncentiveClaim | null, open: boolean, onOpenChange: (open: boolean) => void, currentUser: User | null, claimant: User | null, onTakeAction?: () => void }) {
+export function ClaimDetailsDialog({ claim, open, onOpenChange, currentUser, claimant, onTakeAction, duplicateInfo }: { claim: IncentiveClaim | null, open: boolean, onOpenChange: (open: boolean) => void, currentUser: User | null, claimant: User | null, onTakeAction?: () => void, duplicateInfo?: { isDuplicate: boolean; type: 'self' | 'cross'; originalClaimant: string } | null }) {
     const { toast } = useToast();
     const [isPrinting, setIsPrinting] = useState(false);
 
-    // Decides whether to show the calculation breakdown
-    const shouldShowBreakdown = useMemo(() => {
-        if (!claim || !claim.claimType) return false;
-        const supportedTypes = ['Research Papers', 'Patents', 'Books', 'Conference Presentations'];
-        if (!supportedTypes.includes(claim.claimType)) return false;
-
-        // If pending, always show it as a guideline
-        if (claim.status?.startsWith('Pending')) return true;
-
-        // If accepted, show if the final amount matches the calculated one
-        if (claim.calculatedIncentive !== undefined && claim.finalApprovedAmount !== undefined) {
-            return Math.abs(claim.calculatedIncentive - claim.finalApprovedAmount) < 1;
+    // Check if amount hasn't been changed by any approver
+    const isAmountUnchanged = useMemo(() => {
+        if (claim && claim.claimType === 'Research Papers' && claim.calculatedIncentive) {
+            // If the amounts match, or final amount is not yet set, it means it's still the initial calculation
+            if (!claim.finalApprovedAmount) return true;
+            return claim.calculatedIncentive === claim.finalApprovedAmount;
         }
-
         return false;
     }, [claim]);
+
+
+
+    const breakdown = calculateIncentiveBreakdown(claim);
+    const awardBreakdown = claim?.claimType === 'Award' ? breakdown : null;
     
     const handleDownloadNoting = async () => {
-        if (!isEligibleForFinancialDisbursement(claim)) {
+        if (!claim || !isEligibleForFinancialDisbursement(claim)) {
             toast({
                 variant: 'destructive',
                 title: 'Not Eligible for Office Noting',
-                description: 'This claim is ARPS-only and excluded from office noting/payment processing.',
+                description: 'This claim is excluded from office noting/payment processing.',
             });
             return;
         }
 
         setIsPrinting(true);
         try {
-            const result = await generateOfficeNotingForClaim(claim.id);
+            if (!claim) return;
+            const result = await generateOfficeNotingForClaim(claim.id) as any;
             let fileName = result?.fileName || `Office_Noting_${claim.userName.replace(/\s/g, '_')}.docx`;
 
             if (result.success && result.fileData) {
@@ -97,11 +97,36 @@ a.href = url;
         } else if (Array.isArray(value)) {
              if (value.length > 0 && typeof value[0] === 'object' && value[0] !== null && 'name' in value[0]) {
                 displayValue = (
-                    <ul className="list-disc pl-5">
-                        {(value as Author[]).map((author, idx) => (
-                            <li key={idx}><strong>{author.name}</strong> ({author.role}) - {author.email}</li>
-                        ))}
-                    </ul>
+                    <div className="border rounded-md overflow-hidden mt-1 w-full">
+                        <Table>
+                            <TableHeader className="bg-muted/50">
+                                <TableRow>
+                                    <TableHead className="py-1 h-8 text-xs">Name</TableHead>
+                                    <TableHead className="py-1 h-8 text-xs">Role</TableHead>
+                                    <TableHead className="py-1 h-8 text-xs">Email</TableHead>
+                                    <TableHead className="py-1 h-8 text-xs">Organization</TableHead>
+                                    <TableHead className="py-1 h-8 text-xs">Type</TableHead>
+                                </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                                {(value as Author[]).map((author, idx) => (
+                                    <TableRow key={idx} className="hover:bg-transparent">
+                                        <TableCell className="py-1.5 font-medium text-xs">{author.name}</TableCell>
+                                        <TableCell className="py-1.5 text-xs">{author.role}</TableCell>
+                                        <TableCell className="py-1.5 text-xs text-muted-foreground break-all">{author.email}</TableCell>
+                                        <TableCell className="py-1.5 text-xs text-muted-foreground">{author.isExternal ? (author.organization || '-') : '-'}</TableCell>
+                                        <TableCell className="py-1.5">
+                                            {author.isExternal ? (
+                                                <Badge variant="destructive" className="text-[9px] py-0 h-4 leading-none">External</Badge>
+                                            ) : (
+                                                <Badge variant="outline" className="text-[9px] py-0 h-4 leading-none border-green-200 bg-green-50 text-green-700">Internal</Badge>
+                                            )}
+                                        </TableCell>
+                                    </TableRow>
+                                ))}
+                            </TableBody>
+                        </Table>
+                    </div>
                 );
             } else {
                  displayValue = (value as string[]).join(', ');
@@ -113,12 +138,13 @@ a.href = url;
             displayValue = String(value);
         }
         
-        const isAutoFetched = fieldId && claim.autoFetchedFields?.includes(fieldId);
+        const isAutoFetched = claim && fieldId && claim.autoFetchedFields?.includes(fieldId);
+        const isTable = Array.isArray(value) && value.length > 0 && typeof value[0] === 'object' && value[0] !== null && 'name' in value[0];
 
         return (
-            <div className="grid grid-cols-3 gap-2 py-1">
-                <dt className="font-semibold text-muted-foreground col-span-1">{label}</dt>
-                <dd className="col-span-2 flex items-center gap-2">
+            <div className={`grid grid-cols-3 gap-2 py-1 ${isTable ? 'items-start' : ''}`}>
+                <dt className={`font-semibold text-muted-foreground ${isTable ? 'col-span-3 mb-1' : 'col-span-1'}`}>{label}</dt>
+                <dd className={`${isTable ? 'col-span-3' : 'col-span-2 flex items-center gap-2 break-all'}`}>
                     {displayValue}
                     {isAutoFetched && (
                         <TooltipProvider>
@@ -137,6 +163,31 @@ a.href = url;
         );
     };
     
+    const ensureSecureUrl = (url: string) => {
+      if (!url) return url;
+      if (url.includes('firebasestorage.googleapis.com') || url.includes('storage.googleapis.com')) {
+          try {
+              const urlObj = new URL(url);
+              let path = "";
+              if (url.includes('firebasestorage')) {
+                  const parts = urlObj.pathname.split('/o/');
+                  if (parts.length > 1) {
+                      path = decodeURIComponent(parts[1].split('?')[0]);
+                  }
+              } else {
+                  const parts = urlObj.pathname.split('/');
+                  if (parts.length > 2) {
+                      path = parts.slice(2).join('/');
+                  }
+              }
+              if (path) return `/api/documents/${path}`;
+          } catch (e) {
+              console.error("Failed to rewrite storage URL:", e);
+          }
+      }
+      return url;
+    };
+
     const renderLinkDetail = (label: string, value?: string | string[]) => {
       if (!value || value.length === 0) return null;
       const urls = Array.isArray(value) ? value : [value];
@@ -145,13 +196,16 @@ a.href = url;
           <dt className="font-semibold text-muted-foreground col-span-1">{label}</dt>
           <dd className="col-span-2">
             <div className="flex flex-col gap-1">
-                {urls.map((url, index) => (
-                  <Button key={index} variant="link" asChild className="p-0 h-auto justify-start">
-                    <a href={url} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline break-all">
-                        View Document {urls.length > 1 ? index + 1 : ''}
-                    </a>
-                  </Button>
-                ))}
+                {urls.map((url, index) => {
+                  const secureUrl = ensureSecureUrl(url);
+                  return (
+                    <Button key={index} variant="link" asChild className="p-0 h-auto justify-start">
+                      <a href={secureUrl} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline break-all">
+                          View Document {urls.length > 1 ? index + 1 : ''}
+                      </a>
+                    </Button>
+                  );
+                })}
             </div>
           </dd>
         </div>
@@ -163,12 +217,17 @@ a.href = url;
     }
 
     const isFullAdmin = currentUser?.role === 'Super-admin' || currentUser?.role === 'admin';
-    const canTakeAction = currentUser?.allowedModules?.some(m => m.startsWith('incentive-approver-')) && onTakeAction;
+    const isApprover = currentUser?.allowedModules?.some(m => m.startsWith('incentive-approver-'));
+    const isOwner = currentUser?.uid === claim.uid;
+    const canSeeCalculation = isFullAdmin || isApprover || isOwner;
+    const canTakeAction = isApprover && onTakeAction;
     const isPendingForBank = ['Accepted', 'Submitted to Accounts'].includes(claim.status);
     const canGenerateNoting = isEligibleForFinancialDisbursement(claim);
 
-    const profileLink = claimant?.campus === 'Goa' ? `/goa/${claimant.misId}` : `/profile/${claimant.misId}`;
-    const hasProfileLink = claimant && claimant.misId;
+    const hasProfileLink = !!claimant?.misId;
+    const profileLink = hasProfileLink 
+        ? (claimant?.campus === 'Goa' ? `/goa/${claimant?.misId}` : `/profile/${claimant?.misId}`)
+        : '#';
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
@@ -183,6 +242,22 @@ a.href = url;
                     <DialogDescription>Full submission details for claimant: {claim.userName}.</DialogDescription>
                 </DialogHeader>
                 <div className="max-h-[70vh] overflow-y-auto pr-4 space-y-2 text-sm">
+                    {duplicateInfo && (
+                        <div className={`p-4 rounded-xl border flex flex-col gap-1 mb-4 shadow-sm ${
+                            duplicateInfo.type === 'self'
+                                ? "bg-red-50 dark:bg-red-950/20 border-red-200 dark:border-red-800 text-red-900 dark:text-red-200"
+                                : "bg-amber-50 dark:bg-amber-950/20 border-amber-200 dark:border-amber-800 text-amber-900 dark:text-amber-200"
+                        }`}>
+                            <div className="flex items-center gap-2 font-bold text-base">
+                                <span>{duplicateInfo.type === 'self' ? '🛑 Duplicate Application Detected' : '⚠️ Potential Duplicate Claim'}</span>
+                            </div>
+                            <p className="text-xs font-medium leading-relaxed">
+                                {duplicateInfo.type === 'self'
+                                    ? "This applicant has submitted multiple claims for this exact same work / digital object identifier (DOI)."
+                                    : `Another researcher (${duplicateInfo.originalClaimant}) has already filed a claim for this exact same work / DOI in this category.`}
+                            </p>
+                        </div>
+                    )}
                     {renderDetail("Claimant Name", hasProfileLink ? <Link href={profileLink} target="_blank" className="text-primary hover:underline">{claim.userName}</Link> : claim.userName)}
                     {renderDetail("Email", claim.userEmail)}
                     {renderDetail("Designation", claimant?.designation)}
@@ -307,6 +382,7 @@ a.href = url;
                             {renderDetail("Application Type", claim.bookApplicationType)}
                             {renderDetail("Title", claim.publicationTitle)}
                             {claim.bookApplicationType === 'Book Chapter' && renderDetail("Book Title", claim.bookTitleForChapter)}
+                            {claim.doi && renderDetail("DOI", claim.doi, "doi")}
                             {renderDetail("Author(s)", claim.authors)}
                             {claim.bookApplicationType === 'Book Chapter' && renderDetail("Editor(s)", claim.bookEditor)}
                             {renderDetail("Publisher", claim.publisherName)}
@@ -377,7 +453,115 @@ a.href = url;
                         </>
                     )}
 
-                    {isFullAdmin && (
+                    {claim.claimType === 'EMR Sanction Project' && (
+                        <>
+                            <hr className="my-2" />
+                            <h4 className="font-semibold text-base mt-2">Project Details</h4>
+                            {renderDetail("Project Name", claim.emrProjectName)}
+                            {renderDetail("Sanctioned By (Agency)", claim.sanctionFrom)}
+                            {renderDetail("Routed via RDC?", claim.wasRoutedThroughRdc)}
+                            {renderDetail("Sanction Amount", claim.sanctionAmount?.toLocaleString('en-IN', { style: 'currency', currency: 'INR' }))}
+                            {renderDetail("Sanction Date", claim.sanctionDate ? new Date(claim.sanctionDate).toLocaleDateString() : 'N/A')}
+                            
+                            <hr className="my-2" />
+                            <h4 className="font-semibold text-base mt-2">Co-Investigators</h4>
+                            {renderDetail("Internal Co-PIs", claim.authors)}
+                            {claim.externalCoPis && claim.externalCoPis.length > 0 && (
+                                <div className="grid grid-cols-3 gap-2 py-1">
+                                    <dt className="font-semibold text-muted-foreground col-span-1">External Co-PIs</dt>
+                                    <dd className="col-span-2">
+                                        <ul className="list-disc pl-5">
+                                            {claim.externalCoPis.map((pi: any, idx: number) => (
+                                                <li key={idx}><strong className="break-words">{pi.name}</strong> - {pi.organization} {pi.email ? <span className="break-all">({pi.email})</span> : ''}</li>
+                                            ))}
+                                        </ul>
+                                    </dd>
+                                </div>
+                            )}
+
+                            <hr className="my-2" />
+                            <h4 className="font-semibold text-base mt-2">Documentation</h4>
+                            {renderLinkDetail("Sanction Proof", claim.sanctionProofUrl)}
+                        </>
+                    )}
+
+                    {claim.claimType === 'Award' && (
+                        <>
+                            <hr className="my-2" />
+                            <h4 className="font-semibold text-base mt-2">Award Details</h4>
+                            {renderDetail("Award Title", claim.awardTitle)}
+                            {renderDetail("Awarding Body", claim.awardingBody)}
+                            {renderDetail("Stature", claim.awardStature)}
+                            {renderDetail("Body Type", claim.awardBodyType)}
+                            {renderDetail("Locale", claim.awardLocale)}
+                            {renderDetail("Membership No.", claim.membershipNumber)}
+                            {renderDetail("Award Category", claim.awardCategory)}
+                            {renderDetail("Paid Award?", claim.isPaidAward)}
+                            {renderDetail("Award Date", claim.awardDate ? new Date(claim.awardDate).toLocaleDateString() : 'N/A')}
+                            {renderDetail("Cash Prize Received", claim.amountPaid?.toLocaleString('en-IN', { style: 'currency', currency: 'INR' }))}
+                            {renderDetail("Self Declaration", claim.awardSelfDeclaration)}
+
+                            {awardBreakdown && (
+                                <div className="mt-4 p-4 bg-primary/5 rounded-lg border border-primary/10">
+                                    <h4 className="font-bold text-sm text-primary mb-2">Award Incentive Calculation</h4>
+                                    <div className="space-y-1 text-sm">
+                                        <div className="flex justify-between">
+                                            <span>Policy Base ({awardBreakdown.category || 'N/A'}):</span>
+                                            <span className="font-semibold">₹{(awardBreakdown.honorsAmount > 0 || awardBreakdown.isPaid ? (awardBreakdown.category === 'International Award' ? 15000 : awardBreakdown.category === 'National Award' ? 5000 : 2000) : 0).toLocaleString('en-IN')}</span> 
+                                        </div>
+                                        {awardBreakdown.isPaid && (
+                                            <div className="flex justify-between text-destructive">
+                                                <span>Paid Award Deduction:</span>
+                                                <span className="font-semibold">-100% (Disqualified)</span>
+                                            </div>
+                                        )}
+                                        <div className="pt-2 border-t mt-2 flex justify-between font-bold text-primary">
+                                            <span>Final Honorarium:</span>
+                                            <span>₹{awardBreakdown.honorsAmount.toLocaleString('en-IN')}</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
+                            <hr className="my-2" />
+                            <h4 className="font-semibold text-base mt-2">Documents</h4>
+                            {renderLinkDetail("Award Proof", claim.awardProofUrls)}
+                        </>
+                    )}
+
+                    {(claim.claimType === 'Workshop/Training/FDP' || claim.claimType === 'Workshop/FDP/Training') && (
+                        <>
+                            <hr className="my-2" />
+                            <h4 className="font-semibold text-base mt-2">Workshop/Training/FDP Details</h4>
+                            {renderDetail("Event Type", claim.eventType)}
+                            {renderDetail("Workshop Name", claim.workshopName)}
+                            {renderDetail("Organizer", claim.organizerName)}
+                            {renderDetail("Level", claim.eventTypeLevel)}
+                            {renderDetail("Duration", `${claim.workshopStartDate ? new Date(claim.workshopStartDate).toLocaleDateString() : 'N/A'} to ${claim.workshopEndDate ? new Date(claim.workshopEndDate).toLocaleDateString() : 'N/A'}`)}
+                            {renderDetail("Attendance Mode", claim.attendanceMode)}
+                            {renderDetail("Authors/Participants", claim.authors)}
+                            
+                            <hr className="my-2" />
+                            <h4 className="font-semibold text-base mt-2">Expenses & Travel</h4>
+                            {renderDetail("Registration Fee", claim.registrationFee?.toLocaleString('en-IN', { style: 'currency', currency: 'INR' }))}
+                            {claim.attendanceMode === 'Offline' && (
+                                <>
+                                    {renderDetail("Place Visited", claim.travelPlaceVisited)}
+                                    {renderDetail("Travel Mode", claim.travelMode)}
+                                    {renderDetail("Travel Fare", claim.travelFare?.toLocaleString('en-IN', { style: 'currency', currency: 'INR' }))}
+                                </>
+                            )}
+                            {renderDetail("Self Declaration", claim.workshopSelfDeclaration)}
+
+                            <hr className="my-2" />
+                            <h4 className="font-semibold text-base mt-2">Documents</h4>
+                            {renderLinkDetail("Certificate", claim.workshopCertificateUrl)}
+                            {renderLinkDetail("Registration Fee Proof", claim.registrationFeeProofUrl)}
+                            {renderLinkDetail("Travel Receipts", claim.travelReceiptsUrl)}
+                        </>
+                    )}
+
+                    {canSeeCalculation && (
                         <>
                             <hr className="my-2" />
                             <h4 className="font-semibold text-base mt-2">Benefit & Approval Details</h4>
@@ -386,40 +570,88 @@ a.href = url;
                             {renderDetail("Final Approved Amount", claim.finalApprovedAmount?.toLocaleString('en-IN', { style: 'currency', currency: 'INR' }))}
                             {renderDetail("Payment Sheet Ref No.", claim.paymentSheetRef)}
                             {renderDetail("Payment Remarks", claim.paymentSheetRemarks)}
-                        </>
-                    )}
-
-                    {shouldShowBreakdown && (
-                        <>
-                            <hr className="my-4" />
-                             <IncentiveCalculationBreakdown claimData={claim} user={claimant || currentUser} />
-                        </>
-                    )}
+                            
+                            {breakdown && (
+                                <div className="space-y-2 mt-4 bg-blue-50 dark:bg-blue-950 rounded-lg p-3 border border-blue-200 dark:border-blue-800">
+                                    {!isAmountUnchanged && claim.finalApprovedAmount > 0 && (
+                                        <div className="bg-amber-50 dark:bg-amber-950 border border-amber-200 dark:border-amber-800 p-2 rounded mb-2 flex items-start gap-2">
+                                            <Bot className="h-4 w-4 text-amber-600 dark:text-amber-400 mt-0.5 flex-shrink-0" />
+                                            <p className="text-[10px] text-amber-800 dark:text-amber-200 leading-tight">
+                                                Note: The final approved amount was manually adjusted by the RDC team during the approval process.
+                                            </p>
+                                        </div>
+                                    )}
+                                    <h5 className="text-sm font-semibold text-blue-900 dark:text-blue-100">Incentive Calculation Breakdown</h5>
+                                    <div className="space-y-1.5 text-xs">
+                                        <div className="grid grid-cols-2 gap-2">
+                                            <span className="text-blue-700 dark:text-blue-300">1. Base Amount (Q-Rating):</span>
+                                            <span className="font-medium text-right">₹{breakdown.baseAmount.toLocaleString('en-IN')}</span>
+                                        </div>
+                                        <div className="grid grid-cols-2 gap-2">
+                                            <span className="text-blue-700 dark:text-blue-300">2. Publication Type Adjustment:</span>
+                                            <span className="font-medium text-right">×{breakdown.publicationTypeAdjustment}</span>
+                                        </div>
+                                        <div className="grid grid-cols-2 gap-2">
+                                            <span className="text-blue-700 dark:text-blue-300">3. After Adjustment:</span>
+                                            <span className="font-medium text-right">₹{breakdown.adjustedAmount.toLocaleString('en-IN')}</span>
+                                        </div>
+                                        {breakdown.deductions.length > 0 && (
+                                            <>
+                                                <div className="border-t border-blue-200 dark:border-blue-800 pt-1.5 mt-1.5">
+                                                    <p className="text-blue-700 dark:text-blue-300 font-medium mb-1">University-level Deductions:</p>
+                                                    {breakdown.deductions.map((deduction, i) => (
+                                                        <div key={i} className="grid grid-cols-2 gap-2 ml-2">
+                                                            <span className="text-blue-600 dark:text-blue-400">• {deduction}</span>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                                <div className="grid grid-cols-2 gap-2 font-semibold border-t border-blue-200 dark:border-blue-800 pt-1.5 mt-1.5">
+                                                    <span className="text-blue-900 dark:text-blue-100">After All Deductions:</span>
+                                                    <span className="text-right text-blue-900 dark:text-blue-100">₹{breakdown.deductedAmount.toLocaleString('en-IN')}</span>
+                                                </div>
+                                            </>
+                                        )}
+                                        <div className="border-t border-blue-200 dark:border-blue-800 pt-1.5 mt-1.5">
+                                            <p className="text-blue-700 dark:text-blue-300 font-medium mb-1">Author Distribution:</p>
+                                            <div className="ml-2 space-y-0.5">
+                                                <div className="text-blue-600 dark:text-blue-400">Internal Authors: {breakdown.internalAuthorsCount}</div>
+                                                <div className="text-blue-600 dark:text-blue-400">Main Authors: {breakdown.mainAuthorsCount}, Co-Authors: {breakdown.coAuthorsCount}</div>
+                                                <div className="text-blue-600 dark:text-blue-400 text-xs italic">{breakdown.authorShare}</div>
+                                            </div>
+                                        </div>
+                                        <div className="grid grid-cols-2 gap-2 font-bold border-t border-blue-200 dark:border-blue-800 pt-1.5 mt-1.5 bg-blue-100 dark:bg-blue-900 p-2 rounded">
+                                            <span className="text-blue-900 dark:text-blue-50">Final Incentive per Author:</span>
+                                            <span className="text-right text-green-700 dark:text-green-400">₹{breakdown.finalAmount.toLocaleString('en-IN')}</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
                             
                             {claim.approvals && claim.approvals.length > 0 && (
                                 <div className="space-y-2 pt-2">
                                    <h4 className="font-semibold text-base">Approval History</h4>
                                    {claim.approvals.filter(a => a !== null).map(approval => (
                                        <div key={approval.stage} className="p-3 border rounded-md bg-muted/50">
-                                           <p><strong>Stage {approval.stage}:</strong> {approval.status}</p>
-                                           <p className="text-xs text-muted-foreground">by {approval.approverName} on {new Date(approval.timestamp).toLocaleString()}</p>
-                                           <p className="mt-1"><strong>Comments:</strong> {approval.comments || 'N/A'}</p>
+                                           <div className="flex justify-between items-start">
+                                               <div>
+                                                   <p><strong>Stage {approval.stage}:</strong> {approval.status}</p>
+                                                   <p className="text-xs text-muted-foreground">by {approval.approverName} on {new Date(approval.timestamp).toLocaleString()}</p>
+                                               </div>
+                                               {approval.status === 'Approved' && approval.approvedAmount !== undefined && (
+                                                   <div className="text-right">
+                                                       <p className="text-xs text-muted-foreground font-semibold uppercase">Amount Forwarded</p>
+                                                       <p className="font-bold text-primary">₹{approval.approvedAmount.toLocaleString('en-IN')}</p>
+                                                   </div>
+                                               )}
+                                           </div>
+                                           <p className="mt-2 text-sm"><strong>Comments:</strong> {approval.comments || 'N/A'}</p>
                                        </div>
                                    ))}
                                 </div>
                             )}
                             
-                            {claim.bankDetails && (
-                                <>
-                                    <hr className="my-2" />
-                                    <h4 className="font-semibold text-base mt-2">Bank Account Details (Visible to Admins only)</h4>
-                                    {renderDetail("Beneficiary Name", claim.bankDetails.beneficiaryName)}
-                                    {renderDetail("Account Number", claim.bankDetails.accountNumber)}
-                                    {renderDetail("Bank Name", claim.bankDetails.bankName)}
-                                    {renderDetail("Branch Name", claim.bankDetails.branchName)}
-                                    {renderDetail("City", claim.bankDetails.city)}
-                                    {renderDetail("IFSC Code", claim.bankDetails.ifscCode)}
-                                </>
+
+                        </>
                     )}
                 </div>
                 <DialogFooter className="gap-2">
