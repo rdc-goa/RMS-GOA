@@ -952,7 +952,7 @@ export default function SettingsPage() {
                         name="i10Index"
                         render={({ field }) => (
                           <FormItem>
-                            <FormLabel>i10 Index (Scopus)</FormLabel>
+                            <FormLabel>i10 Index (Google Scholar)</FormLabel>
                             <FormControl>
                               <Input type="number" placeholder="0" {...field} />
                             </FormControl>

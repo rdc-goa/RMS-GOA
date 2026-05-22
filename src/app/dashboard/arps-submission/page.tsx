@@ -171,7 +171,7 @@ export default function ArpsSubmissionDashboard() {
               <div>
                 <h3 className="font-bold text-amber-800 dark:text-amber-200">Profile Details Missing</h3>
                 <p className="text-sm text-amber-700/80 dark:text-amber-300/80 mt-1">
-                  You must save your H-Index (Scopus), i10 Index (Scopus), and Citation Count (Scopus) on your profile before you can create new ARPS submissions.
+                  You must save your H-Index (Scopus), i10 Index (Google Scholar), and Citation Count (Scopus) on your profile before you can create new ARPS submissions.
                 </p>
                 <Button variant="outline" size="sm" className="mt-3 bg-white hover:bg-amber-50 text-amber-700 border-amber-200" onClick={() => router.push('/dashboard/settings#scopus-metrics')}>
                   Update Profile

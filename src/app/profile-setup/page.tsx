@@ -528,7 +528,7 @@ function ProfileSetupContent() {
                         <FormItem><FormLabel>H-Index (Scopus)</FormLabel><FormControl><Input type="number" placeholder="0" {...field} /></FormControl><FormMessage /></FormItem>
                       )} />
                       <FormField control={form.control} name="i10Index" render={({ field }) => (
-                        <FormItem><FormLabel>i10 Index (Scopus)</FormLabel><FormControl><Input type="number" placeholder="0" {...field} /></FormControl><FormMessage /></FormItem>
+                        <FormItem><FormLabel>i10 Index (Google Scholar)</FormLabel><FormControl><Input type="number" placeholder="0" {...field} /></FormControl><FormMessage /></FormItem>
                       )} />
                       <FormField control={form.control} name="citationCount" render={({ field }) => (
                         <FormItem><FormLabel>Citation Count (Scopus)</FormLabel><FormControl><Input type="number" placeholder="0" {...field} /></FormControl><FormMessage /></FormItem>
