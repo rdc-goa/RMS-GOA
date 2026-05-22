@@ -397,7 +397,6 @@ export function ConferenceForm({ user }: { user: User }) {
   const searchParams = useSearchParams()
   const [selectedEventType, setSelectedEventType] = useState<string | null>(null)
   const [isLoadingDraft, setIsLoadingDraft] = useState(true)
-  const clientAuth = useClientAuth();
 
   useEffect(() => {
     const claimId = searchParams.get("claimId")
@@ -442,6 +441,7 @@ function ConferenceFormContent({ user, onEventTypeChange }: { user: User; onEven
   const router = useRouter()
   const searchParams = useSearchParams()
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const clientAuth = useClientAuth();
   const [bankDetailsMissing, setBankDetailsMissing] = useState(false)
   const [orcidOrMisIdMissing, setOrcidOrMisIdMissing] = useState(false)
   const [eligibility, setEligibility] = useState<{ eligible: boolean; nextAvailableDate?: string }>({ eligible: true })
