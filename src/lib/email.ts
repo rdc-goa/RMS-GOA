@@ -111,11 +111,11 @@ export async function sendEmail({ to, cc, bcc, subject, html, attachments, from 
       }
       console.warn(`RDC email service is not configured. Falling back to default email account for ${to}.`);
       transporter = defaultTransporter;
-      fromAddress = `"Research & Development Cell - PU" <${GMAIL_USER}>`;
+      fromAddress = `"Research & Development Cell - PU Goa" <${GMAIL_USER}>`;
       selectedSender = 'default';
     } else {
       transporter = rdcTransporter;
-      fromAddress = `"Research & Development Cell - PU" <${RDC_EMAIL}>`;
+      fromAddress = `"Research & Development Cell - PU Goa" <${RDC_EMAIL}>`;
       selectedSender = 'rdc';
     }
   } else if (from === 'noreply') {
@@ -126,11 +126,11 @@ export async function sendEmail({ to, cc, bcc, subject, html, attachments, from 
         return { success: false, error: 'Default email service not configured on the server.' };
       }
       transporter = defaultTransporter;
-      fromAddress = `"Research & Development Cell - PU" <${NOREPLY_EMAIL}>`;
+      fromAddress = `"Research & Development Cell - PU Goa" <${NOREPLY_EMAIL}>`;
       selectedSender = 'noreply';
     } else {
       transporter = noreplyTransporter;
-      fromAddress = `"Research & Development Cell - PU" <${NOREPLY_EMAIL}>`;
+      fromAddress = `"Research & Development Cell - PU Goa" <${NOREPLY_EMAIL}>`;
       selectedSender = 'noreply';
     }
   } else {
@@ -139,7 +139,7 @@ export async function sendEmail({ to, cc, bcc, subject, html, attachments, from 
       return { success: false, error: 'Default email service not configured on the server.' };
     }
     transporter = defaultTransporter;
-    fromAddress = `"Research & Development Cell - PU" <${GMAIL_USER}>`;
+    fromAddress = `"Research & Development Cell - PU Goa" <${GMAIL_USER}>`;
     selectedSender = 'default';
   }
 
@@ -172,7 +172,7 @@ export async function sendEmail({ to, cc, bcc, subject, html, attachments, from 
       GMAIL_USER !== (selectedSender === 'rdc' ? RDC_EMAIL : NOREPLY_EMAIL);
 
     if (canRetryWithDefault) {
-      const fallbackFromAddress = `"Research & Development Cell - PU" <${GMAIL_USER}>`;
+      const fallbackFromAddress = `"Research & Development Cell - PU Goa" <${GMAIL_USER}>`;
       try {
         await defaultTransporter.sendMail({
           ...mailOptions,

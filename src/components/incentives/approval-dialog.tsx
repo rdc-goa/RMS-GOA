@@ -216,7 +216,7 @@ function ConferenceClaimDetails({
                                 <FormItem>
                                     <FormControl>
                                         <div className="flex items-center gap-1">
-                                            <Button type="button" size="icon" variant={formField.value === true ? 'secondary' : 'ghost'} className="h-7 w-7" onClick={() => formField.onChange(formField.value === true ? undefined : true)}><Check className="h-4 w-4" /></Button>
+                                            <Button type="button" size="icon" variant="ghost" className={formField.value === true ? 'h-7 w-7 bg-red-500 text-white hover:bg-red-600' : 'h-7 w-7'} onClick={() => formField.onChange(formField.value === true ? undefined : true)}><Check className="h-4 w-4" /></Button>
                                             <Button type="button" size="icon" variant={formField.value === false ? 'destructive' : 'ghost'} className="h-7 w-7" onClick={() => formField.onChange(formField.value === false ? undefined : false)}><X className="h-4 w-4" /></Button>
                                         </div>
                                     </FormControl>
@@ -419,7 +419,7 @@ function ResearchPaperClaimDetails({
                                 <FormItem>
                                     <FormControl>
                                         <div className="flex items-center gap-1">
-                                            <Button type="button" size="icon" variant={formField.value === true ? 'secondary' : 'ghost'} className="h-7 w-7" onClick={() => formField.onChange(formField.value === true ? undefined : true)}>
+                                            <Button type="button" size="icon" variant="ghost" className={formField.value === true ? 'h-7 w-7 bg-red-500 text-white hover:bg-red-600' : 'h-7 w-7'} onClick={() => formField.onChange(formField.value === true ? undefined : true)}>
                                                 <Check className="h-4 w-4" />
                                             </Button>
                                             <Button type="button" size="icon" variant={formField.value === false ? 'destructive' : 'ghost'} className="h-7 w-7" onClick={() => formField.onChange(formField.value === false ? undefined : false)}>

@@ -33,7 +33,7 @@ export const reportSystemError = async (error: any, user: User | null, action?: 
             action
         );
         
-        console.log("CRITICAL: Error details sent to helpdesk.rdc@paruluniversity.ac.in");
+        console.log("[RDC GOA] CRITICAL: Error details sent to helpdesk.rdc@paruluniversity.ac.in");
     } catch (reportingError) {
         console.error("Failed to report error to helpdesk:", reportingError);
     }

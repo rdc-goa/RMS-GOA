@@ -18,7 +18,7 @@ export async function reportErrorToHelpdesk(
 ): Promise<{ success: boolean; error?: string }> {
   try {
     const to = "helpdesk.rdc@paruluniversity.ac.in";
-    const subject = `CRITICAL: RDC Portal System Error - ${error.message.substring(0, 50)}`;
+    const subject = `[RDC GOA] CRITICAL: RDC Portal System Error - ${error.message.substring(0, 50)}`;
 
     const indexLinkMatch = error.message.match(/https:\/\/console\.firebase\.google\.com\/[^\s]+/);
     const indexLink = indexLinkMatch ? indexLinkMatch[0] : null;

@@ -32,6 +32,11 @@ service cloud.firestore {
       return user.designation == 'Head of Goa Campus';
     }
 
+    function hasModule(moduleId) {
+      let user = get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+      return user.allowedModules != null && moduleId in user.allowedModules;
+    }
+
     function isOwner(userId) {
       return request.auth.uid == userId;
     }
@@ -75,7 +80,8 @@ service cloud.firestore {
                     isAdmin() || isCRO() ||
                     (isPrincipal() && resource.data.institute == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.institute) ||
                     (isHOD() && resource.data.institute == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.institute && resource.data.departmentName == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.department) ||
-                    (isHeadOfGoaCampus() && resource.data.campus == 'Goa')
+                    (isHeadOfGoaCampus() && resource.data.campus == 'Goa') ||
+                    (hasModule('all-projects') && (resource.data.institute == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.institute || resource.data.campus == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.campus))
                   );
       
       // Update access: The PI can update their own project. Admins can update any project.
