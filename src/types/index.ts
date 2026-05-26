@@ -452,6 +452,10 @@ export type IncentiveClaim = {
   apcSciImpactFactor?: number
   apcPublicationProofUrl?: string
   apcInvoiceProofUrl?: string
+  apcReceiptProofUrl?: string
+  apcPaymentProofUrl?: string
+  apcAcceptanceMailProofUrl?: string
+  apcScopusLink?: string
   apcPuNameInPublication?: boolean
   apcAmountClaimed?: number
   apcTotalAmount?: number

@@ -35,6 +35,7 @@ import type { IncentiveClaim, User } from '@/types';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { MultiSelect } from '@/components/ui/multi-select';
 import {
   downloadPaymentSheetByRef,
   fetchAllClaimsAction,
@@ -75,7 +76,7 @@ export default function ManageIncentiveClaimsPage() {
   const router = useRouter();
 
   const [searchTerm, setSearchTerm] = useState('');
-  const [claimTypeFilter, setClaimTypeFilter] = useState('all');
+  const [claimTypeFilter, setClaimTypeFilter] = useState<string[]>([]);
   const [facultyFilter, setFacultyFilter] = useState('all');
   const [instituteFilter, setInstituteFilter] = useState('all');
   const [stageFilter, setStageFilter] = useState('all');
@@ -212,8 +213,8 @@ export default function ManageIncentiveClaimsPage() {
   const filteredClaims = useMemo(() => {
     let filtered = [...allClaims];
 
-    if (claimTypeFilter !== 'all') {
-      filtered = filtered.filter(claim => claim.claimType === claimTypeFilter);
+    if (claimTypeFilter.length > 0) {
+      filtered = filtered.filter(claim => claimTypeFilter.includes(claim.claimType));
     }
 
     if (facultyFilter !== 'all') {
@@ -320,7 +321,7 @@ export default function ManageIncentiveClaimsPage() {
     setSelectedClaims([]);
     setCurrentPage(1);
     setSelectedPaymentSheetRef('');
-  }, [activeTab, searchTerm, claimTypeFilter, facultyFilter, instituteFilter, stageFilter, sortConfig]);
+  }, [activeTab, searchTerm, claimTypeFilter.join(','), facultyFilter, instituteFilter, stageFilter, sortConfig]);
 
   const requestSort = (key: SortableKeys) => {
     let direction: 'ascending' | 'descending' = 'ascending';
@@ -876,17 +877,12 @@ export default function ManageIncentiveClaimsPage() {
               />
               {selectedClaims.length === 0 && (
                 <>
-                  <Select value={claimTypeFilter} onValueChange={setClaimTypeFilter}>
-                    <SelectTrigger className="w-[240px]">
-                      <SelectValue placeholder="Filter by claim type" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All Claim Types</SelectItem>
-                      {CLAIM_TYPES.map(type => (
-                        <SelectItem key={type} value={type}>{type}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <MultiSelect
+                    options={CLAIM_TYPES.map(type => ({ label: type, value: type }))}
+                    selectedValues={claimTypeFilter}
+                    onChange={setClaimTypeFilter}
+                    placeholder="All Claim Types"
+                  />
                   <Select value={facultyFilter} onValueChange={setFacultyFilter}>
                     <SelectTrigger className="w-[200px]">
                       <SelectValue placeholder="Filter by faculty" />

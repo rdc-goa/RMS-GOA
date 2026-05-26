@@ -72,6 +72,9 @@ const apcSchema = z.object({
   apcSciImpactFactor: z.coerce.number().optional(),
   apcPublicationProof: z.any().optional().refine(files => !files?.[0] || files?.[0]?.size <= MAX_FILE_SIZE, 'File must be less than 10 MB.'),
   apcInvoiceProof: z.any().optional().refine(files => !files?.[0] || files?.[0]?.size <= MAX_FILE_SIZE, 'File must be less than 10 MB.'),
+  apcReceiptProof: z.any().optional().refine(files => !files?.[0] || files?.[0]?.size <= MAX_FILE_SIZE, 'File must be less than 10 MB.'),
+  apcPaymentProof: z.any().optional().refine(files => !files?.[0] || files?.[0]?.size <= MAX_FILE_SIZE, 'File must be less than 10 MB.'),
+  apcAcceptanceMailProof: z.any().optional().refine(files => !files?.[0] || files?.[0]?.size <= MAX_FILE_SIZE, 'File must be less than 10 MB.'),
   apcPuNameInPublication: z.boolean().optional(),
   apcAmountClaimed: z.coerce.number().positive('Claimed amount must be positive.'),
   apcTotalAmount: z.coerce.number().positive('Total amount must be a positive number greater than 0.'),
@@ -80,6 +83,10 @@ const apcSchema = z.object({
   apcApcWaiverProofUrl: z.string().optional(),
   apcPublicationProofUrl: z.string().optional(),
   apcInvoiceProofUrl: z.string().optional(),
+  apcReceiptProofUrl: z.string().optional(),
+  apcPaymentProofUrl: z.string().optional(),
+  apcAcceptanceMailProofUrl: z.string().optional(),
+  apcScopusLink: z.string().url('Please enter a valid URL.').optional().or(z.literal('')),
 }).refine(data => data.apcTypeOfArticle !== 'Other' || (!!data.apcOtherArticleType && data.apcOtherArticleType.length > 0), {
   message: 'Please specify the article type.',
   path: ['apcOtherArticleType'],
@@ -94,12 +101,26 @@ const apcSchema = z.object({
 }).refine(data => data.apcApcWaiverProofUrl || (data.apcApcWaiverProof && data.apcApcWaiverProof.length > 0), {
   message: 'Proof of APC waiver request is required.',
   path: ['apcApcWaiverProof'],
-}).refine(data => data.apcPublicationProofUrl || (data.apcPublicationProof && data.apcPublicationProof.length > 0), {
-  message: 'Proof of publication is required.',
-  path: ['apcPublicationProof'],
 }).refine(data => data.apcInvoiceProofUrl || (data.apcInvoiceProof && data.apcInvoiceProof.length > 0), {
-  message: 'Proof of payment/invoice is required.',
+  message: 'Invoice is required.',
   path: ['apcInvoiceProof'],
+}).refine(data => data.apcReceiptProofUrl || (data.apcReceiptProof && data.apcReceiptProof.length > 0), {
+  message: 'Receipt is required.',
+  path: ['apcReceiptProof'],
+}).refine(data => data.apcPaymentProofUrl || (data.apcPaymentProof && data.apcPaymentProof.length > 0), {
+  message: 'Payment Proof is required.',
+  path: ['apcPaymentProof'],
+}).refine(data => data.apcAcceptanceMailProofUrl || (data.apcAcceptanceMailProof && data.apcAcceptanceMailProof.length > 0), {
+  message: 'Acceptance mail is required.',
+  path: ['apcAcceptanceMailProof'],
+}).refine(data => {
+  if (data.apcIndexingStatus.some(s => s.toLowerCase().includes('scopus'))) {
+    return !!data.apcScopusLink && data.apcScopusLink.startsWith('http');
+  }
+  return true;
+}, {
+  message: 'Scopus Link of Publication is required when Scopus is selected.',
+  path: ['apcScopusLink'],
 });
 
 type ApcFormValues = z.infer<typeof apcSchema>;
@@ -121,8 +142,10 @@ const SPECIAL_POLICY_FACULTIES = [
 
 function ReviewDetails({ data, onEdit, isSubmitting, totalIncentive }: { data: ApcFormValues; onEdit: () => void; isSubmitting: boolean; totalIncentive: number | null }) {
   const apcWaiverProofFile = data.apcApcWaiverProof?.[0] as File | undefined;
-  const apcPublicationProofFile = data.apcPublicationProof?.[0] as File | undefined;
   const apcInvoiceProofFile = data.apcInvoiceProof?.[0] as File | undefined;
+  const apcReceiptProofFile = data.apcReceiptProof?.[0] as File | undefined;
+  const apcPaymentProofFile = data.apcPaymentProof?.[0] as File | undefined;
+  const apcAcceptanceMailProofFile = data.apcAcceptanceMailProof?.[0] as File | undefined;
 
   return (
     <Card className="max-w-4xl mx-auto shadow-xl border-t-4 border-t-primary">
@@ -161,6 +184,14 @@ function ReviewDetails({ data, onEdit, isSubmitting, totalIncentive }: { data: A
               <p className="font-medium">{data.apcJournalDetails}</p>
               <p className="text-xs text-muted-foreground mt-0.5">ISSN: {data.apcIssnNo}</p>
             </div>
+            {data.apcScopusLink && (
+              <div>
+                <p className="font-semibold text-muted-foreground uppercase text-[10px] tracking-wider mb-1">Scopus Link</p>
+                <a href={data.apcScopusLink} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline font-medium text-xs break-all">
+                  {data.apcScopusLink}
+                </a>
+              </div>
+            )}
           </div>
 
           <div className="space-y-4">
@@ -186,17 +217,27 @@ function ReviewDetails({ data, onEdit, isSubmitting, totalIncentive }: { data: A
             <div>
               <p className="font-semibold text-muted-foreground uppercase text-[10px] tracking-wider mb-1">Uploaded Proofs</p>
               <div className="flex flex-col gap-1.5 mt-1">
+                {data.apcApcWaiverRequested && (
+                  <div className="flex items-center gap-2 bg-background p-2 rounded-lg border text-xs">
+                    <FileText className="h-3.5 w-3.5 text-primary" />
+                    <span className="truncate flex-1">Waiver Proof: {apcWaiverProofFile?.name || (data.apcApcWaiverProofUrl ? "Attached" : "Not Provided")}</span>
+                  </div>
+                )}
                 <div className="flex items-center gap-2 bg-background p-2 rounded-lg border text-xs">
                   <FileText className="h-3.5 w-3.5 text-primary" />
-                  <span className="truncate flex-1">Waiver: {apcWaiverProofFile?.name || "Attached"}</span>
+                  <span className="truncate flex-1">Invoice: {apcInvoiceProofFile?.name || (data.apcInvoiceProofUrl ? "Attached" : "Not Provided")}</span>
                 </div>
                 <div className="flex items-center gap-2 bg-background p-2 rounded-lg border text-xs">
                   <FileText className="h-3.5 w-3.5 text-primary" />
-                  <span className="truncate flex-1">Publication: {apcPublicationProofFile?.name || "Attached"}</span>
+                  <span className="truncate flex-1">Receipt: {apcReceiptProofFile?.name || (data.apcReceiptProofUrl ? "Attached" : "Not Provided")}</span>
                 </div>
                 <div className="flex items-center gap-2 bg-background p-2 rounded-lg border text-xs">
                   <FileText className="h-3.5 w-3.5 text-primary" />
-                  <span className="truncate flex-1">Invoice: {apcInvoiceProofFile?.name || "Attached"}</span>
+                  <span className="truncate flex-1">Payment Proof: {apcPaymentProofFile?.name || (data.apcPaymentProofUrl ? "Attached" : "Not Provided")}</span>
+                </div>
+                <div className="flex items-center gap-2 bg-background p-2 rounded-lg border text-xs">
+                  <FileText className="h-3.5 w-3.5 text-primary" />
+                  <span className="truncate flex-1">Acceptance Mail: {apcAcceptanceMailProofFile?.name || (data.apcAcceptanceMailProofUrl ? "Attached" : "Not Provided")}</span>
                 </div>
               </div>
             </div>
@@ -298,6 +339,7 @@ export function ApcForm({ user }: { user: User }) {
       apcIndexingStatus: [],
       apcQRating: undefined,
       doi: '',
+      apcScopusLink: '',
       apcPaperTitle: '',
       authors: [],
       apcTotalStudentAuthors: 0,
@@ -391,12 +433,14 @@ export function ApcForm({ user }: { user: User }) {
           const result = await getIncentiveClaimByIdAction(claimId);
           if (result.success && result.data) {
             const draftData = result.data as any;
-            form.reset({
+             form.reset({
               ...draftData,
               authors: draftData.authors || [],
               apcApcWaiverProof: undefined,
-              apcPublicationProof: undefined,
               apcInvoiceProof: undefined,
+              apcReceiptProof: undefined,
+              apcPaymentProof: undefined,
+              apcAcceptanceMailProof: undefined,
             });
             setStep('edit');
           } else {
@@ -481,10 +525,12 @@ export function ApcForm({ user }: { user: User }) {
         return result.url;
       };
 
-      const [waiver, pub, inv] = await Promise.all([
+      const [waiver, invoiceUrl, receiptUrl, paymentUrl, acceptanceUrl] = await Promise.all([
         upload(data.apcApcWaiverProof?.[0], 'apc-waiver'),
-        upload(data.apcPublicationProof?.[0], 'apc-pub'),
         upload(data.apcInvoiceProof?.[0], 'apc-invoice'),
+        upload(data.apcReceiptProof?.[0], 'apc-receipt'),
+        upload(data.apcPaymentProof?.[0], 'apc-payment'),
+        upload(data.apcAcceptanceMailProof?.[0], 'apc-acceptance'),
       ]);
 
       const claimData: Omit<IncentiveClaim, 'id' | 'claimId'> = {
@@ -502,8 +548,10 @@ export function ApcForm({ user }: { user: User }) {
         submissionDate: new Date().toISOString(),
         bankDetails: user.bankDetails || undefined,
         apcApcWaiverProofUrl: waiver || data.apcApcWaiverProofUrl,
-        apcPublicationProofUrl: pub || data.apcPublicationProofUrl,
-        apcInvoiceProofUrl: inv || data.apcInvoiceProofUrl,
+        apcInvoiceProofUrl: invoiceUrl || data.apcInvoiceProofUrl,
+        apcReceiptProofUrl: receiptUrl || data.apcReceiptProofUrl,
+        apcPaymentProofUrl: paymentUrl || data.apcPaymentProofUrl,
+        apcAcceptanceMailProofUrl: acceptanceUrl || data.apcAcceptanceMailProofUrl,
       };
 
       const result = await submitIncentiveClaimViaApi(claimData, searchParams.get('claimId') || undefined);
@@ -650,6 +698,22 @@ export function ApcForm({ user }: { user: User }) {
                   </FormItem>
                 )} />
               )}
+
+              <FormField control={form.control} name="apcScopusLink" render={({ field }) => (
+                <FormItem className="space-y-2">
+                  <FormLabel className="text-base font-semibold flex items-center gap-1.5">
+                    Scopus Link of Publication 
+                    {apcIndexingStatus.some(s => s.toLowerCase().includes('scopus')) && (
+                      <span className="text-destructive font-bold">*</span>
+                    )}
+                  </FormLabel>
+                  <FormControl>
+                    <Input placeholder="e.g. https://www.scopus.com/record/display.uri?eid=..." {...field} className="h-12 shadow-sm rounded-xl focus-visible:ring-primary" />
+                  </FormControl>
+                  <FormDescription className="text-xs">Direct link to the Scopus abstract page for this publication.</FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )} />
 
               <FormField name="apcPaperTitle" control={form.control} render={({ field }) => (
                 <FormItem className="space-y-2">
@@ -818,25 +882,49 @@ export function ApcForm({ user }: { user: User }) {
               <Separator className="my-4 border-dashed" />
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-10">
-                <FormField name="apcPublicationProof" control={form.control} render={({ field: { value, onChange, ...rest } }) => (
+                <FormField name="apcInvoiceProof" control={form.control} render={({ field: { value, onChange, ...rest } }) => (
                   <FormItem className="space-y-3">
                     <FormLabel className="font-bold flex items-center gap-2 underline decoration-primary decoration-2">
-                      <FileText className="h-4 w-4" /> Publication Proof
+                      <FileText className="h-4 w-4" /> Invoice (Mandatory)
                     </FormLabel>
                     <FormControl>
-                      <Input type="file" accept=".pdf" className="h-12 border-dashed border-2 bg-muted/20" onChange={e => onChange(e.target.files)} {...rest} />
+                      <Input type="file" accept=".pdf" className="h-12 border-dashed border-2 bg-muted/20 font-medium" onChange={e => onChange(e.target.files)} {...rest} />
                     </FormControl>
                     <FormDescription className="text-[10px] text-muted-foreground">PDF format only. Max file size allowed: 10 MB.</FormDescription>
                     <FormMessage />
                   </FormItem>
                 )} />
-                <FormField name="apcInvoiceProof" control={form.control} render={({ field: { value, onChange, ...rest } }) => (
+                <FormField name="apcReceiptProof" control={form.control} render={({ field: { value, onChange, ...rest } }) => (
                   <FormItem className="space-y-3">
                     <FormLabel className="font-bold flex items-center gap-2 underline decoration-primary decoration-2">
-                      <FileText className="h-4 w-4" /> Financial Invoice
+                      <FileText className="h-4 w-4" /> Receipt (Mandatory)
                     </FormLabel>
                     <FormControl>
-                      <Input type="file" accept=".pdf" className="h-12 border-dashed border-2 bg-muted/20" onChange={e => onChange(e.target.files)} {...rest} />
+                      <Input type="file" accept=".pdf" className="h-12 border-dashed border-2 bg-muted/20 font-medium" onChange={e => onChange(e.target.files)} {...rest} />
+                    </FormControl>
+                    <FormDescription className="text-[10px] text-muted-foreground">PDF format only. Max file size allowed: 10 MB.</FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )} />
+                <FormField name="apcPaymentProof" control={form.control} render={({ field: { value, onChange, ...rest } }) => (
+                  <FormItem className="space-y-3">
+                    <FormLabel className="font-bold flex items-center gap-2 underline decoration-primary decoration-2">
+                      <FileText className="h-4 w-4" /> Payment Proof (Mandatory)
+                    </FormLabel>
+                    <FormControl>
+                      <Input type="file" accept=".pdf" className="h-12 border-dashed border-2 bg-muted/20 font-medium" onChange={e => onChange(e.target.files)} {...rest} />
+                    </FormControl>
+                    <FormDescription className="text-[10px] text-muted-foreground">PDF format only. Max file size allowed: 10 MB.</FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )} />
+                <FormField name="apcAcceptanceMailProof" control={form.control} render={({ field: { value, onChange, ...rest } }) => (
+                  <FormItem className="space-y-3">
+                    <FormLabel className="font-bold flex items-center gap-2 underline decoration-primary decoration-2">
+                      <FileText className="h-4 w-4" /> Acceptance Mail (Mandatory)
+                    </FormLabel>
+                    <FormControl>
+                      <Input type="file" accept=".pdf" className="h-12 border-dashed border-2 bg-muted/20 font-medium" onChange={e => onChange(e.target.files)} {...rest} />
                     </FormControl>
                     <FormDescription className="text-[10px] text-muted-foreground">PDF format only. Max file size allowed: 10 MB.</FormDescription>
                     <FormMessage />

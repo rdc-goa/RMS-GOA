@@ -425,7 +425,7 @@ a.href = url;
                     )}
 
                     {claim.claimType === 'Seed Money for APC' && (
-                         <>
+                          <>
                             <hr className="my-2" />
                             <h4 className="font-semibold text-base mt-2">APC Claim Details</h4>
                             {renderDetail("Article Type", claim.apcTypeOfArticle === 'Other' ? claim.apcOtherArticleType : claim.apcTypeOfArticle)}
@@ -436,6 +436,7 @@ a.href = url;
                             {renderDetail("Journal Details", claim.apcJournalDetails)}
                             {renderDetail("Journal Q-Rating", claim.apcQRating)}
                             {renderLinkDetail("Journal Website", claim.apcJournalWebsite)}
+                            {renderLinkDetail("Scopus Link of Publication", claim.apcScopusLink)}
                             {renderDetail("ISSN", claim.apcIssnNo)}
                             {renderDetail("Indexing Status", claim.apcIndexingStatus)}
                             {claim.apcIndexingStatus?.includes('Other') && renderDetail("Other Indexing", claim.apcOtherIndexingStatus)}
@@ -448,8 +449,11 @@ a.href = url;
                             {renderDetail("Self Declaration", claim.apcSelfDeclaration)}
                             <hr className="my-2" />
                             <h4 className="font-semibold text-base mt-2">Uploaded APC Documents</h4>
-                            {renderLinkDetail("Publication Proof", claim.apcPublicationProofUrl)}
-                            {renderLinkDetail("Invoice/Payment Proof", claim.apcInvoiceProofUrl)}
+                            {claim.apcPublicationProofUrl && renderLinkDetail("Publication Proof (Legacy)", claim.apcPublicationProofUrl)}
+                            {claim.apcInvoiceProofUrl && renderLinkDetail("Invoice", claim.apcInvoiceProofUrl)}
+                            {claim.apcReceiptProofUrl && renderLinkDetail("Receipt", claim.apcReceiptProofUrl)}
+                            {claim.apcPaymentProofUrl && renderLinkDetail("Payment Proof", claim.apcPaymentProofUrl)}
+                            {claim.apcAcceptanceMailProofUrl && renderLinkDetail("Acceptance Mail", claim.apcAcceptanceMailProofUrl)}
                         </>
                     )}
 

@@ -22,6 +22,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import Link from 'next/link';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { MultiSelect } from '@/components/ui/multi-select';
 
 const CLAIM_TYPES = [
     'Research Papers',
@@ -74,7 +75,7 @@ export default function IncentiveApprovalsPage() {
     const [isDetailsOpen, setIsDetailsOpen] = useState(false);
     const [isApprovalOpen, setIsApprovalOpen] = useState(false);
     const [searchTerm, setSearchTerm] = useState('');
-    const [claimTypeFilter, setClaimTypeFilter] = useState('all');
+    const [claimTypeFilter, setClaimTypeFilter] = useState<string[]>([]);
     const [facultyFilter, setFacultyFilter] = useState('all');
     const [instituteFilter, setInstituteFilter] = useState('all');
     const [sortConfig, setSortConfig] = useState<{ key: SortableKeys; direction: 'ascending' | 'descending' }>({ key: 'submissionDate', direction: 'descending' });
@@ -240,7 +241,7 @@ export default function IncentiveApprovalsPage() {
 
     const applyFiltersAndSort = useCallback((claims: IncentiveClaim[]) => {
         let filteredClaims = claims.filter(claim => {
-            if (claimTypeFilter !== 'all' && claim.claimType !== claimTypeFilter) return false;
+            if (claimTypeFilter.length > 0 && !claimTypeFilter.includes(claim.claimType)) return false;
             if (facultyFilter !== 'all' && claim.faculty !== facultyFilter) return false;
             if (instituteFilter !== 'all') {
                 const claimUser = allUsers.find(u => u.uid === claim.uid);
@@ -328,7 +329,7 @@ export default function IncentiveApprovalsPage() {
                         <TableHead><Button variant="ghost" onClick={() => requestSort('userName')}>Claimant <ArrowUpDown className="ml-2 h-4 w-4" /></Button></TableHead>
                         <TableHead><Button variant="ghost" onClick={() => requestSort('paperTitle')}>Title <ArrowUpDown className="ml-2 h-4 w-4" /></Button></TableHead>
                         <TableHead><Button variant="ghost" onClick={() => requestSort('claimType')}>Claim Type <ArrowUpDown className="ml-2 h-4 w-4" /></Button></TableHead>
-                        {claimTypeFilter === 'Conference Presentations' && <TableHead>Conf. Dates &amp; Mode</TableHead>}
+                        {claimTypeFilter.includes('Conference Presentations') && <TableHead>Conf. Dates &amp; Mode</TableHead>}
                         {approvalStage === 0 && <TableHead>AI Match %</TableHead>}
                         <TableHead><Button variant="ghost" onClick={() => requestSort('submissionDate')}>Submitted On <ArrowUpDown className="ml-2 h-4 w-4" /></Button></TableHead>
                         {isHistory && <TableHead>Approved Amount</TableHead>}
@@ -389,7 +390,7 @@ export default function IncentiveApprovalsPage() {
                                         </div>
                                     </TableCell>
                                     <TableCell><Badge variant="outline">{claim.claimType}</Badge></TableCell>
-                                    {claimTypeFilter === 'Conference Presentations' && (
+                                    {claimTypeFilter.includes('Conference Presentations') && (
                                         <TableCell>
                                             <div className="flex flex-col gap-1 text-xs">
                                                 {claim.conferenceMode && (
@@ -549,17 +550,13 @@ export default function IncentiveApprovalsPage() {
                     />
                     {selectedClaimIds.size === 0 && (
                         <>
-                            <Select value={claimTypeFilter} onValueChange={setClaimTypeFilter}>
-                                <SelectTrigger className="w-full sm:w-[200px]">
-                                    <SelectValue placeholder="Filter by claim type" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="all">All Claim Types</SelectItem>
-                                    {CLAIM_TYPES.map(type => (
-                                        <SelectItem key={type} value={type}>{type}</SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
+                            <MultiSelect
+                                options={CLAIM_TYPES.map(type => ({ label: type, value: type }))}
+                                selectedValues={claimTypeFilter}
+                                onChange={setClaimTypeFilter}
+                                placeholder="All Claim Types"
+                                className="w-full sm:w-[220px]"
+                            />
                             <Select value={facultyFilter} onValueChange={setFacultyFilter}>
                                 <SelectTrigger className="w-full sm:w-[200px]">
                                     <SelectValue placeholder="Filter by faculty" />
