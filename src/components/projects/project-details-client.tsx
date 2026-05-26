@@ -324,6 +324,8 @@ export function ProjectDetailsClient({ project: initialProject, allUsers, piUser
   const [coPiList, setCoPiList] = useState<{ uid: string; name: string }[]>([])
   const [isSearching, setIsSearching] = useState(false)
   const [isSavingCoPis, setIsSavingCoPis] = useState(false)
+  const [availableEvaluatorsList, setAvailableEvaluatorsList] = useState<User[]>([])
+  const [loadingEvaluators, setLoadingEvaluators] = useState(false)
 
   const awardGrantForm = useForm<z.infer<typeof awardGrantSchema>>({
     resolver: zodResolver(awardGrantSchema),
@@ -452,6 +454,27 @@ export function ProjectDetailsClient({ project: initialProject, allUsers, piUser
   const isAssignedEvaluator = user && project.meetingDetails?.assignedEvaluators?.includes(user.uid)
   const isHeadOfGoaCampus = user?.designation === 'Head of Goa Campus';
   const canViewDocuments = (isPI || isCoPi || isAdmin || isAssignedEvaluator) && !isHeadOfGoaCampus;
+
+  useEffect(() => {
+    if (!isSuperAdmin) return;
+    const fetchEvaluators = async () => {
+      setLoadingEvaluators(true)
+      try {
+        const q = query(
+          collection(db, "users"),
+          where("role", "in", ["Evaluator", "CRO", "admin", "Super-admin"])
+        )
+        const snap = await getDocs(q)
+        const list = snap.docs.map((doc) => ({ uid: doc.id, ...doc.data() } as User))
+        setAvailableEvaluatorsList(list)
+      } catch (error) {
+        console.error("Error fetching evaluators:", error)
+      } finally {
+        setLoadingEvaluators(false)
+      }
+    }
+    fetchEvaluators()
+  }, [isSuperAdmin])
 
 
   const canViewCoPiCVs = useMemo(() => {
@@ -816,6 +839,13 @@ export function ProjectDetailsClient({ project: initialProject, allUsers, piUser
       toast({ variant: "destructive", title: "Error", description: result.error })
     }
     setIsUpdating(false)
+  }
+
+  const handleOpenEvaluatorDialog = () => {
+    evaluatorForm.reset({
+      evaluatorUids: project.meetingDetails?.assignedEvaluators || [],
+    })
+    setIsEvaluatorDialogOpen(true)
   }
 
   const formatDate = (dateString?: string) => {
@@ -1278,14 +1308,30 @@ export function ProjectDetailsClient({ project: initialProject, allUsers, piUser
                     <strong>Venue:</strong> {project.meetingDetails?.venue}
                   </p>
                 </div>
-                {isAdmin && assignedEvaluatorNames.length > 0 && (
+                {isAdmin && (
                   <div className="pt-2">
-                    <p className="font-semibold text-sm">Assigned Evaluators:</p>
-                    <ul className="list-disc list-inside text-sm pl-4">
-                      {assignedEvaluatorNames.map((name, index) => (
-                        <li key={index}>{name}</li>
-                      ))}
-                    </ul>
+                    <div className="flex items-center gap-2">
+                      <p className="font-semibold text-sm">Assigned Evaluators:</p>
+                      {isSuperAdmin && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-6 w-6"
+                          onClick={handleOpenEvaluatorDialog}
+                        >
+                          <UserCog className="h-4 w-4" />
+                        </Button>
+                      )}
+                    </div>
+                    {assignedEvaluatorNames.length > 0 ? (
+                      <ul className="list-disc list-inside text-sm pl-4 mt-1">
+                        {assignedEvaluatorNames.map((name, index) => (
+                          <li key={index}>{name}</li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <p className="text-sm text-muted-foreground pl-4 mt-1">No evaluators assigned.</p>
+                    )}
                   </div>
                 )}
               </div>
@@ -1678,6 +1724,83 @@ export function ProjectDetailsClient({ project: initialProject, allUsers, piUser
           allUsers={allUsers}
           onUpdate={refetchProject}
         />
+      )}
+      {isSuperAdmin && (
+        <Dialog open={isEvaluatorDialogOpen} onOpenChange={setIsEvaluatorDialogOpen}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle>Assign Evaluators</DialogTitle>
+              <DialogDescription>
+                Select the evaluators for this project.
+              </DialogDescription>
+            </DialogHeader>
+            <Form {...evaluatorForm}>
+              <form id="evaluator-form" onSubmit={evaluatorForm.handleSubmit(handleEvaluatorSubmit)} className="space-y-4 py-4 max-h-[60vh] overflow-y-auto pr-2">
+                <FormField
+                  control={evaluatorForm.control}
+                  name="evaluatorUids"
+                  render={() => (
+                    <FormItem>
+                      {loadingEvaluators ? (
+                        <div className="flex justify-center py-4">
+                          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                        </div>
+                      ) : (
+                        <div className="space-y-2">
+                          {availableEvaluatorsList.map((evaluator) => (
+                            <FormField
+                              key={evaluator.uid}
+                              control={evaluatorForm.control}
+                              name="evaluatorUids"
+                              render={({ field }) => {
+                                return (
+                                  <FormItem
+                                    key={evaluator.uid}
+                                    className="flex flex-row items-start space-x-3 space-y-0 p-2 border rounded-md"
+                                  >
+                                    <FormControl>
+                                      <Checkbox
+                                        checked={field.value?.includes(evaluator.uid)}
+                                        onCheckedChange={(checked) => {
+                                          return checked
+                                            ? field.onChange([...(field.value || []), evaluator.uid])
+                                            : field.onChange(
+                                                field.value?.filter(
+                                                  (value) => value !== evaluator.uid
+                                                )
+                                              )
+                                        }}
+                                      />
+                                    </FormControl>
+                                    <FormLabel className="font-normal cursor-pointer w-full">
+                                      <span className="font-semibold">{evaluator.name}</span>
+                                      <span className="text-muted-foreground text-xs block">
+                                        {evaluator.email} {evaluator.campus ? `(${evaluator.campus})` : ''}
+                                      </span>
+                                    </FormLabel>
+                                  </FormItem>
+                                )
+                              }}
+                            />
+                          ))}
+                        </div>
+                      )}
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </form>
+            </Form>
+            <DialogFooter>
+              <DialogClose asChild>
+                <Button variant="outline">Cancel</Button>
+              </DialogClose>
+              <Button type="submit" form="evaluator-form" disabled={isUpdating}>
+                {isUpdating ? "Saving..." : "Save Evaluators"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       )}
     </React.Fragment>
   )

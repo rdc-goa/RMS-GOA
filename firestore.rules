@@ -17,6 +17,10 @@ service cloud.firestore {
         return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'CRO';
     }
 
+    function isIQAC() {
+        return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'IQAC';
+    }
+
     function isPrincipal() {
       let user = get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
       return user.designation == 'Principal';
@@ -77,7 +81,7 @@ service cloud.firestore {
                     resource.data.pi_uid == request.auth.uid || 
                     request.auth.uid in resource.data.coPiUids ||
                     (resource.data.meetingDetails != null && request.auth.uid in resource.data.meetingDetails.assignedEvaluators) ||
-                    isAdmin() || isCRO() ||
+                    isAdmin() || isCRO() || isIQAC() ||
                     (isPrincipal() && resource.data.institute == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.institute) ||
                     (isHOD() && resource.data.institute == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.institute && resource.data.departmentName == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.department) ||
                     (isHeadOfGoaCampus() && resource.data.campus == 'Goa') ||
@@ -94,7 +98,7 @@ service cloud.firestore {
         // Create/Update: Only assigned evaluators for this project can create or update an evaluation.
         allow write: if isSignedIn() && request.auth.uid in get(/databases/$(database)/documents/projects/$(projectId)).data.meetingDetails.assignedEvaluators;
         // Read: The PI, Admins, and the evaluator who wrote it can read an evaluation.
-        allow read: if isSignedIn() && (isOwner(evaluationId) || isAdmin() || get(/databases/$(database)/documents/projects/$(projectId)).data.pi_uid == request.auth.uid);
+        allow read: if isSignedIn() && (isOwner(evaluationId) || isAdmin() || isCRO() || isIQAC() || get(/databases/$(database)/documents/projects/$(projectId)).data.pi_uid == request.auth.uid);
       }
     }
 
@@ -102,7 +106,7 @@ service cloud.firestore {
         // Any signed-in user can create a claim.
         allow create: if isSignedIn();
         // Read: The user who created the claim or an admin/CRO can read it.
-        allow read: if isSignedIn() && (resource.data.uid == request.auth.uid || isAdmin() || isCRO());
+        allow read: if isSignedIn() && (resource.data.uid == request.auth.uid || isAdmin() || isCRO() || isIQAC());
         // Update/Delete: Only admins can update or delete claims.
         allow update, delete: if isAdmin();
     }

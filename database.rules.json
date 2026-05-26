@@ -4,14 +4,14 @@
       ".indexOn": ["uid", "status"],
       "active": {
         "$claimId": {
-          ".read": "auth != null && (data.child('uid').val() === auth.uid || root.child('users').child(auth.uid).child('role').val() === 'admin' || root.child('users').child(auth.uid).child('role').val() === 'Super-admin' || root.child('users').child(auth.uid).child('role').val() === 'CRO')",
+          ".read": "auth != null && (data.child('uid').val() === auth.uid || root.child('users').child(auth.uid).child('role').val() === 'admin' || root.child('users').child(auth.uid).child('role').val() === 'Super-admin' || root.child('users').child(auth.uid).child('role').val() === 'CRO' || root.child('users').child(auth.uid).child('role').val() === 'IQAC')",
           ".write": "auth != null && (root.child('users').child(auth.uid).child('role').val() === 'admin' || root.child('users').child(auth.uid).child('role').val() === 'Super-admin' || (!data.exists() && newData.child('uid').val() === auth.uid))",
           ".validate": "!newData.exists() || newData.hasChildren(['uid', 'status'])"
         }
       },
       "completed": {
         "$claimId": {
-          ".read": "auth != null && (data.child('uid').val() === auth.uid || root.child('users').child(auth.uid).child('role').val() === 'admin' || root.child('users').child(auth.uid).child('role').val() === 'Super-admin' || root.child('users').child(auth.uid).child('role').val() === 'CRO')",
+          ".read": "auth != null && (data.child('uid').val() === auth.uid || root.child('users').child(auth.uid).child('role').val() === 'admin' || root.child('users').child(auth.uid).child('role').val() === 'Super-admin' || root.child('users').child(auth.uid).child('role').val() === 'CRO' || root.child('users').child(auth.uid).child('role').val() === 'IQAC')",
           ".write": "auth != null && (root.child('users').child(auth.uid).child('role').val() === 'admin' || root.child('users').child(auth.uid).child('role').val() === 'Super-admin' || (!data.exists() && newData.child('uid').val() === auth.uid))",
           ".validate": "!newData.exists() || newData.hasChildren(['uid', 'status'])"
         }
@@ -19,14 +19,14 @@
       "drafts": {
         "$uid": {
           "$claimId": {
-            ".read": "auth != null && (auth.uid === $uid || root.child('users').child(auth.uid).child('role').val() === 'admin' || root.child('users').child(auth.uid).child('role').val() === 'Super-admin' || root.child('users').child(auth.uid).child('role').val() === 'CRO')",
+            ".read": "auth != null && (auth.uid === $uid || root.child('users').child(auth.uid).child('role').val() === 'admin' || root.child('users').child(auth.uid).child('role').val() === 'Super-admin' || root.child('users').child(auth.uid).child('role').val() === 'CRO' || root.child('users').child(auth.uid).child('role').val() === 'IQAC')",
             ".write": "auth != null && (auth.uid === $uid || root.child('users').child(auth.uid).child('role').val() === 'admin' || root.child('users').child(auth.uid).child('role').val() === 'Super-admin')",
             ".validate": "!newData.exists() || newData.hasChildren(['uid', 'status'])"
           }
         }
       },
       "$claimId": {
-        ".read": "auth != null && (data.child('uid').val() === auth.uid || root.child('users').child(auth.uid).child('role').val() === 'admin' || root.child('users').child(auth.uid).child('role').val() === 'Super-admin' || root.child('users').child(auth.uid).child('role').val() === 'CRO')",
+        ".read": "auth != null && (data.child('uid').val() === auth.uid || root.child('users').child(auth.uid).child('role').val() === 'admin' || root.child('users').child(auth.uid).child('role').val() === 'Super-admin' || root.child('users').child(auth.uid).child('role').val() === 'CRO' || root.child('users').child(auth.uid).child('role').val() === 'IQAC')",
         ".write": "auth != null && (root.child('users').child(auth.uid).child('role').val() === 'admin' || root.child('users').child(auth.uid).child('role').val() === 'Super-admin' || (!data.exists() && newData.child('uid').val() === auth.uid))",
         ".validate": "!newData.exists() || newData.hasChildren(['uid', 'status'])"
       }
