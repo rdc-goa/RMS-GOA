@@ -20,7 +20,7 @@ export const getStaticFirestoreClaims = unstable_cache(
         }
     },
     ['static-firestore-claims-archive'],
-    { revalidate: 86400 } // 24 hours
+    { revalidate: 86400, tags: ['incentive-claims'] } // 24 hours
 );
 
 const RTDB_CLAIM_BUCKET_PATHS = ['active', 'completed'] as const;
