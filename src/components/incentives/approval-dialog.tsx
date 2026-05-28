@@ -762,16 +762,62 @@ export function ApprovalDialog({ claim, approver, claimant, stageIndex, isOpen, 
 
 
     const handleInvalid = (errors: FieldErrors<ApprovalFormData>) => {
-        const firstMessage =
-            errors.approverName?.message ||
-            errors.comments?.message ||
-            errors.amount?.message ||
-            errors.action?.message ||
-            errors.verifiedFields?.message;
+        const errorMessages: string[] = [];
+
+        if (errors.action) {
+            errorMessages.push(errors.action.message || 'Action is required.');
+        }
+        
+        if (errors.amount) {
+            errorMessages.push(errors.amount.message || 'Approved amount is required.');
+        }
+
+        if (errors.comments) {
+            errorMessages.push(errors.comments.message || 'Comments are required.');
+        }
+
+        if (errors.approverName) {
+            errorMessages.push(errors.approverName.message || 'Approver name is required.');
+        }
+
+        if (errors.verifiedFields) {
+            // Find exactly which fields in the checklist are not verified
+            const verifiedFieldsVal = form.getValues('verifiedFields') || {};
+            const unverifiedFieldLabels: string[] = [];
+            
+            fieldsToVerify.forEach(fieldId => {
+                if (typeof verifiedFieldsVal[fieldId] !== 'boolean') {
+                    const fieldLabel = allPossibleResearchPaperFields.find(f => f.id === fieldId)?.label ||
+                                       conferenceChecklistFields.find(f => f.id === fieldId)?.label ||
+                                       fieldId;
+                    unverifiedFieldLabels.push(fieldLabel);
+                }
+            });
+
+            if (unverifiedFieldLabels.length > 0) {
+                errorMessages.push(`Checklist verification pending for: ${unverifiedFieldLabels.join(', ')}.`);
+            } else {
+                const verifiedMsg = (errors.verifiedFields as any)?.message;
+                errorMessages.push(typeof verifiedMsg === 'string' ? verifiedMsg : 'Please verify all fields in the checklist.');
+            }
+        }
+
+        // Catch-all for any other validation errors
+        Object.entries(errors).forEach(([key, err]) => {
+            if (['action', 'amount', 'comments', 'approverName', 'verifiedFields'].includes(key)) return;
+            if (err && typeof err === 'object' && 'message' in err && typeof err.message === 'string') {
+                errorMessages.push(err.message);
+            }
+        });
+
+        const description = errorMessages.length > 0 
+            ? errorMessages.join(' ') 
+            : 'Please complete all required fields.';
+
         toast({
             variant: 'destructive',
             title: 'Cannot submit',
-            description: typeof firstMessage === 'string' ? firstMessage : 'Please complete all required fields.',
+            description,
         });
     };
 
