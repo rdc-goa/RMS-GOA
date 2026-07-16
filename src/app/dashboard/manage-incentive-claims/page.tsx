@@ -41,7 +41,9 @@ import {
   fetchAllClaimsAction,
   logFrontendAction,
   generateOfficeNotingsZip,
-  generateIncentivePaymentSheet
+  generateIncentivePaymentSheet,
+  submitToAccounts,
+  markPaymentsCompleted
 } from '@/app/actions';
 import { reportSystemError } from '@/lib/error-reporting';
 import { ClaimDetailsDialog } from '@/components/incentives/claim-details-dialog';
@@ -55,7 +57,8 @@ const CLAIM_TYPES = [
   'Research Papers',
   'Patents',
   'Conference Presentations',
-  'Books',
+  'Book',
+  'Book Chapter',
   'Membership of Professional Bodies',
   'Seed Money for APC',
   'Award',
@@ -214,7 +217,12 @@ export default function ManageIncentiveClaimsPage() {
     let filtered = [...allClaims];
 
     if (claimTypeFilter.length > 0) {
-      filtered = filtered.filter(claim => claimTypeFilter.includes(claim.claimType));
+      filtered = filtered.filter(claim => {
+        const effectiveType = claim.claimType === 'Books'
+          ? (claim.bookApplicationType === 'Book Chapter' ? 'Book Chapter' : 'Book')
+          : claim.claimType;
+        return claimTypeFilter.includes(effectiveType);
+      });
     }
 
     if (facultyFilter !== 'all') {
@@ -495,7 +503,9 @@ export default function ManageIncentiveClaimsPage() {
         misId: userDetails?.misId || '',
         designation: userDetails?.designation || '',
         faculty: claim.faculty || '',
-        claimType: claim.claimType || '',
+        claimType: claim.claimType === 'Books'
+          ? (claim.bookApplicationType === 'Book Chapter' ? 'Book Chapter' : 'Book')
+          : (claim.claimType || ''),
         paperTitle: getClaimTitle(claim),
         status: claim.status || '',
         finalApprovedAmount: claim.finalApprovedAmount || 0,
@@ -767,7 +777,11 @@ export default function ManageIncentiveClaimsPage() {
                   </TableCell>
                   <TableCell className="hidden md:table-cell">
                     <div className="flex flex-col gap-1">
-                      <Badge variant="outline">{claim.claimType}</Badge>
+                      <Badge variant="outline">
+                        {claim.claimType === 'Books' 
+                          ? (claim.bookApplicationType === 'Book Chapter' ? 'Book Chapter' : 'Book') 
+                          : claim.claimType}
+                      </Badge>
                       {activeTab === 'submitted-bank' && claim.paymentSheetRef && (
                         <span className="text-xs text-muted-foreground">{claim.paymentSheetRef}</span>
                       )}

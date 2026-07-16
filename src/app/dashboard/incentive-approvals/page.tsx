@@ -28,7 +28,8 @@ const CLAIM_TYPES = [
     'Research Papers',
     'Patents',
     'Conference Presentations',
-    'Books',
+    'Book',
+    'Book Chapter',
     'Membership of Professional Bodies',
     'Seed Money for APC',
     'Award',
@@ -241,7 +242,12 @@ export default function IncentiveApprovalsPage() {
 
     const applyFiltersAndSort = useCallback((claims: IncentiveClaim[]) => {
         let filteredClaims = claims.filter(claim => {
-            if (claimTypeFilter.length > 0 && !claimTypeFilter.includes(claim.claimType)) return false;
+            if (claimTypeFilter.length > 0) {
+                const effectiveType = claim.claimType === 'Books'
+                    ? (claim.bookApplicationType === 'Book Chapter' ? 'Book Chapter' : 'Book')
+                    : claim.claimType;
+                if (!claimTypeFilter.includes(effectiveType)) return false;
+            }
             if (facultyFilter !== 'all' && claim.faculty !== facultyFilter) return false;
             if (instituteFilter !== 'all') {
                 const claimUser = allUsers.find(u => u.uid === claim.uid);
@@ -389,7 +395,13 @@ export default function IncentiveApprovalsPage() {
                                             })()}
                                         </div>
                                     </TableCell>
-                                    <TableCell><Badge variant="outline">{claim.claimType}</Badge></TableCell>
+                                    <TableCell>
+                                        <Badge variant="outline">
+                                            {claim.claimType === 'Books'
+                                                ? (claim.bookApplicationType === 'Book Chapter' ? 'Book Chapter' : 'Book')
+                                                : claim.claimType}
+                                        </Badge>
+                                    </TableCell>
                                     {claimTypeFilter.includes('Conference Presentations') && (
                                         <TableCell>
                                             <div className="flex flex-col gap-1 text-xs">
@@ -502,7 +514,11 @@ export default function IncentiveApprovalsPage() {
                             </div>
                             <div>
                                 <p className="text-xs font-semibold text-muted-foreground">Claim Type</p>
-                                <Badge variant="outline">{claim.claimType}</Badge>
+                                <Badge variant="outline">
+                                    {claim.claimType === 'Books'
+                                        ? (claim.bookApplicationType === 'Book Chapter' ? 'Book Chapter' : 'Book')
+                                        : claim.claimType}
+                                </Badge>
                             </div>
                             <div>
                                 <p className="text-xs font-semibold text-muted-foreground">Status</p>
