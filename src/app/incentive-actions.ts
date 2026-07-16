@@ -1,7 +1,7 @@
 'use server';
 
 import { adminDb, adminRtdb } from '@/lib/admin';
-import { getIncentiveClaimByIdCombined, getStaticFirestoreClaims } from '@/lib/incentive-data-admin';
+import { getIncentiveClaimByIdCombined, getStaticFirestoreClaims, getAllClaimsCombinedAdmin } from '@/lib/incentive-data-admin';
 import { normalizeClaimFromRtdb } from '@/lib/rtdb-utils';
 import type { IncentiveClaim, User } from '@/types';
 import PizZip from 'pizzip';
@@ -340,51 +340,9 @@ export async function checkDuplicateConferenceClaimAction(
       return { success: true, isDuplicate: false };
     }
 
-    // 1. Fetch from Firestore
-    console.log("⚙️ [Server Action] Fetching claims from Firestore...");
-    const claimsCollection = adminDb.collection('incentiveClaims');
-    const firestoreSnapshot = await claimsCollection.get();
-    const firestoreClaims = firestoreSnapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as any));
-
-    // 2. Fetch from RTDB - need to get from all nested paths (active, completed, drafts)
-    console.log("⚙️ [Server Action] Fetching claims from RTDB...");
-    let rtdbClaims: any[] = [];
-    
-    const fetchRtdbPath = async (path: string) => {
-      const snap = await adminRtdb.ref(path).get();
-      const claims: any[] = [];
-      if (snap.exists()) {
-        const data = snap.val();
-        if (typeof data === 'object') {
-          Object.keys(data).forEach(key => {
-            const val = data[key];
-            claims.push({ ...normalizeClaimFromRtdb(val), id: key } as any);
-          });
-        }
-      }
-      return claims;
-    };
-
-    const [activeClaims, completedClaims, draftClaims] = await Promise.all([
-      fetchRtdbPath('incentiveClaims/active'),
-      fetchRtdbPath('incentiveClaims/completed'),
-      fetchRtdbPath('incentiveClaims/drafts')
-    ]);
-
-    rtdbClaims = [...activeClaims, ...completedClaims, ...draftClaims];
-
-    // 3. Merge claims (RTDB overrides Firestore if they share the same ID)
-    const combinedMap = new Map<string, any>();
-    firestoreClaims.forEach(c => combinedMap.set(c.id, c));
-    rtdbClaims.forEach(c => {
-      const existing = combinedMap.get(c.id);
-      combinedMap.set(c.id, {
-        ...(existing || {}),
-        ...c
-      });
-    });
-
-    const allClaims = Array.from(combinedMap.values());
+    // Fetch all claims from both Firestore and RTDB combined
+    console.log("⚙️ [Server Action] Fetching all combined claims...");
+    const allClaims = await getAllClaimsCombinedAdmin();
     console.log(`⚙️ [Server Action] Found ${allClaims.length} total claims (Firestore + RTDB). Starting matching loop...`);
 
     const userTitleNormalized = normalizeTitle(paperTitle);
@@ -485,33 +443,9 @@ export async function checkDuplicateResearchPaperClaimAction(
 
     const cleanDoi = doi.trim().toLowerCase();
 
-    // 1. Fetch from Firestore
-    console.log("⚙️ [Server Action] Fetching claims from Firestore...");
-    const claimsCollection = adminDb.collection('incentiveClaims');
-    const firestoreSnapshot = await claimsCollection.get();
-    const firestoreClaims = firestoreSnapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as any));
-
-    // 2. Fetch from RTDB
-    console.log("⚙️ [Server Action] Fetching claims from RTDB...");
-    let rtdbClaims: any[] = [];
-    const rtdbSnap = await adminRtdb.ref('incentiveClaims').get();
-    if (rtdbSnap.exists()) {
-      const data = rtdbSnap.val();
-      rtdbClaims = Object.keys(data).map(key => ({ ...normalizeClaimFromRtdb(data[key]), id: key } as any));
-    }
-
-    // 3. Merge claims (RTDB overrides Firestore if they share the same ID)
-    const combinedMap = new Map<string, any>();
-    firestoreClaims.forEach(c => combinedMap.set(c.id, c));
-    rtdbClaims.forEach(c => {
-      const existing = combinedMap.get(c.id);
-      combinedMap.set(c.id, {
-        ...(existing || {}),
-        ...c
-      });
-    });
-
-    const allClaims = Array.from(combinedMap.values());
+    // Fetch all claims from both Firestore and RTDB combined
+    console.log("⚙️ [Server Action] Fetching all combined claims...");
+    const allClaims = await getAllClaimsCombinedAdmin();
     console.log(`⚙️ [Server Action] Found ${allClaims.length} total claims (Firestore + RTDB). Starting matching loop for DOI...`);
 
     for (const claim of allClaims) {

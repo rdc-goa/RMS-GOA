@@ -294,16 +294,8 @@ export async function verifyDocumentAccess(path: string, userId: string, user: a
         let claim: any = null;
         
         try {
-            const rtdbSnap = await adminRtdb.ref(`incentiveClaims/${idOrUid}`).get();
-            if (rtdbSnap.exists()) {
-                const { normalizeClaimFromRtdb } = await import('@/lib/rtdb-utils');
-                claim = normalizeClaimFromRtdb(rtdbSnap.val());
-            } else {
-                const claimSnap = await adminDb.collection('incentiveClaims').doc(idOrUid).get();
-                if (claimSnap.exists) {
-                    claim = claimSnap.data();
-                }
-            }
+            const { getIncentiveClaimByIdCombined } = await import('@/lib/incentive-data-admin');
+            claim = await getIncentiveClaimByIdCombined(idOrUid);
         } catch (e) {
             console.error("Error reading claim for permission verification:", e);
         }
@@ -314,38 +306,6 @@ export async function verifyDocumentAccess(path: string, userId: string, user: a
             // Approvers
             const currentApprover = claim.approvals?.find((a: any) => a.approverUid === userId);
             if (currentApprover) return { allowed: true };
-        } else {
-            // Fallback: search for claim by the human-readable claimId if the doc ID didn't match
-            // Try RTDB search first
-            try {
-                const rtdbSnap = await adminRtdb.ref('incentiveClaims').get();
-                if (rtdbSnap.exists()) {
-                    const data = rtdbSnap.val();
-                    const matchedKey = Object.keys(data).find(k => data[k].claimId === idOrUid);
-                    if (matchedKey) {
-                        const { normalizeClaimFromRtdb } = await import('@/lib/rtdb-utils');
-                        claim = normalizeClaimFromRtdb(data[matchedKey]);
-                    }
-                }
-            } catch (e) {
-                console.error("Error searching claim in RTDB for verification:", e);
-            }
-
-            if (!claim) {
-                // Try Firestore search
-                try {
-                    const claimQuery = await adminDb.collection('incentiveClaims').where('claimId', '==', idOrUid).limit(1).get();
-                    if (!claimQuery.empty) {
-                        claim = claimQuery.docs[0].data();
-                    }
-                } catch (e) {
-                    console.error("Error searching claim in Firestore for verification:", e);
-                }
-            }
-
-            if (claim) {
-                if (claim.uid === userId || claim.authorUids?.includes(userId)) return { allowed: true };
-            }
         }
 
         // 4c. Special case: If path is incentive-proofs/OTHER_UID/... 

@@ -66,10 +66,17 @@ async function fetchClaimFromRtdbById(lookupId: string): Promise<RtdbClaimHit | 
     ];
 
     const directSnaps = await Promise.all(directPaths.map((path) => adminRtdb.ref(path).get()));
+    let mergedData: any = null;
     for (const snap of directSnaps) {
         if (snap.exists()) {
-            return { data: normalizeClaimFromRtdb(snap.val()), storageKey: lookupId };
+            mergedData = {
+                ...(mergedData || {}),
+                ...normalizeClaimFromRtdb(snap.val())
+            };
         }
+    }
+    if (mergedData) {
+        return { data: mergedData, storageKey: lookupId };
     }
 
     const bucketSnaps = await Promise.all(

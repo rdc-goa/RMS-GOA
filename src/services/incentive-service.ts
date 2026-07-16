@@ -472,39 +472,22 @@ export async function submitIncentiveClaim(
     // If this is a co-author application, update the original claim's author status
     if (claimData.originalClaimId) {
       try {
-        const originalClaimRef = adminDb.collection('incentiveClaims').doc(claimData.originalClaimId);
-        const originalClaimSnap = await originalClaimRef.get();
+        const originalClaim = await getIncentiveClaimByIdCombined(claimData.originalClaimId);
 
-        let updatedAuthors: Author[] = [];
-        let originalClaim: IncentiveClaim | undefined;
-        if (originalClaimSnap.exists) {
-          originalClaim = originalClaimSnap.data() as IncentiveClaim;
-          updatedAuthors = originalClaim.authors?.map(author => {
+        if (originalClaim) {
+          const updatedAuthors = originalClaim.authors?.map(author => {
             const isCurrentUser = (author.uid && author.uid === session.uid) ||
               (author.email && author.email.toLowerCase() === ((session as any).user?.email || claimData.userEmail || '').toLowerCase());
             return isCurrentUser ? { ...author, status: 'Applied' } : author;
           }) || [];
-          // Legacy Firestore write has been completely purged to strictly enforce the RTDB-only pipeline.
-        } else {
-          // If not in Firestore, check RTDB
-          const rtdbSnap = await adminRtdb.ref(`incentiveClaims/${claimData.originalClaimId}`).get();
-          if (rtdbSnap.exists()) {
-            originalClaim = rtdbSnap.val() as IncentiveClaim;
-            updatedAuthors = originalClaim.authors?.map(author => {
-              const isCurrentUser = (author.uid && author.uid === session.uid) ||
-                (author.email && author.email.toLowerCase() === ((session as any).user?.email || claimData.userEmail || '').toLowerCase());
-              return isCurrentUser ? { ...author, status: 'Applied' } : author;
-            }) || [];
-          }
-        }
 
-        if (updatedAuthors.length > 0 && originalClaim) {
-          // Always write original claim update to RTDB
-          const rtdbClaimToUpdate = {
-            ...originalClaim,
-            authors: updatedAuthors
-          };
-          await saveClaimToRtdb(claimData.originalClaimId, rtdbClaimToUpdate);
+          if (updatedAuthors.length > 0) {
+            const rtdbClaimToUpdate = {
+              ...originalClaim,
+              authors: updatedAuthors
+            };
+            await saveClaimToRtdb(claimData.originalClaimId, rtdbClaimToUpdate);
+          }
         }
       } catch (e) {
         console.error("Error updating original claim status:", e);
@@ -918,25 +901,25 @@ export async function bulkProcessIncentiveClaimsAction(
 
 export async function markPaymentsCompleted(claimIds: string[]): Promise<{ success: boolean; error?: string; processedCount?: number }> {
   try {
-    const claimsRef = adminDb.collection('incentiveClaims');
     const batch = adminDb.batch();
-    const claimsQuery = await claimsRef.where(FieldPath.documentId(), 'in', claimIds).get();
     let count = 0;
 
-    for (const doc of claimsQuery.docs) {
-      const claim = doc.data() as IncentiveClaim;
-      if (!isEligibleForFinancialDisbursement(claim) || claim.status !== 'Submitted to Accounts') continue;
+    for (const id of claimIds) {
+      const claim = await getIncentiveClaimByIdCombined(id);
+      if (!claim || !isEligibleForFinancialDisbursement(claim) || claim.status !== 'Submitted to Accounts') continue;
 
-      // Legacy Firestore write has been completely purged to strictly enforce the RTDB-only pipeline.
       try {
-        const { sanitizeForRtdb } = await import('@/lib/rtdb-utils');
-        await adminRtdb.ref(`incentiveClaims/${doc.id}`).update(sanitizeForRtdb({ status: 'Payment Completed', lastSyncedAt: new Date().toISOString() }));
+        const updatedClaim = {
+          ...claim,
+          status: 'Payment Completed' as const,
+        };
+        await saveClaimToRtdb(claim.id, updatedClaim);
       } catch (e) {
-        console.error(`RTDB Batch Update Error for claim ${doc.id}:`, e);
+        console.error(`RTDB Batch Update Error for claim ${claim.id}:`, e);
       }
 
       const { ref: ledgerRef, data: ledgerData } = GovernanceLogger.prepareFinancialLedger({
-        source: 'INCENTIVE', entityId: doc.id, userId: claim.uid, amount: claim.finalApprovedAmount || 0, type: 'CREDIT', status: 'PROCESSED',
+        source: 'INCENTIVE', entityId: claim.id, userId: claim.uid, amount: claim.finalApprovedAmount || 0, type: 'CREDIT', status: 'PROCESSED',
       });
       batch.set(ledgerRef, ledgerData);
       await adminDb.collection('notifications').add({ uid: claim.uid, title: `Payment processed for "${getClaimTitle(claim)}".`, createdAt: new Date().toISOString(), isRead: false });
@@ -956,19 +939,18 @@ export async function markPaymentsCompleted(claimIds: string[]): Promise<{ succe
 
 export async function submitToAccounts(claimIds: string[]): Promise<{ success: boolean; error?: string; processedCount?: number }> {
   try {
-    const claimsRef = adminDb.collection('incentiveClaims');
-    const batch = adminDb.batch();
-    const claimsQuery = await claimsRef.where(FieldPath.documentId(), 'in', claimIds).get();
     let count = 0;
-    for (const doc of claimsQuery.docs) {
-      const claim = doc.data() as IncentiveClaim;
-      if (claim.status === 'Accepted' && claim.paymentSheetRef) {
-        // Legacy Firestore write has been completely purged to strictly enforce the RTDB-only pipeline.
+    for (const id of claimIds) {
+      const claim = await getIncentiveClaimByIdCombined(id);
+      if (claim && claim.status === 'Accepted' && claim.paymentSheetRef) {
         try {
-          const { sanitizeForRtdb } = await import('@/lib/rtdb-utils');
-          await adminRtdb.ref(`incentiveClaims/${doc.id}`).update(sanitizeForRtdb({ status: 'Submitted to Accounts', lastSyncedAt: new Date().toISOString() }));
+          const updatedClaim = {
+            ...claim,
+            status: 'Submitted to Accounts' as const,
+          };
+          await saveClaimToRtdb(claim.id, updatedClaim);
         } catch (e) {
-          console.error(`RTDB Submit Error for claim ${doc.id}:`, e);
+          console.error(`RTDB Submit Error for claim ${claim.id}:`, e);
         }
         count++;
       }
@@ -980,65 +962,119 @@ export async function submitToAccounts(claimIds: string[]): Promise<{ success: b
   }
 }
 
+async function buildPaymentSheetExcelBuffer(payableClaims: IncentiveClaim[], remarks: Record<string, string>, referenceNumber: string): Promise<Buffer> {
+  const settings = await getSystemSettings();
+  const templateUrl = settings.templateUrls?.INCENTIVE_PAYMENT_SHEET;
+  if (!templateUrl) throw new Error('Payment sheet template URL is not configured.');
+
+  const { getTemplateContentFromUrl } = await import('@/lib/template-manager');
+  const templateContent = await getTemplateContentFromUrl(templateUrl);
+  const workbook = new ExcelJS.Workbook();
+  await workbook.xlsx.load(templateContent as any);
+  const worksheet = workbook.worksheets[0];
+
+  // Fetch all users to get MIS IDs
+  const usersSnap = await adminDb.collection('users').get();
+  const usersMap = new Map(usersSnap.docs.map(doc => [doc.id, doc.data() as User]));
+
+  const getInstituteAcronym = (name: string) => {
+    if (!name || name === 'N/A') return 'N/A';
+    const overrides: { [key: string]: string } = {
+      'Parul College of Pharmacy': 'PCP (Pharma)',
+      'Parul College of Physiotherapy': 'PCP (Physio)'
+    };
+    if (overrides[name]) return overrides[name];
+    const ignoreWords = ['of', 'and', 'the', 'for', 'in', 'at', '&'];
+    const acronym = name
+      .split(' ')
+      .filter(word => word.length > 0 && !ignoreWords.includes(word.toLowerCase()))
+      .map(word => word[0].toUpperCase())
+      .join('');
+    return acronym || name;
+  };
+
+  // Fill data starting from row 14
+  let currentRow = 14;
+  let totalAmount = 0;
+  for (const claim of payableClaims) {
+    const user = usersMap.get(claim.uid);
+    const row = worksheet.getRow(currentRow);
+    const claimAmount = claim.finalApprovedAmount || 0;
+    totalAmount += claimAmount;
+
+    const bankDetails = user?.bankDetails || claim.bankDetails;
+
+    row.getCell(2).value = bankDetails?.ifscCode || 'N/A';
+    row.getCell(3).value = String(bankDetails?.accountNumber || 'N/A');
+    row.getCell(4).value = bankDetails?.beneficiaryName || claim.userName || user?.name || 'N/A';
+    row.getCell(5).value = bankDetails?.city || 'N/A';
+    row.getCell(6).value = claimAmount;
+    row.getCell(7).value = getInstituteAcronym(user?.institute || claim.faculty || 'N/A');
+    row.getCell(8).value = user?.misId || 'N/A';
+    row.getCell(9).value = remarks[claim.id] || '';
+    row.commit();
+    currentRow++;
+  }
+
+  // Number to words conversion (Indian Rupees)
+  const numberToWords = (num: number): string => {
+    const a = ['', 'One ', 'Two ', 'Three ', 'Four ', 'Five ', 'Six ', 'Seven ', 'Eight ', 'Nine ', 'Ten ', 'Eleven ', 'Twelve ', 'Thirteen ', 'Fourteen ', 'Fifteen ', 'Sixteen ', 'Seventeen ', 'Eighteen ', 'Nineteen '];
+    const b = ['', '', 'Twenty ', 'Thirty ', 'Forty ', 'Fifty ', 'Sixty ', 'Seventy ', 'Eighty ', 'Ninety '];
+    const n = ('000000000' + num).substr(-9).match(/^(\d{2})(\d{2})(\d{2})(\d{1})(\d{2})$/);
+    if (!n) return '';
+    let str = '';
+    str += (Number(n[1]) != 0) ? (a[Number(n[1])] || b[Number(n[1][0])] + a[Number(n[1][1])]) + 'Crore ' : '';
+    str += (Number(n[2]) != 0) ? (a[Number(n[2])] || b[Number(n[2][0])] + a[Number(n[2][1])]) + 'Lakh ' : '';
+    str += (Number(n[3]) != 0) ? (a[Number(n[3])] || b[Number(n[3][0])] + a[Number(n[3][1])]) + 'Thousand ' : '';
+    str += (Number(n[4]) != 0) ? (a[Number(n[4])] || b[Number(n[4][0])] + a[Number(n[4][1])]) + 'Hundred ' : '';
+    str += (Number(n[5]) != 0) ? ((str != '') ? 'and ' : '') + (a[Number(n[5])] || b[Number(n[5][0])] + a[Number(n[5][1])]) + 'Only ' : 'Only ';
+    return str.trim();
+  };
+
+  const amountInWords = numberToWords(totalAmount);
+  const currentDate = format(new Date(), 'dd/MM/yyyy');
+
+  worksheet.eachRow((row) => {
+    row.eachCell((cell) => {
+      if (cell.value && typeof cell.value === 'string') {
+        if (cell.value.includes('{total_amount}')) {
+          cell.value = cell.value.replace('{total_amount}', totalAmount.toLocaleString('en-IN'));
+        }
+        if (cell.value.includes('{amount_in_words}')) {
+          cell.value = cell.value.replace('{amount_in_words}', amountInWords);
+        }
+        if (cell.value.includes('{date}')) {
+          cell.value = cell.value.replace('{date}', currentDate);
+        }
+        if (cell.value.includes('{reference_number}')) {
+          cell.value = cell.value.replace('{reference_number}', referenceNumber);
+        }
+      }
+    });
+  });
+
+  const buffer = await workbook.xlsx.writeBuffer();
+  return Buffer.from(buffer);
+}
+
 export async function generateIncentivePaymentSheet(claimIds: string[], remarks: Record<string, string>, referenceNumber: string) {
   try {
     const allClaims = await getAllClaimsCombinedAdmin();
     const payableClaims = allClaims.filter(c => claimIds.includes(c.id) && isEligibleForFinancialDisbursement(c));
     if (payableClaims.length === 0) return { success: false, error: "No valid claims." };
 
-    const settings = await getSystemSettings();
-    const templateUrl = settings.templateUrls?.INCENTIVE_PAYMENT_SHEET;
-    if (!templateUrl) return { success: false, error: 'Not configured.' };
+    const buffer = await buildPaymentSheetExcelBuffer(payableClaims, remarks, referenceNumber);
 
-    const { getTemplateContentFromUrl } = await import('@/lib/template-manager');
-    const templateContent = await getTemplateContentFromUrl(templateUrl);
-    const workbook = new ExcelJS.Workbook();
-    await workbook.xlsx.load(templateContent as any);
-    const worksheet = workbook.worksheets[0];
-
-    // Fetch all users to get MIS IDs
-    const usersSnap = await adminDb.collection('users').get();
-    const usersMap = new Map(usersSnap.docs.map(doc => [doc.id, doc.data() as User]));
-
-    const getInstituteAcronym = (name: string) => {
-      if (!name || name === 'N/A') return 'N/A';
-      const overrides: { [key: string]: string } = {
-        'Parul College of Pharmacy': 'PCP (Pharma)',
-        'Parul College of Physiotherapy': 'PCP (Physio)'
-      };
-      if (overrides[name]) return overrides[name];
-      const ignoreWords = ['of', 'and', 'the', 'for', 'in', 'at', '&'];
-      const acronym = name
-        .split(' ')
-        .filter(word => word.length > 0 && !ignoreWords.includes(word.toLowerCase()))
-        .map(word => word[0].toUpperCase())
-        .join('');
-      return acronym || name;
-    };
-
-    // Fill data starting from row 14
-    let currentRow = 14;
-    // Database updates and row filling
-    let totalAmount = 0;
     for (const claim of payableClaims) {
-      const user = usersMap.get(claim.uid);
-      const row = worksheet.getRow(currentRow);
-      const claimAmount = claim.finalApprovedAmount || 0;
-      totalAmount += claimAmount;
-
-      row.getCell(2).value = claim.bankDetails?.ifscCode || 'N/A';
-      row.getCell(3).value = String(claim.bankDetails?.accountNumber || 'N/A');
-      row.getCell(4).value = claim.bankDetails?.beneficiaryName || claim.userName || user?.name || 'N/A';
-      row.getCell(5).value = claim.bankDetails?.city || 'N/A';
-      row.getCell(6).value = claimAmount;
-      row.getCell(7).value = getInstituteAcronym(user?.institute || claim.faculty || 'N/A');
-      row.getCell(8).value = user?.misId || 'N/A';
-      row.getCell(9).value = remarks[claim.id] || '';
-      row.commit();
-
       try {
         const { sanitizeForRtdb } = await import('@/lib/rtdb-utils');
-        await adminRtdb.ref(`incentiveClaims/${claim.id}`).update(sanitizeForRtdb({
+        let rtdbPath = `incentiveClaims/active/${claim.id}`;
+        if (claim.status === 'Draft') {
+          rtdbPath = `incentiveClaims/drafts/${claim.uid}/${claim.id}`;
+        } else if (claim.status === 'Payment Completed' || claim.status === 'Rejected') {
+          rtdbPath = `incentiveClaims/completed/${claim.id}`;
+        }
+        await adminRtdb.ref(rtdbPath).update(sanitizeForRtdb({
           paymentSheetRef: referenceNumber,
           paymentSheetRemarks: remarks[claim.id] || '',
           lastSyncedAt: new Date().toISOString()
@@ -1046,68 +1082,71 @@ export async function generateIncentivePaymentSheet(claimIds: string[], remarks:
       } catch (e) {
         console.error(`RTDB Payment Sheet Sync Error for claim ${claim.id}:`, e);
       }
-
-      currentRow++;
     }
 
-    // Number to words conversion (Indian Rupees)
-    const numberToWords = (num: number): string => {
-      const a = ['', 'One ', 'Two ', 'Three ', 'Four ', 'Five ', 'Six ', 'Seven ', 'Eight ', 'Nine ', 'Ten ', 'Eleven ', 'Twelve ', 'Thirteen ', 'Fourteen ', 'Fifteen ', 'Sixteen ', 'Seventeen ', 'Eighteen ', 'Nineteen '];
-      const b = ['', '', 'Twenty ', 'Thirty ', 'Forty ', 'Fifty ', 'Sixty ', 'Seventy ', 'Eighty ', 'Ninety '];
-      const n = ('000000000' + num).substr(-9).match(/^(\d{2})(\d{2})(\d{2})(\d{1})(\d{2})$/);
-      if (!n) return '';
-      let str = '';
-      str += (Number(n[1]) != 0) ? (a[Number(n[1])] || b[Number(n[1][0])] + a[Number(n[1][1])]) + 'Crore ' : '';
-      str += (Number(n[2]) != 0) ? (a[Number(n[2])] || b[Number(n[2][0])] + a[Number(n[2][1])]) + 'Lakh ' : '';
-      str += (Number(n[3]) != 0) ? (a[Number(n[3])] || b[Number(n[3][0])] + a[Number(n[3][1])]) + 'Thousand ' : '';
-      str += (Number(n[4]) != 0) ? (a[Number(n[4])] || b[Number(n[4][0])] + a[Number(n[4][1])]) + 'Hundred ' : '';
-      str += (Number(n[5]) != 0) ? ((str != '') ? 'and ' : '') + (a[Number(n[5])] || b[Number(n[5][0])] + a[Number(n[5][1])]) + 'Only ' : 'Only ';
-      return str.trim();
-    };
-
-    const amountInWords = numberToWords(totalAmount);
-    const currentDate = format(new Date(), 'dd/MM/yyyy');
-
-    // Replace placeholders in the entire worksheet
-    worksheet.eachRow((row) => {
-      row.eachCell((cell) => {
-        if (cell.value && typeof cell.value === 'string') {
-          if (cell.value.includes('{total_amount}')) {
-            cell.value = cell.value.replace('{total_amount}', totalAmount.toLocaleString('en-IN'));
-          }
-          if (cell.value.includes('{amount_in_words}')) {
-            cell.value = cell.value.replace('{amount_in_words}', amountInWords);
-          }
-          if (cell.value.includes('{date}')) {
-            cell.value = cell.value.replace('{date}', currentDate);
-          }
-          if (cell.value.includes('{reference_number}')) {
-            cell.value = cell.value.replace('{reference_number}', referenceNumber);
-          }
+    // Save the payment sheet to GCS Storage for later download checks
+    try {
+      const { adminStorage } = await import('@/lib/admin');
+      const filename = `payment-sheets/${referenceNumber.replace(/\//g, '_')}.xlsx`;
+      const bucket = adminStorage.bucket();
+      const file = bucket.file(filename);
+      await file.save(buffer, {
+        metadata: {
+          contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
         }
       });
-    });
+    } catch (storageError) {
+      console.error('Failed to upload payment sheet to storage during generation:', storageError);
+    }
 
     (revalidateTag as any)('incentive-claims');
-    const buffer = await workbook.xlsx.writeBuffer();
-    return { success: true, fileData: Buffer.from(buffer).toString('base64'), includedCount: payableClaims.length };
+    return { success: true, fileData: buffer.toString('base64'), includedCount: payableClaims.length };
   } catch (error: any) {
     return { success: false, error: error.message };
   }
 }
 
-export async function downloadPaymentSheetByRef(referenceNumber: string): Promise<{ success: boolean; url?: string; error?: string }> {
+export async function downloadPaymentSheetByRef(referenceNumber: string): Promise<{ success: boolean; fileData?: string; error?: string }> {
   try {
-    const path = `payment-sheets/${referenceNumber.replace(/\//g, '_')}.xlsx`
-    const { getSecureDocumentUrl } = await import("./storage-service")
+    const filename = `payment-sheets/${referenceNumber.replace(/\//g, '_')}.xlsx`;
+    const { adminStorage } = await import('@/lib/admin');
+    const bucket = adminStorage.bucket();
+    const file = bucket.file(filename);
+    const [exists] = await file.exists();
 
-    // We'll need a way to get the current user ID for the proxy to work, 
-    // but here we can just return the proxy path if we assume the caller will route through the proxy API
-    // However, the proxy API now requires a session.
+    if (exists) {
+      const [buffer] = await file.download();
+      return { success: true, fileData: buffer.toString('base64') };
+    }
 
-    // For now, let's return the proxy URL directly
-    return { success: true, url: `/api/documents/${path}` };
+    // Fallback: If not found in storage (stale / pre-existing payment sheet reference), fetch matching claims and regenerate the sheet
+    const allClaims = await getAllClaimsCombinedAdmin();
+    const payableClaims = allClaims.filter(c => c.paymentSheetRef === referenceNumber && isEligibleForFinancialDisbursement(c));
+
+    if (payableClaims.length === 0) {
+      return { success: false, error: "Payment sheet not found." };
+    }
+
+    const remarks: Record<string, string> = {};
+    payableClaims.forEach(c => {
+      remarks[c.id] = c.paymentSheetRemarks || c.claimId || c.id;
+    });
+
+    const buffer = await buildPaymentSheetExcelBuffer(payableClaims, remarks, referenceNumber);
+
+    // Save to storage so next time it loads instantly
+    try {
+      await file.save(buffer, {
+        metadata: {
+          contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        }
+      });
+    } catch (saveError) {
+      console.error("Error saving regenerated payment sheet to storage:", saveError);
+    }
+
+    return { success: true, fileData: buffer.toString('base64') };
   } catch (error: any) {
-    return { success: false, error: error.message || "Failed to locate payment sheet." }
+    return { success: false, error: error.message || "Failed to download payment sheet." };
   }
 }
