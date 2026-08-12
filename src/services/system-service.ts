@@ -287,4 +287,23 @@ export async function fetchOrcidData(orcidId: string): Promise<{
   }
 }
 
+export async function getIfscDetails(ifscCode: string): Promise<{
+  success: boolean;
+  data?: any;
+  error?: string;
+}> {
+  try {
+    const res = await fetch(`https://ifsc.razorpay.com/${ifscCode.toUpperCase()}`);
+    if (res.ok) {
+      const data = await res.json();
+      return { success: true, data };
+    }
+    return { success: false, error: `IFSC API returned status ${res.status}` };
+  } catch (error: any) {
+    console.warn("IFSC lookup failed (external API):", error.message);
+    return { success: false, error: error.message };
+  }
+}
+
+
 

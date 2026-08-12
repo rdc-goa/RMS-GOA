@@ -281,9 +281,9 @@ export async function submitIncentiveClaim(
       if (fieldToCheck && valueToCheck) {
         // GLOBAL CHECK: Fetch all claims (Firestore + RTDB) to ensure no duplicate submission exists
         const allClaims = await getAllClaimsCombinedAdmin();
-        
+
         const isConferenceSubmission = claimData.claimType === 'Conference Presentations';
-        
+
         // For conference submissions, check ALL title fields from incoming claim against ALL title fields in database
         if (isConferenceSubmission) {
           const incomingTitles: string[] = [];
@@ -294,7 +294,7 @@ export async function submitIncentiveClaim(
             claimData.apcPaperTitle,
             claimData.patentTitle,
           ];
-          
+
           for (const field of incomingFields) {
             if (field && typeof field === 'string' && field.trim()) {
               incomingTitles.push(field.trim().toLowerCase());
@@ -330,16 +330,16 @@ export async function submitIncentiveClaim(
               claim.apcPaperTitle,
               claim.patentTitle,
             ];
-            
+
             for (const field of dbFields) {
               if (field && typeof field === 'string' && field.trim()) {
                 dbTitles.push(field.trim().toLowerCase());
               }
             }
-            
+
             // Check if any incoming title matches any database title
-            return incomingTitles.length > 0 && dbTitles.length > 0 && 
-                   incomingTitles.some(inTitle => dbTitles.includes(inTitle));
+            return incomingTitles.length > 0 && dbTitles.length > 0 &&
+              incomingTitles.some(inTitle => dbTitles.includes(inTitle));
           });
 
           if (globalDuplicate) {
@@ -361,8 +361,8 @@ export async function submitIncentiveClaim(
 
           if (globalDuplicate) {
             // For conference claims, block any submission with a matching title—title must be globally unique
-            const claimantInfo = globalDuplicate.uid === claimData.uid 
-              ? "You have already" 
+            const claimantInfo = globalDuplicate.uid === claimData.uid
+              ? "You have already"
               : `${globalDuplicate.userName || 'Another researcher'} has already`;
             return {
               success: false,
@@ -498,10 +498,10 @@ export async function submitIncentiveClaim(
       await saveClaimToRtdb(claimId, finalClaimData);
 
       if (finalClaimData.status !== 'Draft') {
-        const fileUrl = (finalClaimData.publicationProofUrls && finalClaimData.publicationProofUrls.length > 0) 
-          ? finalClaimData.publicationProofUrls[0] 
+        const fileUrl = (finalClaimData.publicationProofUrls && finalClaimData.publicationProofUrls.length > 0)
+          ? finalClaimData.publicationProofUrls[0]
           : finalClaimData.relevantLink;
-        
+
         import('@/ai/flows/verify-claim').then(({ verifyClaimFlow }) => {
           verifyClaimFlow({ claimId, fileUrl }).catch(e => console.error("Verification failed:", e));
         });
@@ -981,7 +981,8 @@ async function buildPaymentSheetExcelBuffer(payableClaims: IncentiveClaim[], rem
     if (!name || name === 'N/A') return 'N/A';
     const overrides: { [key: string]: string } = {
       'Parul College of Pharmacy': 'PCP (Pharma)',
-      'Parul College of Physiotherapy': 'PCP (Physio)'
+      'Parul College of Physiotherapy': 'PCP (Physio)',
+      'Parul College of Hotel Management': 'PCHM',
     };
     if (overrides[name]) return overrides[name];
     const ignoreWords = ['of', 'and', 'the', 'for', 'in', 'at', '&'];

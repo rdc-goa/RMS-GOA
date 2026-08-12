@@ -96,6 +96,7 @@ const faculties = [
   "Faculty of Management Studies",
   "Faculty of Pharmacy",
   "Faculty of Applied and Health Sciences",
+  "Faculty of Hotel Management",
   "Faculty of Nursing",
   "Faculty of Physiotherapy",
   "University Office"
@@ -106,6 +107,7 @@ const goaFaculties = [
   "Faculty of Management Studies",
   "Faculty of Pharmacy",
   "Faculty of Applied and Health Sciences",
+  "Faculty of Hotel Management",
   "Faculty of Nursing",
   "Faculty of Physiotherapy",
   "University Office"
@@ -129,6 +131,7 @@ const goaInstitutes = [
   "Parul College of Engineering",
   "Parul College of Information Technology & Computer Science",
   "Parul College of Management",
+  "Parul College of Hotel Management",
   "Parul College of Nursing",
   "Parul College of Pharmacy",
   "Parul College of Physiotherapy",

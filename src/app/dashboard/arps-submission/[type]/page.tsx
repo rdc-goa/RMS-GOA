@@ -1175,6 +1175,7 @@ export default function ArpsSubmissionForm() {
                       <option value="Parul College of Engineering">Parul College of Engineering</option>
                       <option value="Parul College of Information Technology & Computer Science">Parul College of Information Technology & Computer Science</option>
                       <option value="Parul College of Management">Parul College of Management</option>
+                      <option value="Parul College of Hotel Management">Parul College of Hotel Management</option>
                       <option value="Parul College of Nursing">Parul College of Nursing</option>
                       <option value="Parul College of Pharmacy">Parul College of Pharmacy</option>
                       <option value="Parul College of Physiotherapy">Parul College of Physiotherapy</option>

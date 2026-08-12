@@ -13,30 +13,31 @@ import { getSystemSettings } from '@/services/system-service';
 
 
 function getInstituteAcronym(name?: string): string {
-    if (!name) return '';
+  if (!name) return '';
 
-    const acronymMap: { [key: string]: string } = {
-        'Parul Institute of Ayurved and Research': 'PIAR (Ayu.)',
-        'Parul Institute of Architecture & Research': 'PIAR (Arc.)',
-        'Parul Institute of Ayurved': 'PIA (Ayu.)',
-        'Parul Institute of Arts': 'PIA (Art.)',
-        'Parul Institute of Pharmacy': 'PIP (Pharma)',
-        'Parul Institute of Physiotherapy': 'PIP (Physio)',
-        'Parul College of Pharmacy': 'PCP (Pharma)',
-        'Parul College of Physiotherapy': 'PCP (Physio)',
-    };
+  const acronymMap: { [key: string]: string } = {
+    'Parul Institute of Ayurved and Research': 'PIAR (Ayu.)',
+    'Parul Institute of Architecture & Research': 'PIAR (Arc.)',
+    'Parul Institute of Ayurved': 'PIA (Ayu.)',
+    'Parul Institute of Arts': 'PIA (Art.)',
+    'Parul Institute of Pharmacy': 'PIP (Pharma)',
+    'Parul Institute of Physiotherapy': 'PIP (Physio)',
+    'Parul College of Pharmacy': 'PCP (Pharma)',
+    'Parul College of Physiotherapy': 'PCP (Physio)',
+    'Parul College of Hotel Management': 'PCHM',
+  };
 
-    if (acronymMap[name]) {
-        return acronymMap[name];
-    }
+  if (acronymMap[name]) {
+    return acronymMap[name];
+  }
 
-    const ignoreWords = ['of', 'and', '&', 'the', 'in'];
-    return name
-        .split(' ')
-        .filter(word => !ignoreWords.includes(word.toLowerCase()))
-        .map(word => word.charAt(0))
-        .join('')
-        .toUpperCase();
+  const ignoreWords = ['of', 'and', '&', 'the', 'in'];
+  return name
+    .split(' ')
+    .filter(word => !ignoreWords.includes(word.toLowerCase()))
+    .map(word => word.charAt(0))
+    .join('')
+    .toUpperCase();
 }
 
 
@@ -50,10 +51,10 @@ export async function generateConferenceIncentiveForm(claimId: string): Promise<
     const userRef = adminDb.collection('users').doc(claim.uid);
     const userSnap = await userRef.get();
     if (!userSnap.exists) {
-        return { success: false, error: 'Claimant user profile not found.' };
+      return { success: false, error: 'Claimant user profile not found.' };
     }
     const user = userSnap.data() as User;
-    
+
     const settings = await getSystemSettings();
     const templateUrl = settings.templateUrls?.['INCENTIVE_CONFERENCE'];
 
@@ -62,61 +63,61 @@ export async function generateConferenceIncentiveForm(claimId: string): Promise<
     }
 
     const content = await getTemplateContentFromUrl(templateUrl);
-    
+
     if (!content) {
-        return { success: false, error: `Template file could not be loaded from the URL.` };
+      return { success: false, error: `Template file could not be loaded from the URL.` };
     }
 
     const zip = new PizZip(content);
     const doc = new Docxtemplater(zip, {
-        paragraphLoop: true,
-        linebreaks: true,
-        nullGetter: () => "N/A",
+      paragraphLoop: true,
+      linebreaks: true,
+      nullGetter: () => "N/A",
     });
 
     const approval1 = claim.approvals?.find(a => a?.stage === 1);
     const approval2 = claim.approvals?.find(a => a?.stage === 2);
     const approval3 = claim.approvals?.find(a => a?.stage === 3);
     const approval4 = claim.approvals?.find(a => a?.stage === 4);
-    
+
     const checklistFields = [
-        'name', 'designation', 'eventType', 'conferencePaperTitle', 'authorType', 'totalAuthors',
-        'conferenceName', 'organizerName', 'conferenceType', 'presentationType', 'conferenceDate', 
-        'conferenceDuration', 'travelPlaceVisited', 'registrationFee', 'travelFare', 'calculatedIncentive'
+      'name', 'designation', 'eventType', 'conferencePaperTitle', 'authorType', 'totalAuthors',
+      'conferenceName', 'organizerName', 'conferenceType', 'presentationType', 'conferenceDate',
+      'conferenceDuration', 'travelPlaceVisited', 'registrationFee', 'travelFare', 'calculatedIncentive'
     ];
-    
+
     const approvalData: { [key: string]: string } = {};
     checklistFields.forEach((field, index) => {
-        const c_num = index + 1;
-        approvalData[`a1_c${c_num}`] = approval1?.verifiedFields?.[field as keyof IncentiveClaim] ? '✓' : '';
-        approvalData[`a2_c${c_num}`] = approval2?.verifiedFields?.[field as keyof IncentiveClaim] ? '✓' : '';
+      const c_num = index + 1;
+      approvalData[`a1_c${c_num}`] = approval1?.verifiedFields?.[field as keyof IncentiveClaim] ? '✓' : '';
+      approvalData[`a2_c${c_num}`] = approval2?.verifiedFields?.[field as keyof IncentiveClaim] ? '✓' : '';
     });
 
     const data = {
-        applicant_name: user.name || 'N/A',
-        designation: user.designation || 'N/A',
-        institute: getInstituteAcronym(user.institute),
-        mode_presentation: claim.presentationType || 'N/A',
-        mode_conference: claim.conferenceMode || 'N/A',
-        locale: claim.conferenceType || 'N/A',
-        title_paper: claim.conferencePaperTitle || 'N/A',
-        event_name: claim.conferenceName || 'N/A',
-        organiser_name: claim.organizerName || 'N/A',
-        duration_event: claim.conferenceDuration || 'N/A',
-        registration_fee: claim.registrationFee?.toLocaleString('en-IN') || '0',
-        travel_expense: claim.travelFare?.toLocaleString('en-IN') || '0',
-        other_expense: '0', 
-        total_amount: claim.totalAmountClaimed?.toLocaleString('en-IN') || 'N/A',
-        presentation_date: claim.presentationDate ? new Date(claim.presentationDate).toLocaleDateString('en-GB') : 'N/A',
-        ...approvalData,
-        approver2_comments: approval2?.comments || '',
-        approver2_amount: approval2?.approvedAmount?.toLocaleString('en-IN') || '',
-        approver3_comments: approval3?.comments || '',
-        approver3_amount: approval3?.approvedAmount?.toLocaleString('en-IN') || '',
-        approver4_comments: approval4?.comments || '',
-        approver4_amount: approval4?.approvedAmount?.toLocaleString('en-IN') || '',
+      applicant_name: user.name || 'N/A',
+      designation: user.designation || 'N/A',
+      institute: getInstituteAcronym(user.institute),
+      mode_presentation: claim.presentationType || 'N/A',
+      mode_conference: claim.conferenceMode || 'N/A',
+      locale: claim.conferenceType || 'N/A',
+      title_paper: claim.conferencePaperTitle || 'N/A',
+      event_name: claim.conferenceName || 'N/A',
+      organiser_name: claim.organizerName || 'N/A',
+      duration_event: claim.conferenceDuration || 'N/A',
+      registration_fee: claim.registrationFee?.toLocaleString('en-IN') || '0',
+      travel_expense: claim.travelFare?.toLocaleString('en-IN') || '0',
+      other_expense: '0',
+      total_amount: claim.totalAmountClaimed?.toLocaleString('en-IN') || 'N/A',
+      presentation_date: claim.presentationDate ? new Date(claim.presentationDate).toLocaleDateString('en-GB') : 'N/A',
+      ...approvalData,
+      approver2_comments: approval2?.comments || '',
+      approver2_amount: approval2?.approvedAmount?.toLocaleString('en-IN') || '',
+      approver3_comments: approval3?.comments || '',
+      approver3_amount: approval3?.approvedAmount?.toLocaleString('en-IN') || '',
+      approver4_comments: approval4?.comments || '',
+      approver4_amount: approval4?.approvedAmount?.toLocaleString('en-IN') || '',
     };
-    
+
     doc.setData(data);
 
     try {

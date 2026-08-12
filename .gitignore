@@ -1,5 +1,6 @@
 # See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
-.env
+.envIn localhost the application is showing up in Stage 2 Approval, while in actual prodcution it is in stage 3 approval...the correct one as per database is Stage 2 approval pending. tried clear site data and everything but does not work
+
 # dependencies
 /node_modules
 /.pnp
