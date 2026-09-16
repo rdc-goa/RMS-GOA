@@ -228,43 +228,60 @@ export async function fetchPendingIncentiveApprovalsCountAction(user: User): Pro
   if (!user) return 0;
 
   const approverModule = user.allowedModules?.find((m) => m.startsWith('incentive-approver-'));
-  const stageIndex = approverModule ? parseInt(approverModule.split('-')[2], 10) - 1 : null;
-  if (stageIndex === null || Number.isNaN(stageIndex)) return 0;
+  let stageIndex = approverModule ? parseInt(approverModule.split('-')[2], 10) - 1 : null;
+  const settings = await getSystemSettings();
+
+  if (stageIndex === null || Number.isNaN(stageIndex)) {
+    const userEmailLower = user.email.toLowerCase();
+    const isPrincipal = settings?.principalEmails && Object.values(settings.principalEmails).some(e => e.toLowerCase() === userEmailLower);
+    if (isPrincipal || user.designation === 'Principal' || user.designation === 'Head of Goa Campus') {
+      stageIndex = 0;
+    } else {
+      return 0;
+    }
+  }
 
   const statusToFetch = `Pending Stage ${stageIndex + 1} Approval`;
   const claims = await fetchAllClaimsInternal(user);
   let pendingClaims = claims.filter((claim) => claim.status === statusToFetch);
 
   if (stageIndex === 0) {
-    const settings = await getSystemSettings();
+    let authorizedInstitutes: string[] = [];
+    const userEmailLower = user.email.toLowerCase();
+
     if (settings?.principalEmails) {
-      const userEmailLower = user.email.toLowerCase();
-      const principalInstitutes = Object.entries(settings.principalEmails)
+      authorizedInstitutes = Object.entries(settings.principalEmails)
         .filter(([_, email]) => email.toLowerCase() === userEmailLower)
         .map(([inst, _]) => inst);
+    }
 
-      if (principalInstitutes.length > 0) {
-        const claimantUids = Array.from(new Set(pendingClaims.map(c => c.uid)));
-        if (claimantUids.length > 0) {
-          const userSnapshots = await Promise.all(
-            claimantUids.map(uid => adminDb.collection('users').doc(uid).get())
-          );
-          const uidToInstitute: Record<string, string> = {};
-          userSnapshots.forEach(snap => {
-            if (snap.exists) {
-              uidToInstitute[snap.id] = snap.data()?.institute || '';
-            }
-          });
-          pendingClaims = pendingClaims.filter(claim => 
-            principalInstitutes.includes(uidToInstitute[claim.uid] || '')
-          );
-        } else {
-          pendingClaims = [];
-        }
+    if (settings?.facultyMatrix) {
+      const { getUserAuthorityScope } = await import('@/lib/academic-data');
+      const scope = getUserAuthorityScope(user.email, settings.facultyMatrix);
+      if (scope.hasAccess) {
+        authorizedInstitutes = Array.from(new Set([...authorizedInstitutes, ...scope.institutes]));
+      }
+    }
+
+    if (authorizedInstitutes.length > 0) {
+      const claimantUids = Array.from(new Set(pendingClaims.map(c => c.uid)));
+      if (claimantUids.length > 0) {
+        const userSnapshots = await Promise.all(
+          claimantUids.map(uid => adminDb.collection('users').doc(uid).get())
+        );
+        const uidToInstitute: Record<string, string> = {};
+        userSnapshots.forEach(snap => {
+          if (snap.exists) {
+            uidToInstitute[snap.id] = snap.data()?.institute || '';
+          }
+        });
+        pendingClaims = pendingClaims.filter(claim => 
+          authorizedInstitutes.includes(uidToInstitute[claim.uid] || '')
+        );
       } else {
         pendingClaims = [];
       }
-    } else {
+    } else if (user.role !== 'Super-admin' && user.role !== 'admin') {
       pendingClaims = [];
     }
   }
@@ -608,6 +625,119 @@ export async function getTopCollaboratingInstitutesGemini(rawOrganizations: stri
   } catch (error: any) {
     console.error('❌ [Server Action] Error in getTopCollaboratingInstitutesGemini:', error);
     return { success: false, error: error.message || 'Failed to analyze organizations with Gemini.' };
+  }
+}
+
+
+
+export async function getApprovedJournalWebsiteAction(journalName: string): Promise<{ success: boolean; website?: string | null }> {
+  if (!journalName || !journalName.trim()) {
+    return { success: true, website: null };
+  }
+
+  try {
+    const normalizeJournal = (name: string) => name.trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+    const targetClean = normalizeJournal(journalName);
+
+    if (targetClean.length < 3) {
+      return { success: true, website: null };
+    }
+
+    // 1. Fetch claims from Firestore
+    const claimsCollection = adminDb.collection('incentiveClaims');
+    const firestoreSnapshot = await claimsCollection.get();
+    const firestoreClaims = firestoreSnapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as any));
+
+    // 2. Fetch claims from RTDB active and completed nodes
+    const [activeSnap, completedSnap] = await Promise.all([
+      adminRtdb.ref('incentiveClaims/active').get(),
+      adminRtdb.ref('incentiveClaims/completed').get()
+    ]);
+
+    const rtdbClaims: any[] = [];
+    const parseSnap = (snap: any) => {
+      if (snap && snap.exists()) {
+        const val = snap.val();
+        Object.keys(val).forEach(key => {
+          rtdbClaims.push({ ...normalizeClaimFromRtdb(val[key]), id: key });
+        });
+      }
+    };
+    parseSnap(activeSnap);
+    parseSnap(completedSnap);
+
+    // Merge claims (RTDB overrides Firestore if same ID)
+    const combinedMap = new Map<string, any>();
+    firestoreClaims.forEach(c => combinedMap.set(c.id, c));
+    rtdbClaims.forEach(c => {
+      const existing = combinedMap.get(c.id);
+      combinedMap.set(c.id, {
+        ...(existing || {}),
+        ...c
+      });
+    });
+
+    const allClaims = Array.from(combinedMap.values());
+
+    const isApprovedStatus = (status?: string) => {
+      if (!status) return false;
+      const s = status.trim().toLowerCase();
+      if (s === 'not approved' || s === 'rejected' || s === 'draft') return false;
+      return s === 'accepted' || s === 'approved' || s === 'payment completed' || s === 'submitted to accounts' || s.includes('approval');
+    };
+
+    const hasApprovedStage = (approvals?: any[]) => {
+      if (!Array.isArray(approvals)) return false;
+      return approvals.some(a => a && (a.status === 'Approved' || a.status === 'Accepted'));
+    };
+
+    const matchingClaim = allClaims.find(claim => {
+      const rawJournal = claim.journalName || claim.apcJournalDetails || claim.journalDetails || '';
+      if (!rawJournal) return false;
+
+      const claimClean = normalizeJournal(rawJournal);
+      if (claimClean !== targetClean) return false;
+
+      const approved = isApprovedStatus(claim.status) || hasApprovedStage(claim.approvals);
+      if (!approved) return false;
+
+      const website = (claim.journalWebsite || claim.apcJournalWebsite || '').toString().trim();
+      return website.length > 0 && (website.startsWith('http://') || website.startsWith('https://'));
+    });
+
+    if (matchingClaim) {
+      const website = (matchingClaim.journalWebsite || matchingClaim.apcJournalWebsite)?.trim();
+      return { success: true, website: website || null };
+    }
+
+    return { success: true, website: null };
+  } catch (error: any) {
+    console.error('Error fetching approved journal website:', error);
+    return { success: false, website: null };
+  }
+}
+
+
+export async function getCachedCollaborationsAction(): Promise<{
+  success: boolean;
+  institutes?: Array<{ name: string; count: number; country: string }>;
+  updatedAt?: string;
+  error?: string;
+}> {
+  try {
+    const doc = await adminDb.collection('system').doc('collaboration_analytics').get();
+    if (doc.exists) {
+      const data = doc.data();
+      return {
+        success: true,
+        institutes: data?.institutes || [],
+        updatedAt: data?.updatedAt || '',
+      };
+    }
+    return { success: true, institutes: [] };
+  } catch (error: any) {
+    console.error('❌ [Server Action] Error fetching cached collaborations:', error);
+    return { success: false, error: error.message || 'Failed to fetch cached collaborations.' };
   }
 }
 

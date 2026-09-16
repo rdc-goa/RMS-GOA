@@ -14,8 +14,11 @@ import { Badge } from '@/components/ui/badge';
 import { format } from 'date-fns';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useRouter } from 'next/navigation';
+import { useToast } from '@/hooks/use-toast';
+import { getDefaultModulesForRole } from '@/lib/modules';
 
 export default function PostAJobPage() {
+    const { toast } = useToast();
     const [user, setUser] = useState<User | null>(null);
     const [postings, setPostings] = useState<ProjectRecruitment[]>([]);
     const [loading, setLoading] = useState(true);
@@ -24,12 +27,22 @@ export default function PostAJobPage() {
     useEffect(() => {
         const storedUser = localStorage.getItem('user');
         if (storedUser) {
-            const parsedUser = JSON.parse(storedUser);
+            const parsedUser = JSON.parse(storedUser) as User;
+            const allowedModules = parsedUser.allowedModules || getDefaultModulesForRole(parsedUser.role, parsedUser.designation);
+            if (!allowedModules.includes('post-a-job')) {
+                toast({
+                    title: 'Access Denied',
+                    description: "You don't have permission to view this page.",
+                    variant: 'destructive',
+                });
+                router.replace('/dashboard');
+                return;
+            }
             setUser(parsedUser);
         } else {
-            router.push('/login');
+            router.replace('/login');
         }
-    }, [router]);
+    }, [router, toast]);
 
     useEffect(() => {
         if (!user) {

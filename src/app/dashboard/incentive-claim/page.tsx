@@ -451,7 +451,7 @@ function CoAuthorClaimsList({ claims, currentUser, onClaimApplied }: { claims: I
 
                 if (result.success) {
                     setCalculatedAmount(result.amount ?? 0);
-                    setCalculationBreakdown(result.breakdown);
+                    setCalculationBreakdown((result as any).breakdown);
                 }
             } catch (e) {
                 console.error('Calculation error:', e);

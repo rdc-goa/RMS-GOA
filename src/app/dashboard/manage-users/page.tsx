@@ -8,7 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter }
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { MoreHorizontal, ArrowUpDown, ChevronDown, ShieldCheck, Loader2, Library, Users2, Ban, Bell } from "lucide-react";
+import { MoreHorizontal, ArrowUpDown, ChevronDown, ShieldCheck, Loader2, Library, Users2, Ban, Bell, Plus, UserPlus } from "lucide-react";
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
@@ -43,7 +43,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { db } from '@/lib/config';
+import { db, auth } from '@/lib/config';
 import { collection, getDocs, doc, deleteDoc, updateDoc } from 'firebase/firestore';
 import type { User, IncentiveClaim, NotificationSettings } from '@/types';
 import { useToast } from '@/hooks/use-toast';
@@ -53,7 +53,7 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
-import { bulkGrantModuleAccess, bulkRevokeModuleAccess } from '@/app/actions';
+import { bulkGrantModuleAccess, bulkRevokeModuleAccess, createGuestEvaluatorAction } from '@/app/actions';
 import { Switch } from '@/components/ui/switch';
 
 
@@ -244,7 +244,7 @@ function ModuleManagerDialog({ user, open, onOpenChange, onUpdate }: { user: Use
 function ProfileDetailsDialog({ user, open, onOpenChange }: { user: User | null, open: boolean, onOpenChange: (open: boolean) => void }) {
   if (!user) return null;
 
-  const renderDetail = (label: string, value?: string | number | string[]) => {
+  const renderDetail = (label: string, value?: string | number | string[] | null) => {
     if (!value && value !== 0) return null;
     let displayValue = Array.isArray(value) ? value.join(', ') : String(value);
 
@@ -326,6 +326,8 @@ export default function ManageUsersPage() {
   const [sortConfig, setSortConfig] = useState<{ key: SortableKeys; direction: 'ascending' | 'descending' }>({ key: 'name', direction: 'ascending' });
   const [selectedUsers, setSelectedUsers] = useState<string[]>([]);
   const [isBulkSubmitting, setIsBulkSubmitting] = useState(false);
+  const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
+  const [createdCredentials, setCreatedCredentials] = useState<{ email: string; tempPassword: string } | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 15;
 
@@ -549,6 +551,14 @@ export default function ManageUsersPage() {
             ))}
           </SelectContent>
         </Select>
+
+        {isCurrentUserSuperAdmin && (
+          <div className="sm:ml-auto flex gap-2 w-full sm:w-auto mt-2 sm:mt-0">
+            <Button onClick={() => setIsCreateDialogOpen(true)}>
+              <UserPlus className="mr-2 h-4 w-4" /> Create Guest Evaluator Account
+            </Button>
+          </div>
+        )}
       </div>
 
       {selectedUsers.length > 0 && (
@@ -628,7 +638,11 @@ export default function ManageUsersPage() {
                     const isPrimarySuperAdmin = user.email === PRIMARY_SUPER_ADMIN_EMAIL;
                     const isCurrentUserLoggedIn = user.uid === currentUser?.uid;
                     const isActionsDisabled = isCurrentUserLoggedIn || (isPrimarySuperAdmin && currentUser?.email !== PRIMARY_SUPER_ADMIN_EMAIL);
-                    const profileLink = user.campus === 'Goa' ? `/goa/${user.misId}` : `/profile/${user.misId}`;
+                    const isGuest = user.designation === "CRO Evaluator" || user.designation === "Guest Faculty" || user.designation === "Guest Evaluator" || user.role === "Evaluator";
+                    const slug = user.slug || user.name.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+                    const profileLink = isGuest
+                      ? `/profile/${slug}`
+                      : (user.campus === 'Goa' ? `/goa/${user.misId}` : `/profile/${user.misId}`);
 
                     return (
                       <TableRow key={user.uid} data-state={selectedUsers.includes(user.uid) && "selected"}>
@@ -646,12 +660,12 @@ export default function ManageUsersPage() {
                         </TableCell>
                         <TableCell className="font-medium">
                           <div>
-                            {user.misId ? (
-                              <Link href={profileLink} className="hover:underline" target="_blank" rel="noopener noreferrer">
+                            {user.misId || isGuest ? (
+                              <Link href={profileLink} className="hover:underline font-semibold" target="_blank" rel="noopener noreferrer">
                                 {user.name}
                               </Link>
                             ) : (
-                              user.name
+                              <span>{user.name}</span>
                             )}
                           </div>
                           <div className="text-xs text-muted-foreground">
@@ -745,7 +759,11 @@ export default function ManageUsersPage() {
                 const isPrimarySuperAdmin = user.email === PRIMARY_SUPER_ADMIN_EMAIL;
                 const isCurrentUserLoggedIn = user.uid === currentUser?.uid;
                 const isActionsDisabled = isCurrentUserLoggedIn || (isPrimarySuperAdmin && currentUser?.email !== PRIMARY_SUPER_ADMIN_EMAIL);
-                const profileLink = user.campus === 'Goa' ? `/goa/${user.misId}` : `/profile/${user.misId}`;
+                const isGuest = user.designation === "CRO Evaluator" || user.designation === "Guest Faculty" || user.designation === "Guest Evaluator" || user.role === "Evaluator";
+                const slug = user.slug || user.name.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+                const profileLink = isGuest
+                  ? `/profile/${slug}`
+                  : (user.campus === 'Goa' ? `/goa/${user.misId}` : `/profile/${user.misId}`);
                 return (
                   <Card key={user.uid} className="flex flex-col">
                     <CardHeader className="flex-row items-start justify-between gap-4 pb-2">
@@ -761,7 +779,7 @@ export default function ManageUsersPage() {
                           }}
                         />
                         <div className="flex flex-col">
-                          {user.misId ? (
+                          {user.misId || isGuest ? (
                             <Link href={profileLink} className="font-semibold hover:underline" target="_blank" rel="noopener noreferrer">{user.name}</Link>
                           ) : (
                             <span className="font-semibold">{user.name}</span>
@@ -930,6 +948,197 @@ export default function ManageUsersPage() {
           </AlertDialogContent>
         </AlertDialog>
       )}
+      <CreateGuestUserDialog
+        open={isCreateDialogOpen}
+        onOpenChange={setIsCreateDialogOpen}
+        currentUserEmail={currentUser?.email || ''}
+        onSuccess={(creds) => {
+          setCreatedCredentials(creds);
+          fetchUsersAndClaims();
+        }}
+      />
+      <CredentialsSuccessDialog
+        credentials={createdCredentials}
+        onClose={() => setCreatedCredentials(null)}
+      />
     </div>
+  );
+}
+
+function CreateGuestUserDialog({
+  open,
+  onOpenChange,
+  currentUserEmail,
+  onSuccess
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  currentUserEmail: string;
+  onSuccess: (credentials: { email: string; tempPassword: string }) => void;
+}) {
+  const { toast } = useToast();
+  const [name, setName] = useState('');
+  const [email, setEmail] = useState('');
+  const [phoneNumber, setPhoneNumber] = useState('');
+  const [department, setDepartment] = useState('');
+  const [institute, setInstitute] = useState('');
+  const [selectedModules, setSelectedModules] = useState<string[]>([]);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  useEffect(() => {
+    if (open) {
+      setSelectedModules(getDefaultModulesForRole('Evaluator', 'Guest Evaluator'));
+    }
+  }, [open]);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!name.trim() || !email.trim()) {
+      toast({ variant: 'destructive', title: 'Error', description: 'Name and Email are required.' });
+      return;
+    }
+    setIsSubmitting(true);
+    try {
+      const result = await createGuestEvaluatorAction(currentUserEmail, {
+        name: name.trim(),
+        email: email.trim().toLowerCase(),
+        role: 'Evaluator',
+        designation: 'Guest Evaluator',
+        faculty: 'RDC',
+        department: department.trim() || 'RDC Office',
+        institute: institute.trim() || 'RDC',
+        campus: 'Goa',
+        faculties: [],
+        allowedModules: selectedModules,
+        phoneNumber: phoneNumber.trim() || undefined
+      });
+
+      if (result.success && result.tempPassword) {
+        toast({ title: 'Account Created', description: 'User account created successfully.' });
+        onSuccess({ email: email.trim().toLowerCase(), tempPassword: result.tempPassword });
+        // Send email with credentials
+        const token = await auth.currentUser?.getIdToken();
+        await fetch('/api/send-guest-credentials', {
+          method: 'POST',
+          headers: { 
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify({ email: email.trim().toLowerCase(), tempPassword: result.tempPassword })
+        }).then(res => {
+          if (!res.ok) throw new Error('Failed to send email');
+        }).catch(err => {
+          toast({ variant: 'destructive', title: 'Email Error', description: err.message });
+        });
+        onOpenChange(false);
+        // Reset form
+        setName('');
+        setEmail('');
+        setPhoneNumber('');
+        setDepartment('');
+        setInstitute('');
+      } else {
+        toast({ variant: 'destructive', title: 'Failed to create user', description: result.error || 'Server error' });
+      }
+    } catch (err: any) {
+      toast({ variant: 'destructive', title: 'Error', description: err.message || 'An unexpected error occurred.' });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Create Guest Evaluator Account</DialogTitle>
+        </DialogHeader>
+        <form onSubmit={handleSubmit} className="space-y-4 py-2">
+          <div className="space-y-1">
+            <Label htmlFor="guest-name">Full Name</Label>
+            <Input id="guest-name" value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Dr. John Doe" required />
+          </div>
+          <div className="space-y-1">
+            <Label htmlFor="guest-email">Email Address</Label>
+            <Input id="guest-email" type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="e.g. john.doe@example.com" required />
+          </div>
+          <div className="space-y-1">
+            <Label htmlFor="guest-phone">Phone Number</Label>
+            <Input id="guest-phone" type="tel" value={phoneNumber} onChange={e => setPhoneNumber(e.target.value)} placeholder="e.g. 9876543210" />
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-1">
+              <Label htmlFor="guest-dept">Department</Label>
+              <Input id="guest-dept" value={department} onChange={e => setDepartment(e.target.value)} placeholder="e.g. CSE (optional)" />
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="guest-inst">Institute</Label>
+              <Input id="guest-inst" value={institute} onChange={e => setInstitute(e.target.value)} placeholder="e.g. PIE (optional)" />
+            </div>
+          </div>
+          <div className="space-y-2 border-t pt-3">
+            <Label>Allowed Modules</Label>
+            <div className="grid grid-cols-2 gap-2 max-h-40 overflow-y-auto pr-2 border p-2 rounded-md">
+              {ALL_MODULES.map((module) => (
+                <div key={module.id} className="flex items-center space-x-2">
+                  <Checkbox
+                    id={`guest-mod-${module.id}`}
+                    checked={selectedModules.includes(module.id)}
+                    onCheckedChange={(checked) => {
+                      setSelectedModules(prev =>
+                        checked ? [...prev, module.id] : prev.filter(id => id !== module.id)
+                      );
+                    }}
+                  />
+                  <Label htmlFor={`guest-mod-${module.id}`} className="text-xs font-normal select-none cursor-pointer">{module.label}</Label>
+                </div>
+              ))}
+            </div>
+          </div>
+          <DialogFooter className="pt-2">
+            <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
+            <Button type="submit" disabled={isSubmitting}>
+              {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+              Create Account
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function CredentialsSuccessDialog({
+  credentials,
+  onClose
+}: {
+  credentials: { email: string; tempPassword: string } | null;
+  onClose: () => void;
+}) {
+  const { toast } = useToast();
+  if (!credentials) return null;
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(`Email: ${credentials.email}\nPassword: ${credentials.tempPassword}`);
+    toast({ title: 'Copied to clipboard' });
+  };
+
+  return (
+    <Dialog open={!!credentials} onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle className="text-green-600 flex items-center"><ShieldCheck className="mr-2 h-5 w-5" /> Account Created Successfully</DialogTitle>
+          <DialogDescription>Please copy the temporary login credentials below and share them with the guest evaluator.</DialogDescription>
+        </DialogHeader>
+        <div className="space-y-3 bg-muted p-4 rounded-md font-mono text-sm border">
+          <div><span className="font-semibold text-muted-foreground">Email:</span> {credentials.email}</div>
+          <div><span className="font-semibold text-muted-foreground">Password:</span> {credentials.tempPassword}</div>
+        </div>
+        <DialogFooter className="sm:justify-between">
+          <Button variant="outline" onClick={handleCopy}>Copy Credentials</Button>
+          <Button onClick={onClose}>Done</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

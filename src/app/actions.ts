@@ -23,3 +23,6 @@ export * from "./membership-actions";
 
 // Note: Any custom logic that doesn't fit into a specific domain can be added here, 
 // but most business logic should live in src/services/
+
+export * from "@/services/cfp-service";
+export * from "@/services/conference-participation-service";

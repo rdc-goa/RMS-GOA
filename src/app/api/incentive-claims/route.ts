@@ -32,7 +32,7 @@ export async function POST(req: NextRequest) {
     const result = await submitIncentiveClaim(
       claimData, 
       claimIdToUpdate, 
-      { authenticated: true, uid, role: userRole, user: decodedToken as any }
+      { authenticated: true, uid: (uid || (decodedToken as any)?.uid || ""), role: userRole }
     );
     if (!result.success) {
       return NextResponse.json({ success: false, error: result.error }, { status: 400 });

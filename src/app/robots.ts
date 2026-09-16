@@ -14,7 +14,6 @@ export default function robots(): MetadataRoute.Robots {
           '/static/',
           '/dashboard/settings',
           '/dashboard/manage-users',
-          '/dashboard/bulk-upload',
         ],
       },
     ],

@@ -150,24 +150,32 @@ export default function IncentiveApprovalsPage() {
             let pending = combinedClaims.filter(c => c.status === statusToFetch);
             
             if (stage === 0) {
+                let authorizedInstitutes: string[] = [];
+                const userEmailLower = currentUser.email?.toLowerCase() || '';
+
                 if (settings?.principalEmails) {
-                    const userEmailLower = currentUser.email.toLowerCase();
-                    const principalInstitutes = Object.entries(settings.principalEmails)
+                    authorizedInstitutes = Object.entries(settings.principalEmails)
                         .filter(([_, email]) => email.toLowerCase() === userEmailLower)
                         .map(([inst, _]) => inst);
-                    
-                    if (principalInstitutes.length > 0) {
-                        const uidToInstitute: Record<string, string> = {};
-                        usersList.forEach(u => {
-                            uidToInstitute[u.uid] = u.institute || '';
-                        });
-                        pending = pending.filter(claim => 
-                            principalInstitutes.includes(uidToInstitute[claim.uid] || '')
-                        );
-                    } else {
-                        pending = [];
+                }
+
+                if (settings?.facultyMatrix) {
+                    const { getUserAuthorityScope } = await import('@/lib/academic-data');
+                    const scope = getUserAuthorityScope(currentUser.email, settings.facultyMatrix);
+                    if (scope.hasAccess) {
+                        authorizedInstitutes = Array.from(new Set([...authorizedInstitutes, ...scope.institutes]));
                     }
-                } else {
+                }
+
+                if (authorizedInstitutes.length > 0) {
+                    const uidToInstitute: Record<string, string> = {};
+                    usersList.forEach(u => {
+                        uidToInstitute[u.uid] = u.institute || '';
+                    });
+                    pending = pending.filter(claim => 
+                        authorizedInstitutes.includes(uidToInstitute[claim.uid] || '')
+                    );
+                } else if (currentUser.role !== 'Super-admin' && currentUser.role !== 'admin') {
                     pending = [];
                 }
             }
@@ -192,17 +200,28 @@ export default function IncentiveApprovalsPage() {
         if (storedUser) {
             const parsedUser = JSON.parse(storedUser) as User;
             setUser(parsedUser);
-            const stage = parsedUser.allowedModules?.find(m => m.startsWith('incentive-approver-'))
+            let stage = parsedUser.allowedModules?.find(m => m.startsWith('incentive-approver-'))
                 ? parseInt(parsedUser.allowedModules.find(m => m.startsWith('incentive-approver-'))!.split('-')[2], 10) - 1
                 : null;
 
-            setApprovalStage(stage);
+            (async () => {
+                const settings = await getSystemSettings();
+                if (stage === null && parsedUser) {
+                    const userEmailLower = parsedUser.email?.toLowerCase() || '';
+                    const isPrincipal = settings?.principalEmails && Object.values(settings.principalEmails).some(e => e.toLowerCase() === userEmailLower);
+                    if (isPrincipal || parsedUser.designation === 'Principal' || parsedUser.designation === 'Head of Goa Campus' || parsedUser.role === 'Super-admin' || parsedUser.role === 'admin') {
+                        stage = 0;
+                    }
+                }
 
-            if (stage !== null) {
-                fetchClaimsAndUsers(parsedUser, stage);
-            } else {
-                setLoading(false);
-            }
+                setApprovalStage(stage);
+
+                if (stage !== null) {
+                    fetchClaimsAndUsers(parsedUser, stage);
+                } else {
+                    setLoading(false);
+                }
+            })();
         } else {
             setLoading(false);
         }
@@ -556,7 +575,35 @@ export default function IncentiveApprovalsPage() {
     return (
         <>
             <div className="container mx-auto py-10">
-                <PageHeader title={`Incentive Approvals (Stage ${approvalStage + 1})`} description="Claims awaiting your review and approval." />
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                    <PageHeader 
+                        title={`Incentive Approvals (Stage ${approvalStage + 1}${approvalStage === 0 ? ' - Respective Authority' : approvalStage === 3 ? ' - Final' : ''})`} 
+                        description="Claims awaiting your review and approval." 
+                    />
+                    {(user?.role === 'Super-admin' || user?.role === 'admin') && (
+                        <div className="flex items-center gap-2 self-start sm:self-auto bg-muted/40 p-1.5 rounded-lg border">
+                            <Label className="text-xs font-semibold px-1 whitespace-nowrap">Review Stage:</Label>
+                            <Select
+                                value={String(approvalStage)}
+                                onValueChange={(val) => {
+                                    const newStage = parseInt(val, 10);
+                                    setApprovalStage(newStage);
+                                    if (user) fetchClaimsAndUsers(user, newStage);
+                                }}
+                            >
+                                <SelectTrigger className="w-[190px] h-8 text-xs bg-background">
+                                    <SelectValue placeholder="Select Stage" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="0">Stage 1 (Respective)</SelectItem>
+                                    <SelectItem value="1">Stage 2 (Admin)</SelectItem>
+                                    <SelectItem value="2">Stage 3 (Admin)</SelectItem>
+                                    <SelectItem value="3">Stage 4 (Final)</SelectItem>
+                                </SelectContent>
+                            </Select>
+                        </div>
+                    )}
+                </div>
                 <div className="flex flex-col sm:flex-row items-center py-4 gap-4">
                     <Input
                         placeholder="Filter by claimant, title, or Claim ID..."
@@ -623,7 +670,7 @@ export default function IncentiveApprovalsPage() {
                             }}>
                                 Deselect All ({selectedClaimIds.size})
                             </Button>
-                            {activeTab === 'pending' && approvalStage === 4 && (
+                            {activeTab === 'pending' && (approvalStage === 3 || approvalStage === 4) && (
                                 <Button onClick={() => setIsBulkProcessOpen(true)} className="bg-primary hover:bg-primary/90">
                                     Bulk Actions ({selectedClaimIds.size})
                                 </Button>

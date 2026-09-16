@@ -14,7 +14,7 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert"
 import { Separator } from "@/components/ui/separator"
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, useRef } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { useToast } from "@/hooks/use-toast"
 import type { User, IncentiveClaim, Author } from "@/types"
@@ -29,19 +29,20 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge"
 import { Label } from "@/components/ui/label"
 import { AuthorSearch } from "./author-search"
+import { extractBookIQACParams } from "@/lib/iqac-autofill"
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024 // 10 MB
 
 const bookSchema = z
   .object({
-    bookApplicationType: z.enum(["Book Chapter", "Book"], { required_error: "Please select an application type." }),
-    publicationTitle: z.string().min(3, "Title is required."),
+    bookApplicationType: z.enum(["Book Chapter", "Book"], { required_error: "Please specify whether you are claiming for a 'Book Chapter' or a 'Full Book'." }),
+    publicationTitle: z.string().min(3, "Please enter the complete title of your publication or chapter (must be at least 3 characters long)."),
     authors: z
       .array(
         z
           .object({
-            name: z.string().min(2, "Author name is required."),
-            email: z.string().email("Invalid email format.").or(z.literal("")),
+            name: z.string().min(2, "Author name must be a complete name (at least 2 characters long)."),
+            email: z.string().email("Please enter a valid email address (e.g. name@domain.com) for this author.").or(z.literal("")),
             uid: z.string().optional().nullable(),
             role: z.enum([
               "First Author",
@@ -55,87 +56,190 @@ const bookSchema = z
             status: z.enum(["approved", "pending", "Applied"]),
           })
           .refine((data) => data.isExternal || !!data.email, {
-            message: "Email is required for internal authors.",
+            message: "Internal authors must have a valid email address to verify their university affiliation.",
             path: ["email"],
           })
       )
-      .min(1, "At least one author is required.")
+      .min(1, "You must list at least one author (the primary claimant).")
       .refine(
         (data) => {
           const firstAuthors = data.filter((author) => author.role === "First Author" || author.role === "First & Corresponding Author")
           return firstAuthors.length <= 1
         },
-        { message: "Only one author can be designated as the First Author.", path: ["authors"] }
+        { message: "A publication can only have one primary 'First Author' or 'First & Corresponding Author'. Please adjust roles accordingly.", path: ["authors"] }
       ),
     bookTitleForChapter: z.string().optional(),
     bookEditor: z.string().optional(),
-    totalPuStudents: z.coerce.number().nonnegative("Number of students cannot be negative.").optional(),
+    totalPuStudents: z.coerce.number().nonnegative("The count of university students involved cannot be a negative value.").optional(),
     puStudentNames: z.string().optional(),
-    bookChapterPages: z.coerce.number().nonnegative("Page count cannot be negative.").optional(),
-    bookTotalPages: z.coerce.number().nonnegative("Page count cannot be negative.").optional(),
-    bookTotalChapters: z.coerce.number().nonnegative("Chapter count cannot be negative.").optional(),
-    chaptersInSameBook: z.coerce.number().nonnegative("Chapter count cannot be negative.").optional(),
-    publicationYear: z.coerce.number().min(1900, "Please enter a valid year.").max(new Date().getFullYear(), "Year cannot be in the future."),
-    publisherName: z.string().min(2, "Publisher name is required."),
+    bookChapterPages: z.coerce.number().nonnegative("The chapter page count cannot be a negative value.").optional(),
+    bookTotalPages: z.coerce.number().nonnegative("The total book page count cannot be a negative value.").optional(),
+    bookTotalChapters: z.coerce.number().nonnegative("The total book chapter count cannot be a negative value.").optional(),
+    chaptersInSameBook: z.coerce.number().nonnegative("The count of chapters in the same book cannot be a negative value.").optional(),
+    publicationYear: z.coerce.number().min(1900, "Please enter a valid four-digit publication year (1900 or later).").max(new Date().getFullYear(), "The publication year cannot be in the future."),
+    publisherName: z.string().min(2, "Please enter the full, official name of the publishing house."),
     publisherCity: z.string().optional(),
     publisherCountry: z.string().optional(),
-    publisherType: z.enum(["National", "International"], { required_error: "Publisher type is required." }),
+    publisherType: z.enum(["National", "International"], { required_error: "Please specify whether this is a 'National' or 'International' publisher." }),
     isScopusIndexed: z.boolean().optional(),
-    authorRole: z.enum(["Editor", "Author"]).optional(),
+    indexType: z.enum(["wos", "scopus", "both", "sci", "other", "esci"]).optional(),
+    wosLink: z.string().url("Please enter the full, valid URL link to the Web of Science record of your chapter.").optional().or(z.literal("")),
+    scopusLink: z.string()
+      .url("Please enter the full, valid URL link to the Scopus record of your chapter.")
+      .refine(
+        (val) => {
+          if (!val) return true;
+          try {
+            const url = new URL(val);
+            return (
+              url.hostname === "www.scopus.com" ||
+              url.hostname === "scopus.com" ||
+              url.hostname.endsWith(".scopus.com") ||
+              (url.hostname.includes("scopus") && url.hostname.endsWith("knimbus.com"))
+            );
+          } catch {
+            return false;
+          }
+        },
+        { message: "Please enter a valid link of your chapter from Scopus Database (or Scopus Knimbus proxy URL)." }
+      )
+      .refine(
+        (val) => {
+          if (!val) return true;
+          try {
+            const url = new URL(val);
+            const path = url.pathname.toLowerCase();
+            const search = url.search.toLowerCase();
+            const isAuthorProfile =
+              path.includes('/authid/') ||
+              path.includes('/author/') ||
+              path.includes('authid') ||
+              search.includes('authorid=') ||
+              search.includes('authid=');
+            return !isAuthorProfile;
+          } catch {
+            const lower = val.toLowerCase();
+            return !lower.includes('/authid/') && !lower.includes('authorid=') && !lower.includes('/author/');
+          }
+        },
+        { message: "This is a Scopus Author profile link. Link should be of format: https://www.scopus.com/pages/publications/..." }
+      )
+      .refine(
+        (val) => {
+          if (!val) return true;
+          try {
+            const url = new URL(val);
+            const path = url.pathname.toLowerCase();
+            return path.includes('/pages/publications/') || path.includes('/record/display.uri');
+          } catch {
+            const lower = val.toLowerCase();
+            return lower.includes('/pages/publications/') || lower.includes('/record/display.uri');
+          }
+        },
+        { message: "Link should be of this format: https://www.scopus.com/pages/publications/..." }
+      )
+      .optional()
+      .or(z.literal("")),
+    authorRole: z.enum(["Editor", "Author"], { required_error: "Please select your role in this book project (either 'Author' or 'Editor')." }),
     publicationMode: z.enum(["Print Only", "Electronic Only", "Print & Electronic"]).optional(),
     isbnPrint: z.string().optional(),
     isbnElectronic: z.string().optional(),
-    publisherWebsite: z.string().url("Please enter a valid URL.").optional().or(z.literal("")),
-    bookProof: z.any().optional().refine((files) => !files?.[0] || files?.[0]?.size <= MAX_FILE_SIZE, "File must be less than 10 MB."),
-    scopusProof: z.any().optional().refine((files) => !files?.[0] || files?.[0]?.size <= 2 * 1024 * 1024, "File must be less than 2 MB."),
-    publicationOrderInYear: z.enum(["First", "Second", "Third", "Fourth", "Fifth", "Sixth", "Seventh", "Eighth", "Ninth", "Tenth"]).optional(),
-    bookType: z.enum(["Textbook", "Reference Book"], { required_error: "Please select the book type." }),
-    bookSelfDeclaration: z.boolean().refine((val) => val === true, { message: "You must agree to the self-declaration." }),
+    publisherWebsite: z.string().url("Please enter a valid website address (starting with http:// or https://).").min(1, "Publication link (URL) is required."),
+    bookProof: z.any().optional().refine((files) => !files?.[0] || files?.[0]?.size <= MAX_FILE_SIZE, "The uploaded proof file size exceeds the 10 MB limit."),
+    bookAiReportProof: z.any().optional().refine((files) => !files?.[0] || files?.[0]?.size <= MAX_FILE_SIZE, "The uploaded AI report proof file size exceeds the 10 MB limit."),
+    scopusProof: z.any().optional().refine((files) => !files?.[0] || files?.[0]?.size <= 2 * 1024 * 1024, "The uploaded Scopus proof file size exceeds the 2 MB limit."),
+    publicationOrderInYear: z.enum(["First", "Second", "Third", "Fourth", "Fifth", "Sixth", "Seventh", "Eighth", "Ninth", "Tenth"], { required_error: "Please select the publication order in the current year." }),
+    bookType: z.enum(["Textbook", "Reference Book"], { required_error: "Please select a valid category for your book (either 'Textbook' or 'Reference Book')." }),
+    bookSelfDeclaration: z.boolean().refine((val) => val === true, { message: "You must read and check the self-declaration box to confirm you have not claimed incentives elsewhere." }),
     doi: z.string().optional(),
-    authorPosition: z.enum(["1st", "2nd", "3rd", "4th", "5th", "6th", "7th", "8th", "9th", "10th"]).optional(),
+    authorPosition: z.enum(["1st", "2nd", "3rd", "4th", "5th", "6th", "7th", "8th", "9th", "10th"], { required_error: "Please select your position." }),
     bookProofUrl: z.string().optional(),
+    bookAiReportProofUrl: z.string().optional(),
     scopusProofUrl: z.string().optional(),
   })
   .refine((data) => !(data.bookApplicationType === "Book Chapter") || (!!data.bookTitleForChapter && data.bookTitleForChapter.length > 2), {
-    message: "Book title is required for a book chapter.",
+    message: "Please enter the source book title where your chapter is published.",
     path: ["bookTitleForChapter"],
   })
 
   .refine((data) => !(data.bookApplicationType === "Book") || (!data.publisherCity || data.publisherCity.length > 0), {
-    message: "Publisher city must be valid if provided.",
+    message: "Please enter a valid city name for the publisher.",
     path: ["publisherCity"],
   })
   .refine((data) => !(data.bookApplicationType === "Book") || (!data.publisherCountry || data.publisherCountry.length > 0), {
-    message: "Publisher country must be valid if provided.",
+    message: "Please enter a valid country name for the publisher.",
     path: ["publisherCountry"],
   })
   .refine((data) => !(data.bookApplicationType === "Book") || !!data.publicationMode, {
-    message: "Mode of publication is required for book publications.",
+    message: "Please select the mode of publication (Print, Electronic, or Both).",
     path: ["publicationMode"],
   })
   .refine((data) => !(data.bookApplicationType === "Book" && (data.publicationMode === "Print Only" || data.publicationMode === "Print & Electronic")) || (!!data.isbnPrint && data.isbnPrint.length >= 10), {
-    message: "A valid Print ISBN is required.",
+    message: "Please enter a valid Print ISBN (at least 10 digits/characters long).",
     path: ["isbnPrint"],
   })
   .refine((data) => !(data.bookApplicationType === "Book" && (data.publicationMode === "Electronic Only" || data.publicationMode === "Print & Electronic")) || (!!data.isbnElectronic && data.isbnElectronic.length >= 10), {
-    message: "A valid Electronic ISBN is required.",
+    message: "Please enter a valid Electronic ISBN (at least 10 digits/characters long).",
     path: ["isbnElectronic"],
   })
-  .refine((data) => !(data.bookApplicationType === "Book") || (!data.authorRole || data.authorRole.length > 0), {
-    message: "Applicant type must be valid if provided.",
-    path: ["authorRole"],
-  })
+
   .refine((data) => !(data.bookApplicationType === "Book") || (data.bookTotalChapters === undefined || data.bookTotalChapters >= 0), {
-    message: "Total chapters must be valid if provided.",
+    message: "The total number of Chapters must be a valid positive number.",
     path: ["bookTotalChapters"],
   })
   .refine(data => data.bookProofUrl || (data.bookProof && data.bookProof.length > 0), {
-    message: "Proof of publication is required.",
+    message: "Please upload a high-quality PDF or image showing the book cover, title page, and table of contents to serve as proof of publication.",
     path: ["bookProof"],
   })
-  .refine(data => !data.isScopusIndexed || data.scopusProofUrl || (data.scopusProof && data.scopusProof.length > 0), {
-    message: "Proof of Scopus indexing is required if selected.",
+  .refine(
+    (data) => {
+      return !!data.indexType;
+    },
+    { message: "Please select the indexing/listing status of your publication.", path: ["indexType"] }
+  )
+  .refine(data => {
+    const isScopus = data.indexType === 'scopus' || data.indexType === 'both';
+    return !isScopus || data.scopusProofUrl || (data.scopusProof && data.scopusProof.length > 0);
+  }, {
+    message: "You marked this book as Scopus-indexed. Please upload a screenshot or PDF showing the active Scopus listing as proof.",
     path: ["scopusProof"],
+  })
+  .refine(data => {
+    const isWos = data.indexType === 'wos' || data.indexType === 'both';
+    const isChapter = data.bookApplicationType === 'Book Chapter';
+    return !(isChapter && isWos) || (!!data.wosLink && data.wosLink.length > 0);
+  }, {
+    message: "Please enter the Web of Science record URL.",
+    path: ["wosLink"]
+  })
+  .refine(data => {
+    const isScopus = data.indexType === 'scopus' || data.indexType === 'both';
+    const isChapter = data.bookApplicationType === 'Book Chapter';
+    return !(isChapter && isScopus) || (!!data.scopusLink && data.scopusLink.length > 0);
+  }, {
+    message: "Please enter the Scopus record URL.",
+    path: ["scopusLink"]
+  })
+  .refine(data => !(data.bookApplicationType === "Book Chapter") || (!!data.doi && data.doi.trim().length > 0), {
+    message: "DOI is mandatory for Book Chapters.",
+    path: ["doi"]
+  })
+  .refine(
+    (data) => !(data.bookApplicationType === "Book Chapter") || (data.chaptersInSameBook !== undefined && data.chaptersInSameBook > 0),
+    { message: "Chapters in same book count is required and must be a positive number.", path: ["chaptersInSameBook"] }
+  )
+  .refine(
+    (data) => !(data.bookApplicationType === "Book Chapter") || (data.bookChapterPages !== undefined && data.bookChapterPages > 0),
+    { message: "Chapter page count is required and must be a positive number.", path: ["bookChapterPages"] }
+  )
+  .refine(data => {
+    if (data.publisherType === "National") {
+      return !!data.bookAiReportProofUrl || (!!data.bookAiReportProof && data.bookAiReportProof.length > 0);
+    }
+    return true;
+  }, {
+    message: "For National publishers, uploading the AI Reports of the Book (routed via Library) is mandatory.",
+    path: ["bookAiReportProof"],
   });
 
 type BookFormValues = z.infer<typeof bookSchema>
@@ -145,6 +249,13 @@ const coAuthorRoles: Author["role"][] = [
   "Corresponding Author",
   "Co-Author",
   "First & Corresponding Author",
+]
+
+const indexTypeOptions = [
+  { value: "wos", label: "WoS" },
+  { value: "scopus", label: "Scopus" },
+  { value: "both", label: "Both" },
+  { value: 'other', label: 'Other' },
 ]
 
 function ReviewDetails({
@@ -290,11 +401,21 @@ function ReviewDetails({
               </div>
             </div>
 
-            {data.isScopusIndexed && (
+            {data.indexType && (
               <div className="bg-primary/5 p-3 rounded-xl border border-primary/10">
                 <p className="text-primary font-bold flex items-center gap-1.5 text-xs mb-0.5">
-                  <Award className="h-3.5 w-3.5" /> Scopus Indexed
+                  <Award className="h-3.5 w-3.5" /> Indexing Status: {data.indexType.toUpperCase()}
                 </p>
+                {data.wosLink && (
+                  <p className="text-xs text-muted-foreground mt-1 truncate">
+                    <strong>WoS URL:</strong> <a href={data.wosLink} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">{data.wosLink}</a>
+                  </p>
+                )}
+                {data.scopusLink && (
+                  <p className="text-xs text-muted-foreground mt-1 truncate">
+                    <strong>Scopus URL:</strong> <a href={data.scopusLink} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">{data.scopusLink}</a>
+                  </p>
+                )}
               </div>
             )}
 
@@ -315,6 +436,12 @@ function ReviewDetails({
                   <FileText className="h-3.5 w-3.5 text-primary" />
                   <span className="truncate flex-1">Book Proof: {bookProofFile?.name || "Attached (Draft URL)"}</span>
                 </div>
+                {data.publisherType === "National" && (data.bookAiReportProof?.[0] || data.bookAiReportProofUrl) && (
+                  <div className="flex items-center gap-2 bg-background p-2 rounded-lg border text-xs shadow-sm">
+                    <FileText className="h-3.5 w-3.5 text-primary" />
+                    <span className="truncate flex-1">AI Report Proof: {(data.bookAiReportProof?.[0] as File)?.name || "Attached (Draft URL)"}</span>
+                  </div>
+                )}
                 {(scopusProofFile || data.scopusProofUrl) && (
                   <div className="flex items-center gap-2 bg-background p-2 rounded-lg border text-xs shadow-sm">
                     <FileText className="h-3.5 w-3.5 text-primary" />
@@ -344,6 +471,9 @@ export function BookForm() {
   const [isLoadingDraft, setIsLoadingDraft] = useState(true)
   const [showLogic, setShowLogic] = useState(false)
   const [isFetching, setIsFetching] = useState(false)
+  const [rejectionComments, setRejectionComments] = useState<string | null>(null)
+  const [isPrefilledFromIQAC, setIsPrefilledFromIQAC] = useState(false)
+  const lastAutoFetchedRef = useRef<string>('')
 
   const getBookLogicBreakdown = (data: any) => {
     try {
@@ -424,6 +554,9 @@ export function BookForm() {
       bookApplicationType: undefined,
       publicationTitle: "",
       authors: [],
+      indexType: undefined,
+      wosLink: "",
+      scopusLink: "",
       bookTitleForChapter: "",
       bookEditor: "",
       totalPuStudents: 0,
@@ -438,24 +571,86 @@ export function BookForm() {
       publisherCountry: "",
       publisherType: undefined,
       isScopusIndexed: false,
-      authorRole: undefined,
+      authorRole: "Author" as any,
       publicationMode: undefined,
       isbnPrint: "",
       isbnElectronic: "",
       doi: "",
       bookProof: undefined,
+      bookAiReportProof: undefined,
       scopusProof: undefined,
-      publicationOrderInYear: "",
+      publicationOrderInYear: undefined,
       bookType: undefined,
       bookSelfDeclaration: false,
       authorPosition: "1st" as any,
+      bookProofUrl: "",
+      bookAiReportProofUrl: "",
+      scopusProofUrl: "",
     },
   })
+
+  const formControl = form.control as any;
 
   const { fields, append, remove, update } = useFieldArray({
     control: form.control,
     name: "authors",
   })
+
+  const formValues = form.watch();
+
+  const clearLocalBackup = useCallback(() => {
+    if (user) {
+      localStorage.removeItem(`local_draft_book_form_${user.uid}`);
+    }
+  }, [user]);
+
+  // Auto-save form values to localStorage
+  useEffect(() => {
+    if (!user || isLoadingDraft) return;
+    const key = `local_draft_book_form_${user.uid}`;
+
+    const valuesToSave = {
+      ...formValues,
+      bookProof: undefined,
+      scopusProof: undefined,
+    };
+
+    localStorage.setItem(key, JSON.stringify(valuesToSave));
+  }, [formValues, user, isLoadingDraft]);
+
+  // Prompt to restore local backup on load
+  useEffect(() => {
+    if (!user || isLoadingDraft) return;
+    const key = `local_draft_book_form_${user.uid}`;
+    const backupStr = localStorage.getItem(key);
+    if (backupStr) {
+      try {
+        const backup = JSON.parse(backupStr);
+        if (backup.publicationTitle && backup.publicationTitle.length > 3 && backup.publicationTitle !== form.getValues('publicationTitle')) {
+          toast({
+            title: "Unsaved Changes Found",
+            description: "We found unsaved changes from your previous session. Do you want to restore them?",
+            duration: 15000,
+            action: (
+              <Button
+                variant="default"
+                size="sm"
+                className="bg-primary text-primary-foreground font-bold hover:bg-primary/95"
+                onClick={() => {
+                  form.reset(backup);
+                  toast({ title: "Restored", description: "Your details have been successfully recovered." });
+                }}
+              >
+                Restore
+              </Button>
+            ),
+          });
+        }
+      } catch (e) {
+        console.error("Failed to parse local backup:", e);
+      }
+    }
+  }, [user, isLoadingDraft, form, toast]);
 
   const calculate = useCallback(async () => {
     const formValues = form.getValues()
@@ -467,20 +662,24 @@ export function BookForm() {
     }
   }, [form])
 
-  const handleFetchData = async (source: 'scopus' | 'wos') => {
+  const handleFetchData = async (source: 'scopus' | 'wos', isAuto: boolean = false): Promise<boolean> => {
     const doi = form.getValues('doi');
     if (!doi) {
-      toast({ variant: 'destructive', title: 'No DOI Provided', description: 'Please enter a DOI first.' });
-      return;
+      if (!isAuto) toast({ variant: 'destructive', title: 'No DOI Provided', description: 'Please enter a DOI first.' });
+      return false;
     }
 
     if (!user) {
-      toast({ variant: 'destructive', title: 'Not Logged In', description: 'Could not identify the claimant.' });
-      return;
+      if (!isAuto) toast({ variant: 'destructive', title: 'Not Logged In', description: 'Could not identify the claimant.' });
+      return false;
     }
 
+    lastAutoFetchedRef.current = `${source}:${doi.trim().toLowerCase()}`;
     setIsFetching(true);
-    toast({ title: `Fetching ${source.toUpperCase()} Data`, description: 'Please wait, this may take a moment...' });
+    toast({
+      title: isAuto ? `Auto-Fetching ${source.toUpperCase()} Data` : `Fetching ${source.toUpperCase()} Data`,
+      description: isAuto ? 'Indexing and DOI detected. Retrieving chapter details...' : 'Please wait, this may take a moment...'
+    });
 
     try {
       let result;
@@ -516,17 +715,27 @@ export function BookForm() {
           form.setValue('isbnElectronic', data.electronicIssn || data.isbnElectronic, { shouldValidate: true });
         }
 
-        // Auto-detect Scopus indexing if fetched via Scopus
+        // Auto-detect indexing if fetched via API
         if (source === 'scopus') {
+          form.setValue('indexType', 'scopus', { shouldValidate: true });
           form.setValue('isScopusIndexed', true, { shouldValidate: true });
+          if (form.getValues('bookApplicationType') === 'Book Chapter') {
+            form.setValue('publisherType', 'International', { shouldValidate: true });
+          }
+        } else if (source === 'wos') {
+          form.setValue('indexType', 'wos', { shouldValidate: true });
+          form.setValue('isScopusIndexed', false, { shouldValidate: true });
         }
 
         toast({ title: 'Success', description: `Book chapter fields have been pre-filled from ${source.toUpperCase()}.` });
+        return true;
       } else {
-        toast({ variant: 'destructive', title: 'Error', description: result.error || `Failed to fetch data from ${source.toUpperCase()}.` });
+        if (!isAuto) toast({ variant: 'destructive', title: 'Error', description: result.error || `Failed to fetch data from ${source.toUpperCase()}.` });
+        return false;
       }
     } catch (error: any) {
-      toast({ variant: 'destructive', title: 'Error', description: error.message || 'An unexpected error occurred.' });
+      if (!isAuto) toast({ variant: 'destructive', title: 'Error', description: error.message || 'An unexpected error occurred.' });
+      return false;
     } finally {
       setIsFetching(false);
     }
@@ -576,6 +785,9 @@ export function BookForm() {
             const draftData = result.data as any
             form.reset({
               ...draftData,
+              indexType: draftData.indexType || undefined,
+              wosLink: draftData.wosLink || "",
+              scopusLink: draftData.scopusLink || "",
               publicationYear: draftData.bookPublicationYear || new Date().getFullYear(),
               authors: draftData.authors || [],
               doi: draftData.doi || "",
@@ -588,8 +800,18 @@ export function BookForm() {
               bookTotalChapters: draftData.bookTotalChapters ?? 0,
               chaptersInSameBook: draftData.chaptersInSameBook ?? 1,
               bookProof: undefined,
+              bookAiReportProof: undefined,
+              bookAiReportProofUrl: draftData.bookAiReportProofUrl || "",
               scopusProof: undefined,
             })
+            if (draftData.doi && draftData.indexType) {
+              lastAutoFetchedRef.current = `${draftData.indexType}:${draftData.doi.trim().toLowerCase()}`;
+            }
+            // Check if there are rejection comments in approvals
+            const lastApproval = draftData.approvals?.filter((a: any) => a != null).reverse().find((a: any) => a.status === 'Not Approved');
+            if (lastApproval?.comments) {
+              setRejectionComments(lastApproval.comments);
+            }
           } else {
             toast({ variant: "destructive", title: result.error || "Draft Not Found" })
           }
@@ -604,20 +826,166 @@ export function BookForm() {
     }
   }, [searchParams, user, form, toast])
 
+  // Extract and pre-fill form fields if data is passed from IQAC Portal
+  useEffect(() => {
+    if (!user || isLoadingDraft) return
+    const claimId = searchParams.get('claimId')
+    if (claimId) return
+
+    const iqacData = extractBookIQACParams(searchParams)
+    if (iqacData) {
+      const currentValues = form.getValues()
+      const newValues: any = {
+        ...currentValues,
+        ...iqacData,
+      }
+
+      if (iqacData.authors && iqacData.authors.length > 0) {
+        newValues.authors = iqacData.authors
+      }
+
+      form.reset(newValues)
+      setIsPrefilledFromIQAC(true)
+      toast({
+        title: "IQAC Integration",
+        description: "Book details have been pre-filled from IQAC Portal.",
+      })
+    }
+  }, [user, isLoadingDraft, searchParams, form, toast])
+
   const bookApplicationType = form.watch("bookApplicationType")
   const publicationMode = form.watch("publicationMode")
+  const indexType = form.watch("indexType")
   const isScopusIndexed = form.watch("isScopusIndexed")
+  const publisherType = form.watch("publisherType")
+  const watchedDoi = form.watch("doi")
+
+  // Auto-run fetching from Scopus/WoS as soon as Indexing and DOI are available for Book Chapter
+  useEffect(() => {
+    if (isLoadingDraft || isFetching || !user) return;
+    if (bookApplicationType !== 'Book Chapter') return;
+    if (!watchedDoi || !indexType || indexType === 'other') return;
+
+    const trimmedDoi = watchedDoi.trim();
+    const isValidDoi = trimmedDoi.length >= 7 && (trimmedDoi.startsWith('10.') || /10\.\d{4,9}\//i.test(trimmedDoi) || trimmedDoi.includes('doi.org/10.'));
+    if (!isValidDoi) return;
+
+    let targetSource: 'scopus' | 'wos' | 'both' | null = null;
+    if (indexType === 'scopus') targetSource = 'scopus';
+    else if (indexType === 'wos') targetSource = 'wos';
+    else if (indexType === 'both') targetSource = 'both';
+
+    if (!targetSource) return;
+
+    const key = `${targetSource}:${trimmedDoi.toLowerCase()}`;
+    if (lastAutoFetchedRef.current === key) return;
+
+    const timer = setTimeout(async () => {
+      lastAutoFetchedRef.current = key;
+      if (targetSource === 'scopus') {
+        await handleFetchData('scopus', true);
+      } else if (targetSource === 'wos') {
+        await handleFetchData('wos', true);
+      } else if (targetSource === 'both') {
+        const scopusOk = await handleFetchData('scopus', true);
+        if (!scopusOk) {
+          await handleFetchData('wos', true);
+        }
+      }
+    }, 700);
+
+    return () => clearTimeout(timer);
+  }, [watchedDoi, indexType, bookApplicationType, isLoadingDraft, isFetching, user]);
+
+  useEffect(() => {
+    const isScopus = indexType === 'scopus' || indexType === 'both';
+    if (form.getValues('isScopusIndexed') !== isScopus) {
+      form.setValue('isScopusIndexed', isScopus, { shouldValidate: true });
+    }
+  }, [indexType, form]);
 
   const handleProceedToReview = async () => {
     const isValid = await form.trigger()
     if (isValid) {
       setStep("review")
     } else {
-      console.error("FORM VALIDATION ERRORS:", form.formState.errors)
+      console.error("FORM VALIDATION ERRORS:", JSON.stringify(form.formState.errors, null, 2))
+
+      const errorKeys = Object.keys(form.formState.errors);
+      const getReadableFieldName = (key: string) => {
+        const mapping: Record<string, string> = {
+          bookApplicationType: "Application Type",
+          publicationTitle: "Title of the Publication/Chapter",
+          bookTitleForChapter: "Source Book Title",
+          bookEditor: "Book Editor",
+          totalPuStudents: "Total PU Students",
+          puStudentNames: "Student Names",
+          bookChapterPages: "Chapter Pages",
+          bookTotalPages: "Total Book Pages",
+          bookTotalChapters: "Total Book Chapters",
+          chaptersInSameBook: "Chapters in Same Book",
+          publicationYear: "Year of Publication",
+          publisherName: "Publisher Name",
+          publisherCity: "Publisher City",
+          publisherCountry: "Publisher Country",
+          publisherType: "Publisher Type",
+          isScopusIndexed: "Scopus Indexed",
+          indexType: "Indexing / Listing Status",
+          wosLink: "Web of Science URL",
+          scopusLink: "Scopus URL",
+          authorRole: "Your Role (Author/Editor)",
+          publicationMode: "Mode of Publication",
+          isbnPrint: "Print ISBN",
+          isbnElectronic: "Electronic ISBN",
+          publisherWebsite: "Publication Link (URL)",
+          bookProof: "Proof of Publication File",
+          scopusProof: "Proof of Scopus Indexing File",
+          publicationOrderInYear: "Publication Order in Year",
+          bookType: "Book Category",
+          bookSelfDeclaration: "Self Declaration",
+          doi: "DOI",
+          authorPosition: "Your Author Position",
+          authors: "Authors List"
+        };
+        return mapping[key] || key;
+      };
+
+      const getErrorMessage = (err: any): string => {
+        if (!err) return "Invalid value";
+        if (err.message) return err.message;
+        if (Array.isArray(err)) {
+          for (const subErr of err) {
+            if (subErr) {
+              const messages: string[] = [];
+              for (const [subKey, subVal] of Object.entries(subErr)) {
+                if (subVal && typeof subVal === 'object' && 'message' in subVal) {
+                  messages.push((subVal as any).message);
+                }
+              }
+              if (messages.length > 0) return messages.join(", ");
+            }
+          }
+        }
+        return "Invalid value";
+      };
+
+      const errorMessages = Object.entries(form.formState.errors)
+        .map(([key, err]: [string, any]) => {
+          const fieldName = getReadableFieldName(key);
+          const msg = getErrorMessage(err);
+          return `${fieldName}: ${msg}`;
+        })
+        .slice(0, 3)
+        .join("\n");
+
+      const toastDescription = errorMessages
+        ? `Please correct the following fields:\n${errorMessages}${errorKeys.length > 3 ? `\n...and ${errorKeys.length - 3} more field(s).` : ''}`
+        : "Please review the highlighted fields in the form and correct the validation errors before proceeding.";
+
       toast({
         variant: "destructive",
         title: "Validation Error",
-        description: "Please correct the errors before proceeding. Check the console for details.",
+        description: toastDescription,
       })
     }
   }
@@ -651,12 +1019,14 @@ export function BookForm() {
       }
 
       const bookProofFile = data.bookProof?.[0]
+      const bookAiReportProofFile = data.bookAiReportProof?.[0]
       const scopusProofFile = data.scopusProof?.[0]
 
       const bookProofUrl = await uploadFileHelper(bookProofFile, "book-proof") || data.bookProofUrl
+      const bookAiReportProofUrl = await uploadFileHelper(bookAiReportProofFile, "book-ai-report-proof") || data.bookAiReportProofUrl
       const scopusProofUrl = await uploadFileHelper(scopusProofFile, "book-scopus-proof") || data.scopusProofUrl
 
-      const { bookProof, scopusProof, ...restOfData } = data
+      const { bookProof, bookAiReportProof, scopusProof, ...restOfData } = data
 
       const optimizedAuthors = (data.authors || []).map((author) => ({
         name: author.name,
@@ -682,6 +1052,9 @@ export function BookForm() {
         bookPublicationYear: data.publicationYear,
         authorRole: data.authorRole,
         isScopusIndexed: data.isScopusIndexed,
+        indexType: data.indexType,
+        wosLink: data.wosLink || undefined,
+        scopusLink: data.scopusLink || undefined,
         publicationMode: data.publicationMode,
         isbnPrint: data.isbnPrint,
         isbnElectronic: data.isbnElectronic,
@@ -710,6 +1083,7 @@ export function BookForm() {
       }
 
       if (bookProofUrl) claimData.bookProofUrl = bookProofUrl
+      if (bookAiReportProofUrl) claimData.bookAiReportProofUrl = bookAiReportProofUrl
       if (scopusProofUrl) claimData.scopusProofUrl = scopusProofUrl
 
       const claimId = searchParams.get("claimId")
@@ -720,6 +1094,7 @@ export function BookForm() {
         title: status === "Draft" ? "Draft Saved!" : "Success",
         description: status === "Draft" ? "You can continue editing later." : "Your book incentive claim has been submitted.",
       })
+      clearLocalBackup()
       router.push("/dashboard/incentive-claim" + (status === "Pending" ? "?tab=my-claims" : ""))
     } catch (error: any) {
       toast({ variant: "destructive", title: "Error", description: error.message || "Failed to submit claim. Please try again." })
@@ -796,6 +1171,16 @@ export function BookForm() {
         <CardContent className="pt-8 bg-card">
           <Form {...form}>
             <form className="space-y-10">
+              {isPrefilledFromIQAC && (
+                <Alert className="bg-emerald-500/10 border-emerald-500/30 text-emerald-700 dark:text-emerald-400 rounded-xl">
+                  <CheckCircle2 className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
+                  <AlertTitle className="font-bold">IQAC Integration: Data Pre-filled</AlertTitle>
+                  <AlertDescription className="mt-1">
+                    This form has been automatically populated with book data passed from the IQAC Portal. Please review all details before submitting.
+                  </AlertDescription>
+                </Alert>
+              )}
+
               {(bankDetailsMissing || orcidOrMisIdMissing) && (
                 <Alert variant="destructive" className="rounded-2xl border-2">
                   <AlertCircle className="h-5 w-5" />
@@ -807,6 +1192,16 @@ export function BookForm() {
                         <Link href="/dashboard/settings">Settings</Link>
                       </Button>
                     </div>
+                  </AlertDescription>
+                </Alert>
+              )}
+
+              {rejectionComments && (
+                <Alert variant="destructive" className="bg-destructive/10 border-destructive/20 text-destructive rounded-xl ring-1 ring-destructive/10">
+                  <AlertCircle className="h-5 w-5" />
+                  <AlertTitle className="font-bold">Prior Rejection Comments</AlertTitle>
+                  <AlertDescription className="mt-1">
+                    This claim was previously not approved with reviewer comments: <strong>"{rejectionComments}"</strong>. Please address these comments before resubmitting.
                   </AlertDescription>
                 </Alert>
               )}
@@ -833,10 +1228,10 @@ export function BookForm() {
 
                 <FormField
                   name="bookApplicationType"
-                  control={form.control}
+                  control={formControl}
                   render={({ field }) => (
                     <FormItem className="space-y-4">
-                      <FormLabel className="text-base font-semibold">Application Type</FormLabel>
+                      <FormLabel className="text-base font-semibold">Application Type <span className="text-destructive font-black">*</span></FormLabel>
                       <FormControl>
                         <RadioGroup onValueChange={field.onChange} value={field.value || ""} className="flex gap-6">
                           <Label htmlFor="type-chap" className="flex items-center space-x-3 bg-muted/40 px-5 py-3 rounded-xl border border-muted-foreground/10 hover:bg-muted transition-all cursor-pointer [&:has([data-state=checked])]:border-primary [&:has([data-state=checked])]:bg-primary/5">
@@ -855,84 +1250,133 @@ export function BookForm() {
                 />
 
                 <FormField
+                  name="indexType"
+                  control={formControl}
+                  render={({ field }) => (
+                    <FormItem className="space-y-3">
+                      <FormLabel className="text-base font-semibold">Indexing / Listing Status <span className="text-destructive font-black">*</span></FormLabel>
+                      <FormControl>
+                        <div>
+                          <RadioGroup
+                            onValueChange={field.onChange}
+                            value={field.value || ""}
+                            className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-2"
+                            disabled={isSubmitting}
+                          >
+                            {indexTypeOptions.map((option) => (
+                              <Label
+                                key={option.value}
+                                htmlFor={option.value}
+                                className="flex items-center space-x-3 bg-muted/30 px-3 py-3 rounded-xl border hover:bg-muted transition-all cursor-pointer [&:has([data-state=checked])]:border-primary [&:has([data-state=checked])]:bg-primary/5 shadow-sm animate-in fade-in duration-200"
+                              >
+                                <RadioGroupItem value={option.value} id={option.value} />
+                                <span className="font-medium text-sm flex-1">{option.label}</span>
+                              </Label>
+                            ))}
+                          </RadioGroup>
+                        </div>
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                {bookApplicationType === "Book Chapter" && (indexType === "wos" || indexType === "both") && (
+                  <FormField
+                    name="wosLink"
+                    control={formControl}
+                    render={({ field }) => (
+                      <FormItem className="space-y-2 animate-in slide-in-from-top-2">
+                        <FormLabel className="text-base font-semibold">Web of Science URL <span className="text-destructive font-black">*</span></FormLabel>
+                        <FormControl>
+                          <Input
+                            placeholder="https://www.webofscience.com/wos/woscc/full-record/WOS:..."
+                            {...field}
+                            value={field.value || ""}
+                            disabled={isSubmitting}
+                            className="h-12 shadow-sm rounded-lg"
+                          />
+                        </FormControl>
+                        <FormDescription className="text-xs">Please provide the complete Web of Science URL for this book chapter.</FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                )}
+
+                {bookApplicationType === "Book Chapter" && (indexType === "scopus" || indexType === "both") && (
+                  <FormField
+                    name="scopusLink"
+                    control={formControl}
+                    render={({ field }) => (
+                      <FormItem className="space-y-2 animate-in slide-in-from-top-2">
+                        <FormLabel className="text-base font-semibold">Link of your publication from Scopus Database <span className="text-destructive font-black">*</span></FormLabel>
+                        <FormControl>
+                          <Input
+                            placeholder="https://www.scopus.com/pages/publications/..."
+                            {...field}
+                            value={field.value || ""}
+                            onChange={(e) => {
+                              field.onChange(e);
+                              form.trigger("scopusLink");
+                            }}
+                            disabled={isSubmitting}
+                            className="h-12 shadow-sm rounded-lg"
+                          />
+                        </FormControl>
+                        <FormDescription className="text-xs">
+                          Link should be of this format: <span className="font-mono text-primary font-semibold">https://www.scopus.com/pages/publications/...</span>. Do not provide an author profile link. Search for it on{" "}
+                          <a
+                            href="https://www.scopus.com/pages/home#basic"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-primary hover:underline font-semibold"
+                          >
+                            Scopus Home
+                          </a>{" "}
+                          if you do not have the link.
+                        </FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                )}
+
+                <FormField
                   name="publicationTitle"
-                  control={form.control}
+                  control={formControl}
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel className="text-base font-semibold">Title of the {bookApplicationType === "Book Chapter" ? "Chapter" : "Publication"}</FormLabel>
+                      <FormLabel className="text-base font-semibold">Title of the {bookApplicationType === "Book Chapter" ? "Chapter" : "Publication"} <span className="text-destructive font-black">*</span></FormLabel>
                       <FormControl><Input placeholder="Exact title as per book cover" {...field} className="h-12 text-lg shadow-sm" /></FormControl>
                       <FormMessage />
                     </FormItem>
                   )}
                 />
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-8 pt-4">
-                  {bookApplicationType === "Book Chapter" ? (
-                    <>
-                      <FormField
-                        name="bookTitleForChapter"
-                        control={form.control}
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel className="text-base font-semibold">Title of the Source Book</FormLabel>
-                            <FormControl><Input placeholder="Enter the full book name" {...field} className="h-12 shadow-sm" /></FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                      <FormField
-                        name="doi"
-                        control={form.control}
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel className="text-base font-semibold">DOI (Digital Object Identifier)</FormLabel>
-                            <FormControl>
-                              <div className="flex gap-2">
-                                <Input
-                                  placeholder="e.g. 10.1007/978-3-030-12345-6_7"
-                                  {...field}
-                                  value={field.value ?? ""}
-                                  disabled={isSubmitting || isFetching}
-                                  className="h-12 shadow-sm"
-                                />
-                                <div className="flex gap-1">
-                                  <Button
-                                    type="button"
-                                    variant="outline"
-                                    className="h-12 px-3 hover:bg-primary/10 transition-colors rounded-xl font-bold"
-                                    onClick={() => handleFetchData('scopus')}
-                                    disabled={isSubmitting || isFetching || !form.getValues('doi')}
-                                  >
-                                    Scopus
-                                  </Button>
-                                  <Button
-                                    type="button"
-                                    variant="outline"
-                                    className="h-12 px-3 hover:bg-primary/10 transition-colors rounded-xl font-bold"
-                                    onClick={() => handleFetchData('wos')}
-                                    disabled={isSubmitting || isFetching || !form.getValues('doi')}
-                                  >
-                                    WoS
-                                  </Button>
-                                </div>
-                              </div>
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                    </>
-                  ) : (
+                {bookApplicationType === "Book Chapter" && (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-8 pt-4">
+                    <FormField
+                      name="bookTitleForChapter"
+                      control={formControl}
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel className="text-base font-semibold">Title of the Source Book {bookApplicationType === "Book Chapter" && <span className="text-destructive font-black">*</span>}</FormLabel>
+                          <FormControl><Input placeholder="Enter the full book name" {...field} className="h-12 shadow-sm" /></FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
                     <FormField
                       name="doi"
-                      control={form.control}
+                      control={formControl}
                       render={({ field }) => (
-                        <FormItem className="col-span-2">
-                          <FormLabel className="text-base font-semibold">DOI (Digital Object Identifier)</FormLabel>
+                        <FormItem>
+                          <FormLabel className="text-base font-semibold">DOI (Digital Object Identifier) {bookApplicationType === "Book Chapter" && <span className="text-destructive font-black">*</span>}</FormLabel>
                           <FormControl>
                             <div className="flex gap-2">
                               <Input
-                                placeholder="e.g. 10.1007/978-3-030-12345-6"
+                                placeholder="e.g. 10.1007/978-3-030-12345-6_7"
                                 {...field}
                                 value={field.value ?? ""}
                                 disabled={isSubmitting || isFetching}
@@ -964,16 +1408,16 @@ export function BookForm() {
                         </FormItem>
                       )}
                     />
-                  )}
-                </div>
+                  </div>
+                )}
 
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <FormField
                     name="bookType"
-                    control={form.control}
+                    control={formControl}
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel className="text-base font-semibold">Book Category</FormLabel>
+                        <FormLabel className="text-base font-semibold">Book Category <span className="text-destructive font-black">*</span></FormLabel>
                         <Select onValueChange={field.onChange} value={field.value || ""}>
                           <FormControl><SelectTrigger className="h-12"><SelectValue placeholder="Select type" /></SelectTrigger></FormControl>
                           <SelectContent><SelectItem value="Textbook">Textbook</SelectItem><SelectItem value="Reference Book">Reference Book</SelectItem></SelectContent>
@@ -983,11 +1427,35 @@ export function BookForm() {
                     )}
                   />
                   <FormField
+                    name="authorRole"
+                    control={formControl}
+                    render={({ field }) => (
+                      <FormItem className="flex flex-row items-center space-x-4 space-y-0 rounded-2xl border border-primary/10 bg-primary/5 p-5 transition-all hover:bg-primary/10 ring-1 ring-primary/5 col-span-1">
+                        <FormControl>
+                          <Checkbox
+                            checked={field.value === "Editor"}
+                            onCheckedChange={(checked) => field.onChange(checked ? "Editor" : "Author")}
+                            className="h-6 w-6 rounded-lg shadow-inner data-[state=checked]:bg-primary"
+                          />
+                        </FormControl>
+                        <div className="space-y-1 leading-tight">
+                          <FormLabel className="text-sm font-bold text-primary uppercase tracking-wider cursor-pointer select-none">
+                            Is Editor
+                          </FormLabel>
+                          <p className="text-xs font-medium text-muted-foreground/80 leading-relaxed">
+                            Check if you acted as an Editor for this publication (reduces base incentive by 50%).
+                          </p>
+                          <FormMessage />
+                        </div>
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
                     name="publicationYear"
-                    control={form.control}
+                    control={formControl}
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel className="text-base font-semibold">Year of Publication</FormLabel>
+                        <FormLabel className="text-base font-semibold">Year of Publication <span className="text-destructive font-black">*</span></FormLabel>
                         <FormControl><Input type="number" {...field} value={field.value ?? ""} className="h-12 shadow-sm" /></FormControl>
                         <FormMessage />
                       </FormItem>
@@ -995,10 +1463,10 @@ export function BookForm() {
                   />
                   <FormField
                     name="publicationOrderInYear"
-                    control={form.control}
+                    control={formControl}
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel className="text-base font-semibold">Publication Order in Year</FormLabel>
+                        <FormLabel className="text-base font-semibold">Publication Order in Year <span className="text-destructive font-black">*</span></FormLabel>
                         <Select onValueChange={field.onChange} value={field.value || ""}>
                           <FormControl><SelectTrigger className="h-12"><SelectValue placeholder="Select order" /></SelectTrigger></FormControl>
                           <SelectContent>
@@ -1036,10 +1504,10 @@ export function BookForm() {
                     <>
                       <FormField
                         name="bookChapterPages"
-                        control={form.control}
+                        control={formControl}
                         render={({ field }) => (
                           <FormItem>
-                            <FormLabel className="text-base font-semibold">Chapter Pages (Count)</FormLabel>
+                            <FormLabel className="text-base font-semibold">Chapter Pages (Count) <span className="text-destructive font-black">*</span></FormLabel>
                             <FormControl>
                               <Input
                                 type="number"
@@ -1058,10 +1526,10 @@ export function BookForm() {
                       />
                       <FormField
                         name="chaptersInSameBook"
-                        control={form.control}
+                        control={formControl}
                         render={({ field }) => (
                           <FormItem>
-                            <FormLabel className="text-base font-semibold">Chapters in Same Book</FormLabel>
+                            <FormLabel className="text-base font-semibold">Chapters in Same Book <span className="text-destructive font-black">*</span></FormLabel>
                             <FormControl>
                               <Input
                                 type="number"
@@ -1083,7 +1551,7 @@ export function BookForm() {
                     <>
                       <FormField
                         name="bookTotalPages"
-                        control={form.control}
+                        control={formControl}
                         render={({ field }) => (
                           <FormItem>
                             <FormLabel className="text-base font-semibold">Total Pages in Book</FormLabel>
@@ -1105,7 +1573,7 @@ export function BookForm() {
                       />
                       <FormField
                         name="bookTotalChapters"
-                        control={form.control}
+                        control={formControl}
                         render={({ field }) => (
                           <FormItem>
                             <FormLabel className="text-base font-semibold">Total Chapters (Optional)</FormLabel>
@@ -1180,21 +1648,15 @@ export function BookForm() {
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-8 pt-4">
-                  <FormField name="authorPosition" control={form.control} render={({ field }) => (
+                  <FormField name="authorPosition" control={formControl} render={({ field }) => (
                     <FormItem>
-                      <FormLabel className="text-base font-semibold">Your Position</FormLabel>
+                      <FormLabel className="text-base font-semibold">Your Position <span className="text-destructive font-black">*</span></FormLabel>
                       <Select onValueChange={field.onChange} value={field.value || ""}>
                         <FormControl><SelectTrigger className="h-12"><SelectValue placeholder="Select position" /></SelectTrigger></FormControl>
                         <SelectContent className="rounded-xl">
                           {["1st", "2nd", "3rd", "4th", "5th", "6th", "7th", "8th", "9th", "10th"].map(p => <SelectItem key={p} value={p}>{p}</SelectItem>)}
                         </SelectContent>
                       </Select>
-                    </FormItem>
-                  )} />
-                  <FormField name="isScopusIndexed" control={form.control} render={({ field }) => (
-                    <FormItem className="flex flex-row items-center justify-between rounded-xl border border-primary/10 bg-primary/5 p-4 shadow-sm hover:bg-primary/10 transition-all">
-                      <div className="space-y-0.5"><FormLabel className="text-sm font-bold">Scopus Indexed?</FormLabel></div>
-                      <FormControl><Checkbox checked={field.value || false} onCheckedChange={field.onChange} className="h-6 w-6 rounded-lg" /></FormControl>
                     </FormItem>
                   )} />
                 </div>
@@ -1211,22 +1673,22 @@ export function BookForm() {
                 </div>
 
                 <div className="space-y-6">
-                  <FormField name="publisherName" control={form.control} render={({ field }) => (
-                    <FormItem><FormLabel className="text-base font-semibold">Publisher Name</FormLabel><FormControl><Input placeholder="Full name of publishing house" {...field} className="h-12 shadow-sm" /></FormControl><FormMessage /></FormItem>
+                  <FormField name="publisherName" control={formControl} render={({ field }) => (
+                    <FormItem><FormLabel className="text-base font-semibold">Publisher Name <span className="text-destructive font-black">*</span></FormLabel><FormControl><Input placeholder="Full name of publishing house" {...field} className="h-12 shadow-sm" /></FormControl><FormMessage /></FormItem>
                   )} />
 
-                  <FormField name="publisherWebsite" control={form.control} render={({ field }) => (
+                  <FormField name="publisherWebsite" control={formControl} render={({ field }) => (
                     <FormItem>
-                      <FormLabel className="text-base font-semibold">Publication Link (URL)</FormLabel>
+                      <FormLabel className="text-base font-semibold">Publication Link (URL) <span className="text-destructive font-black">*</span></FormLabel>
                       <FormControl><Input placeholder="e.g. https://www.springer.com/book/..." {...field} value={field.value ?? ""} className="h-12 shadow-sm" /></FormControl>
                       <FormMessage />
                     </FormItem>
                   )} />
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                    <FormField name="publisherType" control={form.control} render={({ field }) => (
+                    <FormField name="publisherType" control={formControl} render={({ field }) => (
                       <FormItem className={`space-y-4 ${bookApplicationType !== "Book" ? "col-span-2" : ""}`}>
-                        <FormLabel className="text-base font-semibold">Publisher Scope</FormLabel>
+                        <FormLabel className="text-base font-semibold">Publisher Scope <span className="text-destructive font-black">*</span></FormLabel>
                         <FormControl>
                           <RadioGroup onValueChange={field.onChange} value={field.value} className="flex gap-6">
                             <Label htmlFor="pub-nat" className="flex items-center space-x-3 bg-muted/40 px-5 py-2.5 rounded-xl border border-muted-foreground/10 hover:bg-muted transition-all cursor-pointer [&:has([data-state=checked])]:border-primary [&:has([data-state=checked])]:bg-primary/5">
@@ -1243,9 +1705,9 @@ export function BookForm() {
                     )} />
 
                     {bookApplicationType === "Book" && (
-                      <FormField name="publicationMode" control={form.control} render={({ field }) => (
+                      <FormField name="publicationMode" control={formControl} render={({ field }) => (
                         <FormItem className="animate-in slide-in-from-top-2 duration-300">
-                          <FormLabel className="text-base font-semibold">Publication Mode</FormLabel>
+                          <FormLabel className="text-base font-semibold">Publication Mode <span className="text-destructive font-black">*</span></FormLabel>
                           <Select onValueChange={field.onChange} value={field.value || ""}>
                             <FormControl><SelectTrigger className="h-12"><SelectValue placeholder="Select mode" /></SelectTrigger></FormControl>
                             <SelectContent><SelectItem value="Print Only">Print Only</SelectItem><SelectItem value="Electronic Only">Electronic Only</SelectItem><SelectItem value="Print & Electronic">Print & Electronic</SelectItem></SelectContent>
@@ -1258,10 +1720,10 @@ export function BookForm() {
                   {bookApplicationType === "Book" && (
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-8 animate-in slide-in-from-top-2 duration-300">
                       {(publicationMode === "Print Only" || publicationMode === "Print & Electronic") && (
-                        <FormField name="isbnPrint" control={form.control} render={({ field }) => (<FormItem><FormLabel className="text-base font-semibold">ISBN (Print)</FormLabel><FormControl><Input placeholder="Digit ISBN" {...field} value={field.value ?? ""} className="h-12 shadow-sm" /></FormControl><FormMessage /></FormItem>)} />
+                        <FormField name="isbnPrint" control={formControl} render={({ field }) => (<FormItem><FormLabel className="text-base font-semibold">ISBN (Print) <span className="text-destructive font-black">*</span></FormLabel><FormControl><Input placeholder="Digit ISBN" {...field} value={field.value ?? ""} className="h-12 shadow-sm" /></FormControl><FormMessage /></FormItem>)} />
                       )}
                       {(publicationMode === "Electronic Only" || publicationMode === "Print & Electronic") && (
-                        <FormField name="isbnElectronic" control={form.control} render={({ field }) => (<FormItem><FormLabel className="text-base font-semibold">ISBN (Electronic)</FormLabel><FormControl><Input placeholder="Digit ISBN" {...field} value={field.value ?? ""} className="h-12 shadow-sm" /></FormControl><FormMessage /></FormItem>)} />
+                        <FormField name="isbnElectronic" control={formControl} render={({ field }) => (<FormItem><FormLabel className="text-base font-semibold">ISBN (Electronic) <span className="text-destructive font-black">*</span></FormLabel><FormControl><Input placeholder="Digit ISBN" {...field} value={field.value ?? ""} className="h-12 shadow-sm" /></FormControl><FormMessage /></FormItem>)} />
                       )}
                     </div>
                   )}
@@ -1317,7 +1779,7 @@ export function BookForm() {
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                     <FormField
                       name="totalPuStudents"
-                      control={form.control}
+                      control={formControl}
                       render={({ field }) => (
                         <FormItem>
                           <FormLabel className="text-base font-semibold">No. of Students Involved</FormLabel>
@@ -1331,7 +1793,7 @@ export function BookForm() {
                               className="h-12 shadow-sm"
                             />
                           </FormControl>
-                          <FormDescription className="text-xs">Number of Parul University Goa students who contributed.</FormDescription>
+                          <FormDescription className="text-xs">Number of Parul University students who contributed.</FormDescription>
                           <FormMessage />
                         </FormItem>
                       )}
@@ -1339,7 +1801,7 @@ export function BookForm() {
 
                     <FormField
                       name="puStudentNames"
-                      control={form.control}
+                      control={formControl}
                       render={({ field }) => (
                         <FormItem>
                           <FormLabel className="text-base font-semibold">Student Name(s)</FormLabel>
@@ -1361,9 +1823,9 @@ export function BookForm() {
 
                 <Separator className="bg-muted-foreground/5" />
 
-                <FormField name="bookProof" control={form.control} render={({ field: { value, onChange, ...field } }) => (
+                <FormField name="bookProof" control={formControl} render={({ field: { value, onChange, ...field } }) => (
                   <FormItem className="pt-6">
-                    <FormLabel className="text-base font-semibold">Publication Proof (PDF Binder)</FormLabel>
+                    <FormLabel className="text-base font-semibold">Publication Proof (PDF Binder) <span className="text-destructive font-black">*</span></FormLabel>
                     <FormControl>
                       <Input
                         type="file"
@@ -1378,10 +1840,29 @@ export function BookForm() {
                   </FormItem>
                 )} />
 
-                {isScopusIndexed && (
-                  <FormField name="scopusProof" control={form.control} render={({ field: { value, onChange, ...field } }) => (
+                {publisherType === "National" && (
+                  <FormField name="bookAiReportProof" control={formControl} render={({ field: { value, onChange, ...field } }) => (
                     <FormItem className="pt-6 animate-in slide-in-from-top-2">
-                      <FormLabel className="text-base font-semibold">Scopus Indexing Proof</FormLabel>
+                      <FormLabel className="text-base font-semibold">AI Reports of the Book (routed via Library) <span className="text-destructive font-black">*</span></FormLabel>
+                      <FormControl>
+                        <Input
+                          type="file"
+                          accept=".pdf"
+                          className="h-20 border-dashed border-2 cursor-pointer bg-muted/10 hover:bg-muted/20 file:bg-primary/10 file:text-primary file:border-none file:h-12 file:px-6 file:mr-6 file:rounded-xl group transition-all"
+                          onChange={(e) => onChange(e.target.files)}
+                          {...field}
+                        />
+                      </FormControl>
+                      <FormDescription className="text-[10px] italic">Upload the PDF of AI reports routed via Library (Max 10MB).</FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )} />
+                )}
+
+                {isScopusIndexed && (
+                  <FormField name="scopusProof" control={formControl} render={({ field: { value, onChange, ...field } }) => (
+                    <FormItem className="pt-6 animate-in slide-in-from-top-2">
+                      <FormLabel className="text-base font-semibold">Scopus Indexing Proof <span className="text-destructive font-black">*</span></FormLabel>
                       <FormControl>
                         <Input
                           type="file"
@@ -1397,11 +1878,11 @@ export function BookForm() {
                   )} />
                 )}
 
-                <FormField name="bookSelfDeclaration" control={form.control} render={({ field }) => (
+                <FormField name="bookSelfDeclaration" control={formControl} render={({ field }) => (
                   <FormItem className="flex flex-row items-center space-x-5 space-y-0 rounded-3xl border border-primary/10 bg-primary/5 p-8 transition-all hover:bg-primary/10 ring-1 ring-primary/5">
                     <FormControl><Checkbox checked={field.value || false} onCheckedChange={field.onChange} className="h-6 w-6 rounded-lg shadow-inner data-[state=checked]:bg-primary" /></FormControl>
                     <div className="space-y-1.5 leading-tight">
-                      <FormLabel className="text-sm font-bold text-primary italic uppercase tracking-wider">Applicant Declaration</FormLabel>
+                      <FormLabel className="text-sm font-bold text-primary italic uppercase tracking-wider">Applicant Declaration <span className="text-destructive font-black">*</span></FormLabel>
                       <p className="text-xs font-medium text-muted-foreground/80 leading-relaxed italic">
                         I hereby declare that I am genuinely one of the authors for this {bookApplicationType || "work"} and have not previously claimed any university incentives for this specific publication.
                       </p>

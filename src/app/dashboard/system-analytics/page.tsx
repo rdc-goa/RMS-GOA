@@ -206,7 +206,7 @@ export default function SystemAnalyticsPage() {
           description="Operational reality, governance enforcement, and system adoption metrics."
         />
         <div className="flex items-center gap-2 bg-muted/30 p-1 rounded-lg border">
-           <Badge variant="ghost" className="text-muted-foreground mr-1 font-medium">Time Range</Badge>
+           <Badge variant="outline" className="text-muted-foreground mr-1 font-medium">Time Range</Badge>
            <Select value={timeRange} onValueChange={setTimeRange}>
             <SelectTrigger className="w-[160px] h-8 border-none focus:ring-0 font-semibold shadow-none">
               <SelectValue placeholder="Horizon" />

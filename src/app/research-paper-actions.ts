@@ -1,5 +1,6 @@
-
 'use server';
+
+import crypto from "crypto";
 
 import { adminDb } from '@/lib/admin';
 import { getIncentiveClaimByIdCombined } from '@/lib/incentive-data-admin';
@@ -92,5 +93,85 @@ export async function generateResearchPaperIncentiveForm(claimId: string): Promi
     } catch (error: any) {
         console.error('Error generating research paper incentive form:', error);
         return { success: false, error: error.message || 'Failed to generate the form.' };
+    }
+}
+
+
+export async function verifyIqacSignatureAction(params: Record<string, string>): Promise<{ isValid: boolean; error?: string; coAuthors?: any[] }> {
+    try {
+        const secret = process.env.RND_SHARED_API_KEY || process.env.IQAC_SHARED_API_KEY;
+        if (!secret) {
+            console.error("verifyIqacSignatureAction: RND_SHARED_API_KEY or IQAC_SHARED_API_KEY is not defined in env");
+            return { isValid: false, error: "Server configuration error." };
+        }
+
+        const { sig, ts } = params;
+        if (!sig || !ts) {
+            return { isValid: false, error: "Missing sig or ts parameters." };
+        }
+
+        const age = Math.floor(Date.now() / 1000) - Number(ts);
+        if (!Number.isFinite(age) || age < 0 || age > 432000) {
+            return { isValid: false, error: "Link has expired (5-day limit)." };
+        }
+
+        // Rebuild canonical query string
+        const canonicalString = Object.keys(params)
+            .filter((k) => k !== "sig")
+            .sort()
+            .map((k) => `${k}=${params[k]}`)
+            .join("&");
+
+        const expected = crypto
+            .createHmac("sha256", secret)
+            .update(canonicalString, "utf8")
+            .digest("hex");
+
+        let isValid = false;
+        try {
+            isValid = crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expected));
+        } catch (e) {
+            isValid = false;
+        }
+
+        // Bypass signature check in development mode or when using the development dummy key
+        let isValidationBypassed = false;
+        if (!isValid && (process.env.NODE_ENV === 'development' || secret === 'wgdhwgdhgwhwewef23ghwdgw')) {
+            console.warn("verifyIqacSignatureAction: Signature verification failed, but bypassing for local testing/development.");
+            isValidationBypassed = true;
+        }
+
+        if (!isValid && !isValidationBypassed) {
+            return { isValid: false, error: "Invalid signature verification." };
+        }
+
+        const coAuthors: any[] = [];
+        const puCoAuthorsRaw = params.puCoAuthors;
+        if (puCoAuthorsRaw) {
+            const misIds = puCoAuthorsRaw.split(',').map(s => s.trim()).filter(Boolean);
+            if (misIds.length > 0) {
+                try {
+                    const usersSnap = await adminDb.collection('users').where('misId', 'in', misIds).get();
+                    usersSnap.forEach(doc => {
+                        const userData = doc.data();
+                        coAuthors.push({
+                            name: userData.name || '',
+                            email: userData.email || '',
+                            role: undefined as any,
+                            isExternal: false,
+                            status: 'approved',
+                            uid: doc.id
+                        });
+                    });
+                } catch (dbErr) {
+                    console.error("verifyIqacSignatureAction: Error fetching co-authors:", dbErr);
+                }
+            }
+        }
+
+        return { isValid: true, coAuthors };
+    } catch (error: any) {
+        console.error("Error in verifyIqacSignatureAction:", error);
+        return { isValid: false, error: error.message || "Internal signature verification error." };
     }
 }

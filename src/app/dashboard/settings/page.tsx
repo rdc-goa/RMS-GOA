@@ -27,7 +27,7 @@ import {
   updateSystemSettings,
   checkMisIdExists,
 } from "@/app/actions"
-import type { User, SystemSettings, CroAssignment, ApproverSetting, ApiIntegrations } from "@/types"
+import type { User, SystemSettings, CroAssignment, ApproverSetting, ApiIntegrations, FacultyMatrixItem, InstituteMatrixItem, DepartmentMatrixItem } from "@/types"
 import { Skeleton } from "@/components/ui/skeleton"
 import {
   onAuthStateChanged,
@@ -37,7 +37,7 @@ import {
   updatePassword,
 } from "firebase/auth"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { Banknote, Bot, Loader2, ShieldCheck, Plus, X, Award, Upload, Image as ImageIcon, Calendar as CalendarIcon, Clock, Mail, BellOff, FileText, FileSpreadsheet, GraduationCap } from "lucide-react"
+import { Banknote, Bot, Loader2, ShieldCheck, Plus, X, Award, Upload, Image as ImageIcon, Calendar as CalendarIcon, Clock, Mail, BellOff, FileText, FileSpreadsheet, GraduationCap, School, Building, GitBranch, ChevronRight, ChevronDown, Trash2, Search, RotateCcw } from "lucide-react"
 import { Combobox } from "@/components/ui/combobox"
 import { Switch } from "@/components/ui/switch"
 import { Label } from "@/components/ui/label"
@@ -45,6 +45,7 @@ import { Badge } from "@/components/ui/badge"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import NextImage from 'next/image';
 import { useDepartments } from "@/hooks/use-staff-data";
+import { getFacultiesFromMatrix, getInstitutesForFacultyFromMatrix, getDepartmentsForInstituteFromMatrix, normalizeFacultyMatrix } from "@/lib/academic-data";
 import { Checkbox } from "@/components/ui/checkbox";
 
 const profileSchema = z.object({
@@ -139,6 +140,148 @@ const goaInstitutes = [
 ];
 
 
+export const defaultGoaMatrix: FacultyMatrixItem[] = [
+  {
+    id: "fac-goa-eng-it",
+    name: "Faculty of Engineering, IT & CS",
+    authorityEmail: "",
+    institutes: [
+      {
+        id: "inst-goa-pce",
+        name: "Parul College of Engineering",
+        authorityEmail: "",
+        departments: [
+          { id: "dept-goa-cse", name: "Computer Science & Engineering", authorityEmail: "" },
+          { id: "dept-goa-civil", name: "Civil Engineering", authorityEmail: "" },
+          { id: "dept-goa-mech", name: "Mechanical Engineering", authorityEmail: "" },
+          { id: "dept-goa-elec", name: "Electrical Engineering", authorityEmail: "" },
+          { id: "dept-goa-ece", name: "Electronics & Communication Engineering", authorityEmail: "" }
+        ]
+      },
+      {
+        id: "inst-goa-itcs",
+        name: "Parul College of Information Technology & Computer Science",
+        authorityEmail: "",
+        departments: [
+          { id: "dept-goa-it", name: "Information Technology", authorityEmail: "" },
+          { id: "dept-goa-mca", name: "Computer Applications", authorityEmail: "" }
+        ]
+      }
+    ]
+  },
+  {
+    id: "fac-goa-mgmt",
+    name: "Faculty of Management Studies",
+    authorityEmail: "",
+    institutes: [
+      {
+        id: "inst-goa-mgmt",
+        name: "Parul College of Management",
+        authorityEmail: "",
+        departments: [
+          { id: "dept-goa-mgmt-studies", name: "Management Studies", authorityEmail: "" },
+          { id: "dept-goa-bba", name: "Business Administration", authorityEmail: "" }
+        ]
+      }
+    ]
+  },
+  {
+    id: "fac-goa-hotel",
+    name: "Faculty of Hotel Management",
+    authorityEmail: "",
+    institutes: [
+      {
+        id: "inst-goa-hotel",
+        name: "Parul College of Hotel Management",
+        authorityEmail: "",
+        departments: [
+          { id: "dept-goa-hotel-mgmt", name: "Hotel Management & Catering Technology", authorityEmail: "" }
+        ]
+      }
+    ]
+  },
+  {
+    id: "fac-goa-pharmacy",
+    name: "Faculty of Pharmacy",
+    authorityEmail: "",
+    institutes: [
+      {
+        id: "inst-goa-pharmacy",
+        name: "Parul College of Pharmacy",
+        authorityEmail: "",
+        departments: [
+          { id: "dept-goa-pharmacy", name: "Pharmacy", authorityEmail: "" },
+          { id: "dept-goa-pharmaceutics", name: "Pharmaceutics", authorityEmail: "" },
+          { id: "dept-goa-pharmacology", name: "Pharmacology", authorityEmail: "" },
+          { id: "dept-goa-pharm-chem", name: "Pharmaceutical Chemistry", authorityEmail: "" }
+        ]
+      }
+    ]
+  },
+  {
+    id: "fac-goa-health",
+    name: "Faculty of Applied and Health Sciences",
+    authorityEmail: "",
+    institutes: [
+      {
+        id: "inst-goa-health",
+        name: "Parul College of Applied and Health Sciences",
+        authorityEmail: "",
+        departments: [
+          { id: "dept-goa-app-sci", name: "Applied Sciences", authorityEmail: "" },
+          { id: "dept-goa-clt", name: "Clinical Lab Technology", authorityEmail: "" }
+        ]
+      }
+    ]
+  },
+  {
+    id: "fac-goa-nursing",
+    name: "Faculty of Nursing",
+    authorityEmail: "",
+    institutes: [
+      {
+        id: "inst-goa-nursing",
+        name: "Parul College of Nursing",
+        authorityEmail: "",
+        departments: [
+          { id: "dept-goa-nursing", name: "Nursing", authorityEmail: "" }
+        ]
+      }
+    ]
+  },
+  {
+    id: "fac-goa-physio",
+    name: "Faculty of Physiotherapy",
+    authorityEmail: "",
+    institutes: [
+      {
+        id: "inst-goa-physio",
+        name: "Parul College of Physiotherapy",
+        authorityEmail: "",
+        departments: [
+          { id: "dept-goa-physio", name: "Physiotherapy", authorityEmail: "" }
+        ]
+      }
+    ]
+  },
+  {
+    id: "fac-goa-office",
+    name: "University Office",
+    authorityEmail: "",
+    institutes: [
+      {
+        id: "inst-goa-univ-office",
+        name: "University Office",
+        authorityEmail: "",
+        departments: [
+          { id: "dept-goa-admin", name: "Administration", authorityEmail: "" },
+          { id: "dept-goa-rdc", name: "Research & Development Cell", authorityEmail: "" }
+        ]
+      }
+    ]
+  }
+];
+
 const salaryBanks = ["AU Bank", "HDFC Bank", "Central Bank of India"]
 
 const incentiveClaimTypes = [
@@ -174,27 +317,38 @@ export default function SettingsPage() {
   const [isUploading, setIsUploading] = useState(false)
   const [systemSettings, setSystemSettings] = useState<SystemSettings | null>(null)
   const [isSavingSettings, setIsSavingSettings] = useState(false)
+  const [matrixData, setMatrixData] = useState<FacultyMatrixItem[]>([])
+  const [expandedNodes, setExpandedNodes] = useState<Record<string, boolean>>({})
+  const [matrixSearchQuery, setMatrixSearchQuery] = useState("")
   const [newAllowedDomain, setNewAllowedDomain] = useState("")
-  const [principalSearchQuery, setPrincipalSearchQuery] = useState("")
-  const [principalCampusFilter, setPrincipalCampusFilter] = useState("all")
-  const [localPrincipalEmails, setLocalPrincipalEmails] = useState<Record<string, string>>({})
 
   useEffect(() => {
-    if (systemSettings?.principalEmails) {
-      setLocalPrincipalEmails(systemSettings.principalEmails);
+    if (systemSettings?.facultyMatrix && systemSettings.facultyMatrix.length > 0) {
+      const normalized = normalizeFacultyMatrix(systemSettings.facultyMatrix);
+      if (systemSettings.principalEmails) {
+        normalized.forEach(fac => {
+          (fac.institutes || []).forEach(inst => {
+            if (!inst.authorityEmail && systemSettings.principalEmails?.[inst.name]) {
+              inst.authorityEmail = systemSettings.principalEmails[inst.name];
+            }
+          });
+        });
+      }
+      setMatrixData(normalized);
+    } else if (systemSettings && (!systemSettings.facultyMatrix || systemSettings.facultyMatrix.length === 0)) {
+      const defaultWithPrincipals = JSON.parse(JSON.stringify(defaultGoaMatrix));
+      if (systemSettings.principalEmails) {
+        defaultWithPrincipals.forEach((fac: any) => {
+          (fac.institutes || []).forEach((inst: any) => {
+            if (!inst.authorityEmail && systemSettings.principalEmails?.[inst.name]) {
+              inst.authorityEmail = systemSettings.principalEmails[inst.name];
+            }
+          });
+        });
+      }
+      setMatrixData(defaultWithPrincipals);
     }
   }, [systemSettings]);
-
-  const allInstitutesList = useMemo(() => {
-    return goaInstitutes.map(inst => ({ name: inst, campus: "Goa" }));
-  }, []);
-
-  const filteredInstitutes = useMemo(() => {
-    return allInstitutesList.filter(inst => {
-      const matchesSearch = inst.name.toLowerCase().includes(principalSearchQuery.toLowerCase());
-      return matchesSearch;
-    });
-  }, [allInstitutesList, principalSearchQuery]);
 
   const profileForm = useForm<ProfileFormValues>({
     resolver: zodResolver(profileSchema),
@@ -252,6 +406,29 @@ export default function SettingsPage() {
   const departments = useMemo(() => allDepartments, [allDepartments]);
   const departmentOptions = departments.map((dept) => ({ label: dept, value: dept }))
 
+  const selectedFaculty = profileForm.watch('faculty');
+  const selectedInstitute = profileForm.watch('institute');
+
+  const matrixFacultyOptions = useMemo(() => {
+    return getFacultiesFromMatrix(systemSettings?.facultyMatrix);
+  }, [systemSettings?.facultyMatrix]);
+
+  const matrixInstituteOptions = useMemo(() => {
+    if (!selectedFaculty) return [];
+    return getInstitutesForFacultyFromMatrix(selectedFaculty, systemSettings?.facultyMatrix).map(i => ({
+      label: i.label,
+      value: i.value
+    }));
+  }, [systemSettings?.facultyMatrix, selectedFaculty]);
+
+  const matrixDepartmentOptions = useMemo(() => {
+    if (!selectedInstitute) return [];
+    return getDepartmentsForInstituteFromMatrix(selectedInstitute, systemSettings?.facultyMatrix).map(dept => ({
+      label: dept,
+      value: dept
+    }));
+  }, [systemSettings?.facultyMatrix, selectedInstitute]);
+
   useEffect(() => {
     if (typeof window !== 'undefined' && window.location.hash === '#scopus-metrics') {
       setTimeout(() => {
@@ -278,6 +455,31 @@ export default function SettingsPage() {
           if (appUser.role === "Super-admin") {
             const settings = await getSystemSettings()
             setSystemSettings(settings)
+            if (settings?.facultyMatrix && settings.facultyMatrix.length > 0) {
+              const normalized = normalizeFacultyMatrix(settings.facultyMatrix);
+              if (settings.principalEmails) {
+                normalized.forEach(fac => {
+                  (fac.institutes || []).forEach(inst => {
+                    if (!inst.authorityEmail && settings.principalEmails?.[inst.name]) {
+                      inst.authorityEmail = settings.principalEmails[inst.name];
+                    }
+                  });
+                });
+              }
+              setMatrixData(normalized)
+            } else {
+              const defaultWithPrincipals = JSON.parse(JSON.stringify(defaultGoaMatrix));
+              if (settings?.principalEmails) {
+                defaultWithPrincipals.forEach((fac: any) => {
+                  (fac.institutes || []).forEach((inst: any) => {
+                    if (!inst.authorityEmail && settings.principalEmails?.[inst.name]) {
+                      inst.authorityEmail = settings.principalEmails[inst.name];
+                    }
+                  });
+                });
+              }
+              setMatrixData(defaultWithPrincipals)
+            }
           }
 
           profileForm.reset({
@@ -539,42 +741,263 @@ export default function SettingsPage() {
     await handleSystemSettingsSave({ ...systemSettings, allowedDomains: currentDomains.filter((d) => d !== domainToRemove) });
   }
 
-  const handleLocalPrincipalEmailChange = (institute: string, email: string) => {
-    setLocalPrincipalEmails(prev => ({ ...prev, [institute]: email }));
-  };
+  const toggleNodeExpanded = (id: string) => {
+    setExpandedNodes(prev => {
+      const current = matrixSearchQuery.trim() ? (prev[id] !== false) : !!prev[id];
+      return { ...prev, [id]: !current };
+    });
+  }
 
-  const handleSavePrincipalEmail = async (institute: string) => {
-    if (!systemSettings) return;
-    const email = localPrincipalEmails[institute] || "";
-    const newPrincipalEmails = { ...systemSettings.principalEmails, [institute]: email.trim() };
+  const filteredMatrixData = useMemo(() => {
+    const sortMatrix = (items: FacultyMatrixItem[]): FacultyMatrixItem[] => {
+      return [...items]
+        .sort((a, b) => (a.name || "").localeCompare(b.name || "", undefined, { sensitivity: 'base' }))
+        .map(fac => ({
+          ...fac,
+          institutes: [...(fac.institutes || [])]
+            .sort((a, b) => (a.name || "").localeCompare(b.name || "", undefined, { sensitivity: 'base' }))
+            .map(inst => ({
+              ...inst,
+              departments: [...(inst.departments || [])].sort((a, b) =>
+                (a.name || "").localeCompare(b.name || "", undefined, { sensitivity: 'base' })
+              )
+            }))
+        }));
+    };
 
-    if (!email.trim()) {
-      delete newPrincipalEmails[institute];
+    if (!matrixSearchQuery.trim()) {
+      return sortMatrix(matrixData);
     }
 
-    await handleSystemSettingsSave({ ...systemSettings, principalEmails: newPrincipalEmails });
-  };
+    const queryStr = matrixSearchQuery.toLowerCase();
 
-  const handleClearPrincipalEmail = async (institute: string) => {
-    if (!systemSettings) return;
-    const newPrincipalEmails = { ...systemSettings.principalEmails };
-    delete newPrincipalEmails[institute];
+    const filtered = matrixData
+      .map(fac => {
+        const facMatch = fac.name.toLowerCase().includes(queryStr) || (fac.authorityEmail && fac.authorityEmail.toLowerCase().includes(queryStr));
 
-    setLocalPrincipalEmails(prev => {
-      const copy = { ...prev };
-      delete copy[institute];
-      return copy;
+        if (facMatch) {
+          return fac;
+        }
+
+        const matchingInstitutes = (fac.institutes || [])
+          .map(inst => {
+            const instMatch = inst.name.toLowerCase().includes(queryStr) || (inst.authorityEmail && inst.authorityEmail.toLowerCase().includes(queryStr));
+
+            if (instMatch) {
+              return inst;
+            }
+
+            const filteredDepts = (inst.departments || []).filter(dept =>
+              dept.name.toLowerCase().includes(queryStr) || (dept.authorityEmail && dept.authorityEmail.toLowerCase().includes(queryStr))
+            );
+
+            if (filteredDepts.length > 0) {
+              return { ...inst, departments: filteredDepts };
+            }
+            return null;
+          })
+          .filter((i): i is InstituteMatrixItem => i !== null);
+
+        if (matchingInstitutes.length > 0) {
+          return { ...fac, institutes: matchingInstitutes };
+        }
+
+        return null;
+      })
+      .filter((f): f is FacultyMatrixItem => f !== null);
+
+    return sortMatrix(filtered);
+  }, [matrixData, matrixSearchQuery]);
+
+  useEffect(() => {
+    if (matrixSearchQuery.trim()) {
+      const newExpanded: Record<string, boolean> = {};
+      filteredMatrixData.forEach(fac => {
+        newExpanded[fac.id] = true;
+        (fac.institutes || []).forEach(inst => {
+          newExpanded[inst.id] = true;
+        });
+      });
+      setExpandedNodes(prev => ({ ...prev, ...newExpanded }));
+    }
+  }, [matrixSearchQuery, filteredMatrixData]);
+
+  const handleAddFaculty = () => {
+    const newFaculty: FacultyMatrixItem = {
+      id: `fac-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+      name: "New Faculty",
+      authorityEmail: "",
+      institutes: []
+    }
+    setMatrixData(prev => [...prev, newFaculty])
+  }
+
+  const handleAddInstitute = (facultyId: string) => {
+    const newInst: InstituteMatrixItem = {
+      id: `inst-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+      name: "New Institute",
+      authorityEmail: "",
+      departments: []
+    }
+    setMatrixData(prev => prev.map(f => {
+      if (f.id === facultyId) {
+        return { ...f, institutes: [...(f.institutes || []), newInst] }
+      }
+      return f
+    }))
+  }
+
+  const handleAddDepartment = (facultyId: string, instituteId: string) => {
+    const newDept: DepartmentMatrixItem = {
+      id: `dept-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+      name: "New Department",
+      authorityEmail: ""
+    }
+    setMatrixData(prev => prev.map(f => {
+      if (f.id === facultyId) {
+        return {
+          ...f,
+          institutes: (f.institutes || []).map(i => {
+            if (i.id === instituteId) {
+              return { ...i, departments: [...(i.departments || []), newDept] }
+            }
+            return i
+          })
+        }
+      }
+      return f
+    }))
+  }
+
+  const handleUpdateNode = (
+    level: 'faculty' | 'institute' | 'department',
+    path: { facultyId: string; instituteId?: string; departmentId?: string },
+    updates: { name?: string; authorityEmail?: string }
+  ) => {
+    setMatrixData(prev => prev.map(f => {
+      if (f.id === path.facultyId) {
+        if (level === 'faculty') {
+          return { ...f, ...updates }
+        }
+        return {
+          ...f,
+          institutes: (f.institutes || []).map(i => {
+            if (i.id === path.instituteId) {
+              if (level === 'institute') {
+                return { ...i, ...updates }
+              }
+              return {
+                ...i,
+                departments: (i.departments || []).map(d => {
+                  if (d.id === path.departmentId) {
+                    return { ...d, ...updates }
+                  }
+                  return d
+                })
+              }
+            }
+            return i
+          })
+        }
+      }
+      return f
+    }))
+  }
+
+  const handleDeleteNode = (
+    level: 'faculty' | 'institute' | 'department',
+    path: { facultyId: string; instituteId?: string; departmentId?: string }
+  ) => {
+    if (level === 'faculty') {
+      setMatrixData(prev => prev.filter(f => f.id !== path.facultyId))
+    } else if (level === 'institute') {
+      setMatrixData(prev => prev.map(f => {
+        if (f.id === path.facultyId) {
+          return { ...f, institutes: (f.institutes || []).filter(i => i.id !== path.instituteId) }
+        }
+        return f
+      }))
+    } else if (level === 'department') {
+      setMatrixData(prev => prev.map(f => {
+        if (f.id === path.facultyId) {
+          return {
+            ...f,
+            institutes: (f.institutes || []).map(i => {
+              if (i.id === path.instituteId) {
+                return { ...i, departments: (i.departments || []).filter(d => d.id !== path.departmentId) }
+              }
+              return i
+            })
+          }
+        }
+        return f
+      }))
+    }
+  }
+
+  const handleSaveMatrix = async () => {
+    if (!systemSettings) return
+    setIsSavingSettings(true)
+    const normalized = normalizeFacultyMatrix(matrixData)
+
+    // Synchronize institute authority emails as principalEmails
+    const newPrincipalEmails: Record<string, string> = {};
+    normalized.forEach(fac => {
+      (fac.institutes || []).forEach(inst => {
+        if (inst.name && inst.authorityEmail && inst.authorityEmail.trim()) {
+          newPrincipalEmails[inst.name.trim()] = inst.authorityEmail.trim();
+        }
+      });
     });
 
-    await handleSystemSettingsSave({ ...systemSettings, principalEmails: newPrincipalEmails });
-  };
+    const result = await updateSystemSettings({
+      ...systemSettings,
+      facultyMatrix: normalized,
+      principalEmails: newPrincipalEmails
+    })
+    if (result.success) {
+      setMatrixData(normalized)
+      setSystemSettings({ ...systemSettings, facultyMatrix: normalized, principalEmails: newPrincipalEmails })
+
+      // Grant Stage 1 Principal approval modules to all configured principals
+      try {
+        const usersRef = collection(db, 'users');
+        for (const email of Object.values(newPrincipalEmails)) {
+          if (email) {
+            const userQuery = query(usersRef, where("email", "==", email));
+            const userSnapshot = await getDocs(userQuery);
+            if (!userSnapshot.empty) {
+              const userDoc = userSnapshot.docs[0];
+              const userData = userDoc.data() as User;
+              let updatedModules = userData.allowedModules || [];
+              if (!updatedModules.includes('incentive-approver-1')) updatedModules.push('incentive-approver-1');
+              if (!updatedModules.includes('incentive-approvals')) updatedModules.push('incentive-approvals');
+              await updateDoc(userDoc.ref, { allowedModules: updatedModules });
+            }
+          }
+        }
+      } catch (err) {
+        console.error("Error granting principal permissions:", err);
+      }
+
+      toast({ title: 'Academic Matrix & Principal emails saved successfully.' })
+    } else {
+      toast({ variant: 'destructive', title: 'Error', description: result.error })
+    }
+    setIsSavingSettings(false)
+  }
+
+  const handleResetToGoaDefaults = () => {
+    setMatrixData(defaultGoaMatrix)
+    toast({ title: 'Loaded Goa default matrix hierarchy', description: 'Review changes and click "Save Matrix Configuration" to apply.' })
+  }
 
 
 
-  const handleApproverChange = async (stage: 1 | 2 | 3 | 4 | 5, email: string) => {
+  const handleApproverChange = async (stage: 1 | 2 | 3 | 4, email: string) => {
     if (!systemSettings) return;
     const approvers = systemSettings.incentiveApprovers || [];
-    const otherApprovers = approvers.filter(a => a.stage !== stage);
+    const otherApprovers = approvers.filter(a => a.stage !== stage && a.stage <= 4);
     const newApprovers: ApproverSetting[] = [...otherApprovers];
 
     // Find the previous approver for this stage to remove their access
@@ -628,11 +1051,11 @@ export default function SettingsPage() {
   const handleWorkflowChange = async (claimType: string, stage: number, isChecked: boolean) => {
     if (!systemSettings) return;
     const currentWorkflows = systemSettings.incentiveApprovalWorkflows || {};
-    const currentStages = currentWorkflows[claimType] || [1, 2, 3, 4, 5]; // Default to all if not set
+    const currentStages = (currentWorkflows[claimType] || [1, 2, 3, 4]).filter(s => s <= 4); // 4 stages only
 
     let newStages;
     if (isChecked) {
-      newStages = [...new Set([...currentStages, stage])].sort((a, b) => a - b);
+      newStages = [...new Set([...currentStages, stage])].filter(s => s <= 4).sort((a, b) => a - b);
     } else {
       newStages = currentStages.filter(s => s !== stage);
     }
@@ -1202,8 +1625,8 @@ export default function SettingsPage() {
                       <TabsTrigger value="general" className="w-full justify-start gap-2 h-10">General</TabsTrigger>
                       <TabsTrigger value="incentives" className="w-full justify-start gap-2 h-10">Incentives</TabsTrigger>
                       <TabsTrigger value="projects" className="w-full justify-start gap-2 h-10">Projects (IMR)</TabsTrigger>
+                      <TabsTrigger value="matrix" className="w-full justify-start gap-2 h-10">Matrix Setup</TabsTrigger>
                       <TabsTrigger value="integrations" className="w-full justify-start gap-2 h-10">API & Templates</TabsTrigger>
-                      <TabsTrigger value="principals" className="w-full justify-start gap-2 h-10">Principals</TabsTrigger>
                     </TabsList>
 
                     <div className="flex-grow">
@@ -1270,26 +1693,30 @@ export default function SettingsPage() {
                             </div>
 
                             <div className="space-y-4">
-                              <Label className="text-sm font-bold uppercase tracking-widest text-muted-foreground">Approval Workflow (Stages)</Label>
+                              <div>
+                                <Label className="text-sm font-bold uppercase tracking-widest text-muted-foreground">Approval Workflow (Stages)</Label>
+                                <p className="text-xs text-muted-foreground mt-1">
+                                  Configure active approval stages (1 to 4) for each incentive claim type.
+                                </p>
+                              </div>
                               <div className="overflow-hidden rounded-lg border border-muted-foreground/10">
                                 <Table>
                                   <TableHeader className="bg-muted/50">
                                     <TableRow>
                                       <TableHead className="text-[10px] uppercase font-black">Type</TableHead>
-                                      <TableHead className="text-center text-[10px] uppercase font-black">S1</TableHead>
+                                      <TableHead className="text-center text-[10px] uppercase font-black">S1 (Respective)</TableHead>
                                       <TableHead className="text-center text-[10px] uppercase font-black">S2</TableHead>
                                       <TableHead className="text-center text-[10px] uppercase font-black">S3</TableHead>
-                                      <TableHead className="text-center text-[10px] uppercase font-black">S4</TableHead>
-                                      <TableHead className="text-center text-[10px] uppercase font-black">S5</TableHead>
+                                      <TableHead className="text-center text-[10px] uppercase font-black">S4 (Final)</TableHead>
                                     </TableRow>
                                   </TableHeader>
                                   <TableBody>
                                     {incentiveClaimTypes.map(type => {
-                                      const workflow = systemSettings.incentiveApprovalWorkflows?.[type] || [1, 2, 3, 4, 5];
+                                      const workflow = (systemSettings.incentiveApprovalWorkflows?.[type] || [1, 2, 3, 4]).filter(s => s <= 4);
                                       return (
                                         <TableRow key={type}>
                                           <TableCell className="py-2 text-[11px] font-medium leading-none">{type}</TableCell>
-                                          {[1, 2, 3, 4, 5].map(stage => (
+                                          {[1, 2, 3, 4].map(stage => (
                                             <TableCell key={stage} className="text-center py-2"><Checkbox checked={workflow.includes(stage)} onCheckedChange={(checked) => handleWorkflowChange(type, stage, !!checked)} disabled={isSavingSettings} /></TableCell>
                                           ))}
                                         </TableRow>
@@ -1301,14 +1728,22 @@ export default function SettingsPage() {
                             </div>
 
                             <div className="space-y-4">
-                              <Label className="text-sm font-bold uppercase tracking-widest text-muted-foreground">Global Approver Assignments</Label>
-                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                {[2, 3, 4, 5].map(stage => {
+                              <div>
+                                <Label className="text-sm font-bold uppercase tracking-widest text-muted-foreground">Global Approver Assignments</Label>
+                                <p className="text-xs text-muted-foreground mt-1">
+                                  Stage 1 is dynamically routed to the claimant&apos;s respective Institute Head / Principal. The remaining 3 stages are configured below by Super Admin.
+                                </p>
+                              </div>
+                              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                                {[2, 3, 4].map(stage => {
                                   const approver = systemSettings?.incentiveApprovers?.find(a => a.stage === stage);
                                   return (
                                     <div key={stage} className="space-y-1.5 p-3 rounded-lg border bg-muted/10">
-                                      <Label className="text-xs font-bold">Stage {stage} Admin Email</Label>
-                                      <Input type="email" className="h-8 text-xs" placeholder={`approver.stage${stage}@...`} value={approver?.email || ''} onChange={(e) => handleApproverChange(stage as 1 | 2 | 3 | 4 | 5, e.target.value)} disabled={isSavingSettings} />
+                                      <div className="flex items-center justify-between">
+                                        <Label className="text-xs font-bold">Stage {stage} Admin Email</Label>
+                                        <Badge variant="outline" className="text-[10px] font-normal text-muted-foreground">Super Admin</Badge>
+                                      </div>
+                                      <Input type="email" className="h-8 text-xs" placeholder={`approver.stage${stage}@...`} value={approver?.email || ''} onChange={(e) => handleApproverChange(stage as 1 | 2 | 3 | 4, e.target.value)} disabled={isSavingSettings} />
                                     </div>
                                   );
                                 })}
@@ -1346,6 +1781,244 @@ export default function SettingsPage() {
                         </div>
                       </TabsContent>
 
+                      <TabsContent value="matrix" className="mt-0 space-y-6">
+                        <div className="space-y-4">
+                          <div className="flex flex-col sm:flex-row gap-3 justify-between items-start sm:items-center bg-muted/30 p-4 rounded-lg border">
+                            <div className="space-y-1">
+                              <h4 className="font-bold text-sm">Academic Hierarchy & Principals Matrix</h4>
+                              <p className="text-xs text-muted-foreground">Configure Faculties, Institutes (Principals / Stage 1 Approvers), Departments, and level authorities.</p>
+                            </div>
+                            <div className="flex flex-wrap w-full sm:w-auto gap-2 items-center">
+                              <div className="relative w-full sm:w-60">
+                                <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                                <Input
+                                  placeholder="Search matrix & principals..."
+                                  value={matrixSearchQuery}
+                                  onChange={(e) => setMatrixSearchQuery(e.target.value)}
+                                  className="pl-8 h-9 text-xs"
+                                />
+                                {matrixSearchQuery && (
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="icon"
+                                    className="absolute right-1 top-1 h-7 w-7 hover:bg-transparent"
+                                    onClick={() => setMatrixSearchQuery("")}
+                                  >
+                                    <X className="h-3.5 w-3.5 text-muted-foreground" />
+                                  </Button>
+                                )}
+                              </div>
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                className="gap-1 h-9 text-xs shrink-0"
+                                onClick={handleResetToGoaDefaults}
+                              >
+                                <RotateCcw className="h-3.5 w-3.5" /> Reset Goa Defaults
+                              </Button>
+                              <Button onClick={handleAddFaculty} size="sm" className="gap-1 h-9 text-xs shrink-0">
+                                <Plus className="h-4 w-4" /> Add Faculty
+                              </Button>
+                            </div>
+                          </div>
+
+                          <div className="border rounded-lg divide-y bg-background max-h-[60vh] overflow-y-auto p-2 space-y-3">
+                            {filteredMatrixData.length === 0 ? (
+                              <div className="text-center py-10 space-y-3">
+                                <p className="text-sm text-muted-foreground">No academic hierarchy found matching your criteria.</p>
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={handleResetToGoaDefaults}
+                                  className="gap-1.5"
+                                >
+                                  <RotateCcw className="h-4 w-4" /> Load Goa Default Matrix
+                                </Button>
+                              </div>
+                            ) : (
+                              filteredMatrixData.map(fac => {
+                                const isFacExpanded = matrixSearchQuery.trim() ? (expandedNodes[fac.id] !== false) : !!expandedNodes[fac.id];
+                                return (
+                                  <div key={fac.id} className="space-y-2 p-2 border rounded-md bg-muted/5">
+                                    {/* Faculty Row */}
+                                    <div className="flex items-center gap-3 p-2 bg-muted/40 rounded-md border shadow-sm">
+                                      <Button
+                                        type="button"
+                                        variant="ghost"
+                                        size="icon"
+                                        className="h-6 w-6 shrink-0"
+                                        onClick={() => toggleNodeExpanded(fac.id)}
+                                      >
+                                        {isFacExpanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                                      </Button>
+                                      <School className="h-4 w-4 text-primary shrink-0" />
+                                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 flex-grow">
+                                        <Input
+                                          placeholder="Faculty Name"
+                                          value={fac.name}
+                                          onChange={(e) => handleUpdateNode('faculty', { facultyId: fac.id }, { name: e.target.value })}
+                                          className="h-8 text-xs font-semibold"
+                                        />
+                                        <Input
+                                          placeholder="Faculty Authority Email"
+                                          value={fac.authorityEmail || ''}
+                                          onChange={(e) => handleUpdateNode('faculty', { facultyId: fac.id }, { authorityEmail: e.target.value })}
+                                          className="h-8 text-xs"
+                                        />
+                                      </div>
+                                      <div className="flex gap-1.5 shrink-0">
+                                        <Button
+                                          type="button"
+                                          variant="outline"
+                                          size="sm"
+                                          className="h-8 text-[11px] gap-1"
+                                          onClick={() => {
+                                            handleAddInstitute(fac.id);
+                                            if (!isFacExpanded) toggleNodeExpanded(fac.id);
+                                          }}
+                                        >
+                                          <Plus className="h-3 w-3" /> Add Institute
+                                        </Button>
+                                        <Button
+                                          type="button"
+                                          variant="ghost"
+                                          size="icon"
+                                          className="h-8 w-8 text-destructive hover:bg-destructive/10"
+                                          onClick={() => handleDeleteNode('faculty', { facultyId: fac.id })}
+                                        >
+                                          <Trash2 className="h-4 w-4" />
+                                        </Button>
+                                      </div>
+                                    </div>
+
+                                    {/* Institutes (Only if Faculty is Expanded) */}
+                                    {isFacExpanded && (
+                                      <div className="pl-6 border-l-2 border-dashed ml-5 space-y-2">
+                                        {(!fac.institutes || fac.institutes.length === 0) ? (
+                                          <p className="text-xs text-muted-foreground p-2 italic">No institutes added yet.</p>
+                                        ) : (
+                                          fac.institutes.map(inst => {
+                                            const isInstExpanded = matrixSearchQuery.trim() ? (expandedNodes[inst.id] !== false) : !!expandedNodes[inst.id];
+                                            return (
+                                              <div key={inst.id} className="space-y-1.5 p-1 bg-background rounded-md border">
+                                                {/* Institute Row with Principal Integration */}
+                                                <div className="flex items-center gap-3 p-2 bg-muted/10 rounded-md border shadow-sm">
+                                                  <Button
+                                                    type="button"
+                                                    variant="ghost"
+                                                    size="icon"
+                                                    className="h-6 w-6 shrink-0"
+                                                    onClick={() => toggleNodeExpanded(inst.id)}
+                                                  >
+                                                    {isInstExpanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                                                  </Button>
+                                                  <Building className="h-4 w-4 text-emerald-500 shrink-0" />
+                                                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3 flex-grow">
+                                                    <Input
+                                                      placeholder="Institute Name"
+                                                      value={inst.name}
+                                                      onChange={(e) => handleUpdateNode('institute', { facultyId: fac.id, instituteId: inst.id }, { name: e.target.value })}
+                                                      className="h-8 text-xs font-semibold"
+                                                    />
+                                                    <div className="relative">
+                                                      <Input
+                                                        placeholder="Principal Email (Stage 1 Approver)"
+                                                        value={inst.authorityEmail || ''}
+                                                        onChange={(e) => handleUpdateNode('institute', { facultyId: fac.id, instituteId: inst.id }, { authorityEmail: e.target.value })}
+                                                        className="h-8 text-xs pr-20"
+                                                      />
+                                                      <span className="absolute right-2 top-1.5 text-[10px] font-medium text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded pointer-events-none">
+                                                        Principal
+                                                      </span>
+                                                    </div>
+                                                  </div>
+                                                  <div className="flex gap-1.5 shrink-0">
+                                                    <Button
+                                                      type="button"
+                                                      variant="outline"
+                                                      size="sm"
+                                                      className="h-8 text-[11px] gap-1"
+                                                      onClick={() => {
+                                                        handleAddDepartment(fac.id, inst.id);
+                                                        if (!isInstExpanded) toggleNodeExpanded(inst.id);
+                                                      }}
+                                                    >
+                                                      <Plus className="h-3 w-3" /> Add Department
+                                                    </Button>
+                                                    <Button
+                                                      type="button"
+                                                      variant="ghost"
+                                                      size="icon"
+                                                      className="h-8 w-8 text-destructive hover:bg-destructive/10"
+                                                      onClick={() => handleDeleteNode('institute', { facultyId: fac.id, instituteId: inst.id })}
+                                                    >
+                                                      <Trash2 className="h-4 w-4" />
+                                                    </Button>
+                                                  </div>
+                                                </div>
+
+                                                {/* Departments (Only if Institute is Expanded) */}
+                                                {isInstExpanded && (
+                                                  <div className="pl-6 border-l-2 border-dashed ml-5 space-y-1.5">
+                                                    {(!inst.departments || inst.departments.length === 0) ? (
+                                                      <p className="text-xs text-muted-foreground p-2 italic">No departments added yet.</p>
+                                                    ) : (
+                                                      inst.departments.map(dept => (
+                                                        <div key={dept.id} className="flex items-center gap-3 p-1.5 bg-muted/5 rounded-md border shadow-sm">
+                                                          <div className="w-6 shrink-0" />
+                                                          <GitBranch className="h-3.5 w-3.5 text-amber-500 shrink-0" />
+                                                          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 flex-grow">
+                                                            <Input
+                                                              placeholder="Department Name"
+                                                              value={dept.name}
+                                                              onChange={(e) => handleUpdateNode('department', { facultyId: fac.id, instituteId: inst.id, departmentId: dept.id }, { name: e.target.value })}
+                                                              className="h-8 text-xs"
+                                                            />
+                                                            <Input
+                                                              placeholder="Department Authority Email"
+                                                              value={dept.authorityEmail || ''}
+                                                              onChange={(e) => handleUpdateNode('department', { facultyId: fac.id, instituteId: inst.id, departmentId: dept.id }, { authorityEmail: e.target.value })}
+                                                              className="h-8 text-xs"
+                                                            />
+                                                          </div>
+                                                          <Button
+                                                            type="button"
+                                                            variant="ghost"
+                                                            size="icon"
+                                                            className="h-8 w-8 text-destructive hover:bg-destructive/10 shrink-0"
+                                                            onClick={() => handleDeleteNode('department', { facultyId: fac.id, instituteId: inst.id, departmentId: dept.id })}
+                                                          >
+                                                            <Trash2 className="h-4 w-4" />
+                                                          </Button>
+                                                        </div>
+                                                      ))
+                                                    )}
+                                                  </div>
+                                                )}
+                                              </div>
+                                            );
+                                          })
+                                        )}
+                                      </div>
+                                    )}
+                                  </div>
+                                );
+                              })
+                            )}
+                          </div>
+
+                          <div className="flex justify-end items-center gap-3 pt-4 border-t">
+                            <Button onClick={handleSaveMatrix} disabled={isSavingSettings} className="gap-2">
+                              {isSavingSettings ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                              Save Matrix Configuration
+                            </Button>
+                          </div>
+                        </div>
+                      </TabsContent>
+
                       <TabsContent value="integrations" className="mt-0 space-y-6">
                         <div className="space-y-4">
                           <Label className="text-sm font-bold uppercase tracking-widest text-muted-foreground">Data Service Integrations</Label>
@@ -1374,103 +2047,7 @@ export default function SettingsPage() {
                         </div>
                       </TabsContent>
 
-                      <TabsContent value="principals" className="mt-0 space-y-6">
-                        <Card className="border-none shadow-none bg-transparent">
-                          <CardHeader className="px-0 pt-0">
-                            <div className="flex items-center gap-2 text-primary">
-                              <GraduationCap className="h-5 w-5" />
-                              <CardTitle className="text-lg">Institute Principals</CardTitle>
-                            </div>
-                            <CardDescription>Assign the official Principal email address for each institute. Matching users will automatically get the "Principal" designation and dashboard privileges upon sign-in.</CardDescription>
-                          </CardHeader>
-                          <CardContent className="px-0 space-y-4">
-                            <div className="flex flex-col sm:flex-row gap-4">
-                              <Input
-                                placeholder="Search institutes..."
-                                value={principalSearchQuery}
-                                onChange={(e) => setPrincipalSearchQuery(e.target.value)}
-                                className="max-w-md focus-visible:ring-primary/40"
-                              />
-                            </div>
 
-                            <div className="rounded-lg border border-muted-foreground/10 overflow-hidden bg-card/30">
-                              <Table>
-                                <TableHeader className="bg-muted/50">
-                                  <TableRow>
-                                    <TableHead className="font-semibold text-xs">Institute Name</TableHead>
-                                    <TableHead className="font-semibold text-xs w-24">Campus</TableHead>
-                                    <TableHead className="font-semibold text-xs max-w-[300px]">Principal Email Address</TableHead>
-                                    <TableHead className="font-semibold text-xs text-right w-36">Actions</TableHead>
-                                  </TableRow>
-                                </TableHeader>
-                                <TableBody>
-                                  {filteredInstitutes.length === 0 ? (
-                                    <TableRow>
-                                      <TableCell colSpan={4} className="text-center py-8 text-muted-foreground text-sm">
-                                        No matching institutes found.
-                                      </TableCell>
-                                    </TableRow>
-                                  ) : (
-                                    filteredInstitutes.map(({ name, campus: instCampus }) => {
-                                      const emailVal = localPrincipalEmails[name] || "";
-                                      const isSavedVal = systemSettings?.principalEmails?.[name] || "";
-                                      const isModified = emailVal.trim() !== isSavedVal.trim();
-
-                                      return (
-                                        <TableRow key={name} className="hover:bg-muted/10 transition-colors">
-                                          <TableCell className="py-3 text-xs font-semibold text-foreground/90">{name}</TableCell>
-                                          <TableCell className="py-3 text-xs">
-                                            <Badge variant={instCampus === "Goa" ? "default" : "secondary"} className="text-[10px] font-bold px-1.5 py-0.5">
-                                              {instCampus}
-                                            </Badge>
-                                          </TableCell>
-                                          <TableCell className="py-2">
-                                            <Input
-                                              type="email"
-                                              placeholder="e.g. principal.piet@paruluniversity.ac.in"
-                                              value={emailVal}
-                                              onChange={(e) => handleLocalPrincipalEmailChange(name, e.target.value)}
-                                              onBlur={() => {
-                                                if (isModified) {
-                                                  handleSavePrincipalEmail(name);
-                                                }
-                                              }}
-                                              className="h-8 text-xs focus-visible:ring-primary/40 bg-background/50"
-                                            />
-                                          </TableCell>
-                                          <TableCell className="py-2 text-right">
-                                            <div className="flex justify-end gap-2">
-                                              {isModified && (
-                                                <Button
-                                                  size="sm"
-                                                  onClick={() => handleSavePrincipalEmail(name)}
-                                                  className="h-7 text-[10px] px-2.5 bg-primary text-primary-foreground hover:bg-primary/90"
-                                                >
-                                                  Save
-                                                </Button>
-                                              )}
-                                              {isSavedVal && (
-                                                <Button
-                                                  size="sm"
-                                                  variant="outline"
-                                                  onClick={() => handleClearPrincipalEmail(name)}
-                                                  className="h-7 text-[10px] px-2.5 border-destructive/30 text-destructive hover:bg-destructive/10 hover:text-destructive transition-colors"
-                                                >
-                                                  Clear
-                                                </Button>
-                                              )}
-                                            </div>
-                                          </TableCell>
-                                        </TableRow>
-                                      );
-                                    })
-                                  )}
-                                </TableBody>
-                              </Table>
-                            </div>
-                          </CardContent>
-                        </Card>
-                      </TabsContent>
                     </div>
                   </Tabs>
                 </CardContent>

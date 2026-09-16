@@ -10,8 +10,11 @@ import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, For
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { useToast } from "@/hooks/use-toast"
-import { addGrantPhase, addTransaction, updatePhaseStatus, deleteTransaction, updateTransaction, generateInstallmentOfficeNoting } from "@/app/actions"
+import { addGrantPhase, addTransaction, updatePhaseStatus, deleteTransaction, updateTransaction, generateInstallmentOfficeNoting, updatePhaseDisbursementDate } from "@/app/actions"
 import React, { useState } from "react"
+import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover"
+import { Calendar } from "@/components/ui/calendar"
+import { cn } from "@/lib/utils"
 import {
   DollarSign,
   Banknote,
@@ -23,6 +26,7 @@ import {
   ChevronDown,
   Download,
   Loader2,
+  CalendarIcon,
   Trash2,
   Edit,
 } from "lucide-react"
@@ -78,6 +82,48 @@ export function GrantManagement({ project, user, onUpdate }: GrantManagementProp
   const [phaseForNoting, setPhaseForNoting] = useState<GrantPhase | null>(null);
   const [transactionToEdit, setTransactionToEdit] = useState<{ phaseId: string, transaction: Transaction } | null>(null);
   const [transactionToDelete, setTransactionToDelete] = useState<{ phaseId: string, transaction: Transaction } | null>(null);
+  const [selectedDates, setSelectedDates] = useState<Record<string, Date | undefined>>({});
+  const [editingPhaseId, setEditingPhaseId] = useState<string | null>(null);
+
+  const handleSetEditingPhaseDate = (phaseId: string, currentDateStr?: string) => {
+    setEditingPhaseId(phaseId);
+    if (currentDateStr) {
+      try {
+        setSelectedDates(prev => ({ ...prev, [phaseId]: parseISO(currentDateStr) }));
+      } catch (e) {
+        console.error(e);
+      }
+    }
+  };
+
+  const handleCancelEditingPhaseDate = () => {
+    setEditingPhaseId(null);
+  };
+
+  const handleDateChange = (phaseId: string, date: Date | undefined) => {
+    setSelectedDates(prev => ({ ...prev, [phaseId]: date }));
+  };
+
+  const handleSaveDisbursementDate = async (phaseId: string) => {
+    const selectedDate = selectedDates[phaseId];
+    if (!selectedDate || !project.id) return;
+    setIsSubmitting(true);
+    try {
+      const result = await updatePhaseDisbursementDate(project.id, phaseId, selectedDate.toISOString());
+      if (result.success && result.updatedProject) {
+        onUpdate(result.updatedProject);
+        toast({ title: "Success", description: "Disbursement date saved successfully." });
+        setEditingPhaseId(null);
+      } else {
+        toast({ variant: "destructive", title: "Error", description: result.error || "Failed to save disbursement date." });
+      }
+    } catch (error) {
+      console.error(error);
+      toast({ variant: "destructive", title: "Error", description: "Failed to save disbursement date." });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
 
   const grant = project.grant
 
@@ -561,10 +607,128 @@ export function GrantManagement({ project, user, onUpdate }: GrantManagementProp
                       )}
                     </div>
                   </div>
-                  {phase.disbursementDate && (
-                    <p className="text-sm text-muted-foreground">
-                      Disbursed on: {format(parseISO(phase.disbursementDate), "dd/MM/yyyy")}
-                    </p>
+                  {project.isBulkUploaded ? (
+                    <div>
+                      {phase.isDisbursementDateSavedByUser && phase.disbursementDate ? (
+                        <div className="flex items-center gap-2 mt-1">
+                          <p className="text-sm text-muted-foreground">
+                            Disbursed on: {format(parseISO(phase.disbursementDate), "dd/MM/yyyy")}
+                          </p>
+                          {(isPI || isCoPi) && (
+                            <Button
+                              variant="link"
+                              size="sm"
+                              className="h-auto p-0 text-xs text-blue-600 hover:text-blue-800"
+                              onClick={() => handleSetEditingPhaseDate(phase.id, phase.disbursementDate)}
+                            >
+                              Edit
+                            </Button>
+                          )}
+                        </div>
+                      ) : (
+                        <div>
+                          {(isPI || isCoPi) ? (
+                            <div className="flex items-center gap-2 mt-2">
+                              <span className="text-sm text-muted-foreground">Disbursement Date:</span>
+                              <Popover>
+                                <PopoverTrigger asChild>
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className={cn(
+                                      "w-[150px] justify-start text-left font-normal h-8",
+                                      !selectedDates[phase.id] && "text-muted-foreground"
+                                    )}
+                                  >
+                                    <CalendarIcon className="mr-2 h-4 w-4" />
+                                    {selectedDates[phase.id] ? (
+                                      format(selectedDates[phase.id]!, "dd/MM/yyyy")
+                                    ) : (
+                                      <span>Pick a date</span>
+                                    )}
+                                  </Button>
+                                </PopoverTrigger>
+                                <PopoverContent className="w-auto p-0" align="start">
+                                  <Calendar
+                                    mode="single"
+                                    selected={selectedDates[phase.id]}
+                                    onSelect={(date) => handleDateChange(phase.id, date)}
+                                    initialFocus
+                                  />
+                                </PopoverContent>
+                              </Popover>
+                              <Button
+                                size="sm"
+                                className="h-8"
+                                disabled={!selectedDates[phase.id] || isSubmitting}
+                                onClick={() => handleSaveDisbursementDate(phase.id)}
+                              >
+                                Save
+                              </Button>
+                            </div>
+                          ) : (
+                            <p className="text-sm text-muted-foreground mt-1">
+                              Disbursed on: Not set
+                            </p>
+                          )}
+                        </div>
+                      )}
+
+                      {editingPhaseId === phase.id && (isPI || isCoPi) && (
+                        <div className="flex items-center gap-2 mt-2 p-2 border rounded bg-background max-w-md">
+                          <span className="text-sm font-medium">New Date:</span>
+                          <Popover>
+                            <PopoverTrigger asChild>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className={cn(
+                                  "w-[150px] justify-start text-left font-normal h-8",
+                                  !selectedDates[phase.id] && "text-muted-foreground"
+                                )}
+                              >
+                                <CalendarIcon className="mr-2 h-4 w-4" />
+                                {selectedDates[phase.id] ? (
+                                  format(selectedDates[phase.id]!, "dd/MM/yyyy")
+                                ) : (
+                                  <span>Pick a date</span>
+                                )}
+                              </Button>
+                            </PopoverTrigger>
+                            <PopoverContent className="w-auto p-0" align="start">
+                              <Calendar
+                                mode="single"
+                                selected={selectedDates[phase.id]}
+                                onSelect={(date) => handleDateChange(phase.id, date)}
+                                initialFocus
+                              />
+                            </PopoverContent>
+                          </Popover>
+                          <Button
+                            size="sm"
+                            className="h-8"
+                            disabled={!selectedDates[phase.id] || isSubmitting}
+                            onClick={() => handleSaveDisbursementDate(phase.id)}
+                          >
+                            Update
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="h-8"
+                            onClick={handleCancelEditingPhaseDate}
+                          >
+                            Cancel
+                          </Button>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    phase.disbursementDate && (
+                      <p className="text-sm text-muted-foreground">
+                        Disbursed on: {format(parseISO(phase.disbursementDate), "dd/MM/yyyy")}
+                      </p>
+                    )
                   )}
                 </CardHeader>
                 <CardContent>

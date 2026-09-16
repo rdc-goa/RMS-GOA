@@ -446,7 +446,8 @@ export async function submitIncentiveClaim(
     }
 
     const settings = await getSystemSettings();
-    const workflow = settings.incentiveApprovalWorkflows?.[claimData.claimType] || [1, 2, 3, 4, 5];
+    const rawWorkflow = settings.incentiveApprovalWorkflows?.[claimData.claimType] || [1, 2, 3, 4];
+    const workflow = rawWorkflow.filter(s => s <= 4);
     let initialStatus: IncentiveClaim['status'] = 'Accepted';
     if (workflow && workflow.length > 0) {
       const firstStage = Math.min(...workflow);
@@ -721,9 +722,19 @@ export async function processIncentiveClaimAction(
       isAuthorized = true;
     } else if (stageNumber === 1) {
       const claimantSnap = await adminDb.collection('users').doc(claim.uid).get();
-      const claimantInstitute = claimantSnap.exists ? (claimantSnap.data()?.institute || '') : '';
+      const claimantData = claimantSnap.exists ? (claimantSnap.data() as any) : null;
+      const claimantInstitute = claimantData?.institute || '';
       const principalEmail = claimantInstitute ? (settings.principalEmails?.[claimantInstitute] || '') : '';
-      const emailMatchesPrincipal = !!principalEmail && approver.email?.toLowerCase() === principalEmail.toLowerCase();
+      let emailMatchesPrincipal = !!principalEmail && approver.email?.toLowerCase() === principalEmail.toLowerCase();
+
+      if (!emailMatchesPrincipal && settings.facultyMatrix) {
+        const { getUserAuthorityScope } = await import('@/lib/academic-data');
+        const scope = getUserAuthorityScope(approver.email, settings.facultyMatrix);
+        if (scope.hasAccess && claimantInstitute && scope.institutes.includes(claimantInstitute)) {
+          emailMatchesPrincipal = true;
+        }
+      }
+
       isAuthorized = !!emailMatchesPrincipal && (!!hasStageModule || !!approver.allowedModules?.includes('incentive-approvals'));
     } else {
       isAuthorized = !!hasStageModule || emailMatches;
@@ -742,7 +753,8 @@ export async function processIncentiveClaimAction(
     };
 
     let newStatus = (action === 'reject') ? 'Rejected' : 'Accepted';
-    const workflow = settings.incentiveApprovalWorkflows?.[claim.claimType] || [1, 2, 3, 4, 5];
+    const rawWorkflow = settings.incentiveApprovalWorkflows?.[claim.claimType] || [1, 2, 3, 4];
+    const workflow = rawWorkflow.filter(s => s <= 4);
     if (action !== 'reject') {
       const nextStage = workflow.find(stage => stage > (stageIndex + 1));
       if (nextStage) newStatus = `Pending Stage ${nextStage} Approval` as any;
@@ -899,7 +911,7 @@ export async function bulkProcessIncentiveClaimsAction(
   }
 }
 
-export async function markPaymentsCompleted(claimIds: string[]): Promise<{ success: boolean; error?: string; processedCount?: number }> {
+export async function markPaymentsCompleted(claimIds: string[]): Promise<{ success: boolean; error?: string; processedCount?: number; skippedCount?: number }> {
   try {
     const batch = adminDb.batch();
     let count = 0;
@@ -937,7 +949,7 @@ export async function markPaymentsCompleted(claimIds: string[]): Promise<{ succe
   }
 }
 
-export async function submitToAccounts(claimIds: string[]): Promise<{ success: boolean; error?: string; processedCount?: number }> {
+export async function submitToAccounts(claimIds: string[]): Promise<{ success: boolean; error?: string; processedCount?: number; skippedCount?: number }> {
   try {
     let count = 0;
     for (const id of claimIds) {

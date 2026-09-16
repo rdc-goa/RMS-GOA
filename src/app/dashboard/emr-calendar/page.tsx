@@ -7,7 +7,6 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { db } from '@/lib/config';
 import { collection, query, orderBy, onSnapshot, doc, deleteDoc, updateDoc, where, getDocs } from 'firebase/firestore';
-import { getFundingCalls } from '@/app/emr-actions'
 import DOMPurify from 'isomorphic-dompurify'
 import { useToast } from '@/hooks/use-toast';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -112,7 +111,11 @@ export function AddEditCallDialog({
   useEffect(() => {
     if (existingCall) {
       form.reset({
-        ...existingCall,
+        title: existingCall.title,
+        agency: existingCall.agency,
+        description: existingCall.description || '',
+        callType: existingCall.callType,
+        detailsUrl: existingCall.detailsUrl,
         interestDeadline: parseISO(existingCall.interestDeadline),
         applyDeadline: parseISO(existingCall.applyDeadline),
         notifyAllStaff: existingCall.isAnnounced,
@@ -384,12 +387,12 @@ function EmrCalendar({ user }: EmrCalendarProps) {
         try {
             const callsQuery = query(collection(db, 'fundingCalls'), orderBy('interestDeadline', 'desc'));
             const unsubscribeCalls = onSnapshot(callsQuery, (snapshot) => {
-                setCalls(snapshot.docs.map(callDoc => ({ id: callDoc.id, ...callDoc.data() } as FundingCall)));
+                setCalls(snapshot.docs.map(callDoc => ({ ...callDoc.data() as FundingCall, id: callDoc.id })));
             });
 
             const userInterestsQuery = query(collection(db, 'emrInterests'), where('userId', '==', user.uid));
             const unsubscribeUserInterests = onSnapshot(userInterestsQuery, (snapshot) => {
-                setUserInterests(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() as EmrInterest})));
+                setUserInterests(snapshot.docs.map(doc => ({ ...doc.data() as EmrInterest, id: doc.id })));
             });
             
             setLoading(false);

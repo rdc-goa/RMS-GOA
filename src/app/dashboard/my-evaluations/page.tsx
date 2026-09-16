@@ -50,7 +50,7 @@ export default function MyEvaluationsPage() {
         const projectsCol = collection(db, 'projects');
         const q = query(
           projectsCol,
-          where('evaluatedBy', 'array-contains', user.uid),
+          where('evaluatedBy', 'array-contains', user?.uid || ""),
           orderBy('submissionDate', 'desc')
         );
         const projectSnapshot = await getDocs(q);

@@ -1,0 +1,2222 @@
+[
+  {
+    "id": "fac-6-1787298383373",
+    "name": "Faculty of Agriculture",
+    "approverEmail": "",
+    "institutes": [
+      {
+        "id": "inst-6-0-1787298383373",
+        "name": "College of Agriculture",
+        "approverEmail": "",
+        "departments": [
+          {
+            "id": "dept-6-0-4-1787298383373",
+            "name": "Agricultural Economics",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-6-0-7-1787298383373",
+            "name": "Agricultural Extension",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-6-0-0-1787298383373",
+            "name": "Agriculture",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-6-0-5-1787298383373",
+            "name": "Agronomy",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-6-0-2-1787298383373",
+            "name": "Breeding and Genetics",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-6-0-1-1787298383373",
+            "name": "Entomology",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-6-0-8-1787298383373",
+            "name": "Horticulture",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-6-0-3-1787298383373",
+            "name": "Plant Pathology",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-6-0-6-1787298383373",
+            "name": "Soil Science",
+            "approverEmail": ""
+          }
+        ],
+        "authorityEmail": "agriculture@paruluniversity.ac.in"
+      }
+    ]
+  },
+  {
+    "id": "fac-14-1787298383373",
+    "name": "Faculty of Applied Sciences",
+    "approverEmail": "",
+    "institutes": [
+      {
+        "id": "inst-14-1-1787298383373",
+        "name": "Parul Institute of Applied Sciences (Ahmedabad Campus)",
+        "approverEmail": "",
+        "departments": [
+          {
+            "id": "dept-14-1-1-1787298383373",
+            "name": "Chemistry",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-14-1-6-1787298383373",
+            "name": "Earth and Environmental Science",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-14-1-3-1787298383373",
+            "name": "Food Technology",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-14-1-4-1787298383373",
+            "name": "Forensic Science",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-14-1-5-1787298383373",
+            "name": "Life Sciences",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-14-1-7-1787298383373",
+            "name": "Microbiology",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-14-1-2-1787298383373",
+            "name": "Nutrition and Dietetics",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-14-1-0-1787298383373",
+            "name": "Physics",
+            "approverEmail": ""
+          }
+        ]
+      },
+      {
+        "id": "inst-14-0-1787298383373",
+        "name": "Parul Institute of Applied Sciences (Vadodara Campus)",
+        "approverEmail": "",
+        "departments": [
+          {
+            "id": "dept-14-0-1-1787298383373",
+            "name": "Chemistry",
+            "approverEmail": "",
+            "authorityEmail": "piaschemistryhod@paruluniversity.ac.in"
+          },
+          {
+            "id": "dept-14-0-6-1787298383373",
+            "name": "Earth and Environmental Science",
+            "approverEmail": "",
+            "authorityEmail": "piasenvshod@paruluniversity.ac.in"
+          },
+          {
+            "id": "dept-14-0-3-1787298383373",
+            "name": "Food Technology",
+            "approverEmail": "",
+            "authorityEmail": "piasfoodtechhod@paruluniversity.ac.in"
+          },
+          {
+            "id": "dept-14-0-4-1787298383373",
+            "name": "Forensic Science",
+            "approverEmail": "",
+            "authorityEmail": "piasforensichod@paruluniversity.ac.in"
+          },
+          {
+            "id": "dept-1787648317672-wadk0",
+            "name": "Geology",
+            "authorityEmail": ""
+          },
+          {
+            "id": "dept-14-0-5-1787298383373",
+            "name": "Life Sciences",
+            "approverEmail": "",
+            "authorityEmail": "piaslifescienceshod@paruluniversity.ac.in"
+          },
+          {
+            "id": "dept-14-0-7-1787298383373",
+            "name": "Microbiology",
+            "approverEmail": "",
+            "authorityEmail": ""
+          },
+          {
+            "id": "dept-14-0-2-1787298383373",
+            "name": "Nutrition and Dietetics",
+            "approverEmail": "",
+            "authorityEmail": "piasnudshod@paruluniversity.ac.in"
+          },
+          {
+            "id": "dept-14-0-0-1787298383373",
+            "name": "Physics",
+            "approverEmail": ""
+          }
+        ],
+        "authorityEmail": "fasvdr@paruluniversity.ac.in"
+      }
+    ]
+  },
+  {
+    "id": "fac-10-1787298383373",
+    "name": "Faculty of Architecture & Planning",
+    "approverEmail": "",
+    "institutes": [
+      {
+        "id": "inst-10-0-1787298383373",
+        "name": "Parul Institute of Architecture & Research",
+        "approverEmail": "",
+        "departments": [
+          {
+            "id": "dept-10-0-0-1787298383373",
+            "name": "Architecture and Planning",
+            "approverEmail": ""
+          }
+        ],
+        "authorityEmail": "piar@paruluniversity.ac.in"
+      }
+    ],
+    "authorityEmail": "piar@paruluniversity.ac.in"
+  },
+  {
+    "id": "fac-19-1787298383373",
+    "name": "Faculty of Arts",
+    "approverEmail": "",
+    "institutes": [
+      {
+        "id": "inst-19-0-1787298383373",
+        "name": "Parul Institute of Arts",
+        "approverEmail": "",
+        "departments": [
+          {
+            "id": "dept-19-0-0-1787298383373",
+            "name": "Arts",
+            "approverEmail": ""
+          }
+        ],
+        "authorityEmail": "piarts@paruluniversity.ac.in"
+      }
+    ]
+  },
+  {
+    "id": "fac-7-1787298383373",
+    "name": "Faculty of Ayurved",
+    "approverEmail": "",
+    "institutes": [
+      {
+        "id": "inst-7-1-1787298383373",
+        "name": "Parul Institute of Ayurveda",
+        "approverEmail": "",
+        "departments": [
+          {
+            "id": "dept-7-1-5-1787298383373",
+            "name": "Agada Tantra",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-7-1-6-1787298383373",
+            "name": "Ayurved Samhita and Siddhant",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-7-1-2-1787298383373",
+            "name": "Dravyaguna Vigyan",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-7-1-10-1787298383373",
+            "name": "Kaumarabhritya",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-7-1-1-1787298383373",
+            "name": "Kayachikitsa",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-7-1-9-1787298383373",
+            "name": "Kriya Sharir",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-7-1-3-1787298383373",
+            "name": "Panchakarma",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-7-1-8-1787298383373",
+            "name": "Prasuti Tantra evum Stree Roga",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-7-1-13-1787298383373",
+            "name": "Rachana Sharir",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-7-1-4-1787298383373",
+            "name": "Rasashastra and Bhaishajya Kalpana",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-7-1-11-1787298383373",
+            "name": "Roga Nidana evum Vikruti Vigyan",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-7-1-12-1787298383373",
+            "name": "Shalakya Tantra",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-7-1-7-1787298383373",
+            "name": "Shalya Tantra",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-7-1-0-1787298383373",
+            "name": "Swasthvritta and Yoga",
+            "approverEmail": ""
+          }
+        ],
+        "authorityEmail": "pia@paruluniversity.ac.in"
+      },
+      {
+        "id": "inst-7-0-1787298383373",
+        "name": "Parul Institute of Ayurveda & Research",
+        "approverEmail": "",
+        "departments": [
+          {
+            "id": "dept-7-0-5-1787298383373",
+            "name": "Agada Tantra",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-7-0-6-1787298383373",
+            "name": "Ayurved Samhita and Siddhant",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-7-0-2-1787298383373",
+            "name": "Dravyaguna Vigyan",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-7-0-10-1787298383373",
+            "name": "Kaumarabhritya",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-7-0-1-1787298383373",
+            "name": "Kayachikitsa",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-7-0-9-1787298383373",
+            "name": "Kriya Sharir",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-7-0-3-1787298383373",
+            "name": "Panchakarma",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-7-0-8-1787298383373",
+            "name": "Prasuti Tantra evum Stree Roga",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-7-0-13-1787298383373",
+            "name": "Rachana Sharir",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-7-0-4-1787298383373",
+            "name": "Rasashastra and Bhaishajya Kalpana",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-7-0-11-1787298383373",
+            "name": "Roga Nidana evum Vikruti Vigyan",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-7-0-12-1787298383373",
+            "name": "Shalakya Tantra",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-7-0-7-1787298383373",
+            "name": "Shalya Tantra",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-7-0-0-1787298383373",
+            "name": "Swasthvritta and Yoga",
+            "approverEmail": ""
+          }
+        ],
+        "authorityEmail": "piaresearch@paruluniversity.ac.in"
+      }
+    ],
+    "authorityEmail": "dean.pia@paruluniversity.ac.in"
+  },
+  {
+    "id": "fac-1-1787298383373",
+    "name": "Faculty of Commerce",
+    "approverEmail": "",
+    "institutes": [
+      {
+        "id": "inst-1-0-1787298383373",
+        "name": "Parul Institute of Commerce",
+        "approverEmail": "",
+        "departments": [
+          {
+            "id": "dept-1-0-0-1787298383373",
+            "name": "Commerce",
+            "approverEmail": ""
+          }
+        ],
+        "authorityEmail": "pic@paruluniversity.ac.in "
+      }
+    ]
+  },
+  {
+    "id": "fac-15-1787298383373",
+    "name": "Faculty of Design",
+    "approverEmail": "",
+    "institutes": [
+      {
+        "id": "inst-15-0-1787298383373",
+        "name": "Parul Institute of Design",
+        "approverEmail": "",
+        "departments": [
+          {
+            "id": "dept-15-0-4-1787298383373",
+            "name": "Animation and VFX",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-15-0-0-1787298383373",
+            "name": "Fashion Design",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-15-0-5-1787298383373",
+            "name": "Film and TV",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-15-0-1-1787298383373",
+            "name": "Interior Design",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-15-0-2-1787298383373",
+            "name": "Product Design",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-15-0-3-1787298383373",
+            "name": "Visual Communication",
+            "approverEmail": ""
+          }
+        ],
+        "authorityEmail": "pid@paruluniversity.ac.in"
+      }
+    ]
+  },
+  {
+    "id": "fac-1787377948690-e4w91",
+    "name": "Faculty of Education",
+    "authorityEmail": "",
+    "institutes": [
+      {
+        "id": "inst-1787377968306-6u4ji",
+        "name": "Faculty of Education",
+        "authorityEmail": "",
+        "departments": [
+          {
+            "id": "dept-1787377970906-3quim",
+            "name": "Faculty of Education",
+            "authorityEmail": ""
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "fac-0-1787298383373",
+    "name": "Faculty of Engineering & Technology",
+    "approverEmail": "",
+    "institutes": [
+      {
+        "id": "inst-0-1-1787298383373",
+        "name": "Parul Institute of Engineering & Technology",
+        "approverEmail": "",
+        "departments": [
+          {
+            "id": "dept-0-1-0-1787298383373",
+            "name": "Aeronautical Engineering",
+            "approverEmail": "",
+            "authorityEmail": "pietaeronauticalhod@paruluniversity.ac.in"
+          },
+          {
+            "id": "dept-0-1-1-1787298383373",
+            "name": "Applied Sciences and Humanities",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-0-1-2-1787298383373",
+            "name": "Artificial Intelligence and Data Science",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-0-1-3-1787298383373",
+            "name": "Artificial Intelligence and Machine Learning",
+            "approverEmail": "",
+            "authorityEmail": "pietaimlhod@paruluniversity.ac.in"
+          },
+          {
+            "id": "dept-0-1-12-1787298383373",
+            "name": "Career Development Cell",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-0-1-4-1787298383373",
+            "name": "Civil Engineering",
+            "approverEmail": "",
+            "authorityEmail": "pietcivilhod@paruluniversity.ac.in"
+          },
+          {
+            "id": "dept-0-1-5-1787298383373",
+            "name": "Computer Science and Engineering",
+            "approverEmail": "",
+            "authorityEmail": "pietcomputerhod@paruluniversity.ac.in"
+          },
+          {
+            "id": "dept-0-1-6-1787298383373",
+            "name": "Cyber Security",
+            "approverEmail": "",
+            "authorityEmail": "pietcyberhod@paruluniversity.ac.in"
+          },
+          {
+            "id": "dept-0-1-7-1787298383373",
+            "name": "Electrical Engineering",
+            "approverEmail": "",
+            "authorityEmail": "pietelectricalhod@paruluniversity.ac.in"
+          },
+          {
+            "id": "dept-0-1-8-1787298383373",
+            "name": "Electronics and Communication",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-0-1-9-1787298383373",
+            "name": "Industry Embedded Programme",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-0-1-10-1787298383373",
+            "name": "Information Technology",
+            "approverEmail": "",
+            "authorityEmail": "pietithod@paruluniversity.ac.in"
+          },
+          {
+            "id": "dept-0-1-11-1787298383373",
+            "name": "Mechanical Engineering",
+            "approverEmail": "",
+            "authorityEmail": "pietmechanicalhod@paruluniversity.ac.in"
+          }
+        ],
+        "authorityEmail": "piet@paruluniversity.ac.in"
+      },
+      {
+        "id": "inst-0-3-1787298383373",
+        "name": "Parul Institute of Engineering & Technology (Diploma Studies)",
+        "approverEmail": "",
+        "departments": [
+          {
+            "id": "dept-0-3-3-1787298383373",
+            "name": "Applied Science and Humanities",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-1787387250724-iem1t",
+            "name": "Automobile Engineering",
+            "authorityEmail": "pietds1automobilehod@paruluniversity.ac.in"
+          },
+          {
+            "id": "dept-1787387204180-q8f7e",
+            "name": "Civil Engineering",
+            "authorityEmail": "pietds1civilhod@paruluniversity.ac.in"
+          },
+          {
+            "id": "dept-0-3-2-1787298383373",
+            "name": "Computer Engineering",
+            "approverEmail": "",
+            "authorityEmail": "pietds1computerhod@paruluniversity.ac.in"
+          },
+          {
+            "id": "dept-0-3-4-1787298383373",
+            "name": "Electrical Engineering",
+            "approverEmail": "",
+            "authorityEmail": "pietds1electricalhod@paruluniversity.ac.in"
+          },
+          {
+            "id": "dept-0-3-5-1787298383373",
+            "name": "Electronics and Communication",
+            "approverEmail": "",
+            "authorityEmail": ""
+          },
+          {
+            "id": "dept-0-3-1-1787298383373",
+            "name": "Information Technology",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-0-3-0-1787298383373",
+            "name": "Mechanical Engineering",
+            "approverEmail": "",
+            "authorityEmail": "pietds1mechanicalhod@paruluniversity.ac.in"
+          }
+        ],
+        "authorityEmail": "pietds1@paruluniversity.ac.in"
+      },
+      {
+        "id": "inst-0-0-1787298383373",
+        "name": "Parul Institute of Technology",
+        "approverEmail": "",
+        "departments": [
+          {
+            "id": "dept-0-0-0-1787298383373",
+            "name": "Agricultural Engineering",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-0-0-1-1787298383373",
+            "name": "Applied Sciences and Humanities",
+            "approverEmail": "",
+            "authorityEmail": "pitappliedscienceshod@paruluniversity.ac.in"
+          },
+          {
+            "id": "dept-0-0-2-1787298383373",
+            "name": "Automobile Engineering",
+            "approverEmail": "",
+            "authorityEmail": "pitautomobilehod@paruluniversity.ac.in"
+          },
+          {
+            "id": "dept-0-0-3-1787298383373",
+            "name": "Biomedical Engineering",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-0-0-4-1787298383373",
+            "name": "Biotechnology",
+            "approverEmail": "",
+            "authorityEmail": "pitbiotechnologyhod@paruluniversity.ac.in"
+          },
+          {
+            "id": "dept-0-0-5-1787298383373",
+            "name": "Career Development Cell",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-0-0-6-1787298383373",
+            "name": "Chemical Engineering",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-0-0-7-1787298383373",
+            "name": "Civil Engineering",
+            "approverEmail": "",
+            "authorityEmail": "pitcivilhod@paruluniversity.ac.in"
+          },
+          {
+            "id": "dept-0-0-8-1787298383373",
+            "name": "Computer Science and Engineering",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-0-0-9-1787298383373",
+            "name": "Dairy Technology",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-0-0-10-1787298383373",
+            "name": "Electrical Engineering",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-0-0-11-1787298383373",
+            "name": "Food Technology",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-0-0-12-1787298383373",
+            "name": "Mechatronics Engineering",
+            "approverEmail": "",
+            "authorityEmail": "pitmechatronicshod@paruluniversity.ac.in"
+          },
+          {
+            "id": "dept-0-0-13-1787298383373",
+            "name": "Petroleum Engineering",
+            "approverEmail": "",
+            "authorityEmail": "pitpetroleumhod@paruluniversity.ac.in"
+          },
+          {
+            "id": "dept-0-0-14-1787298383373",
+            "name": "Robotics and Automation",
+            "approverEmail": "",
+            "authorityEmail": "pitroboticshod@paruluniversity.ac.in"
+          }
+        ],
+        "authorityEmail": "pit@paruluniversity.ac.in"
+      },
+      {
+        "id": "inst-0-4-1787298383373",
+        "name": "Parul Institute of Technology-Diploma studies",
+        "approverEmail": "",
+        "departments": [
+          {
+            "id": "dept-1788412804769-cx5x8",
+            "name": "Aeronautical Engineering",
+            "authorityEmail": ""
+          },
+          {
+            "id": "dept-0-4-3-1787298383373",
+            "name": "Applied Science and Humanities",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-1787383149046-q70ql",
+            "name": "Automobile Engineering",
+            "authorityEmail": ""
+          },
+          {
+            "id": "dept-0-4-2-1787298383373",
+            "name": "Computer Engineering",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-0-4-4-1787298383373",
+            "name": "Electrical Engineering",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-0-4-5-1787298383373",
+            "name": "Electronics and Communication",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-0-4-1-1787298383373",
+            "name": "Information Technology",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-0-4-0-1787298383373",
+            "name": "Mechanical Engineering",
+            "approverEmail": ""
+          }
+        ],
+        "authorityEmail": "pitds@paruluniversity.ac.in"
+      },
+      {
+        "id": "inst-0-2-1787298383373",
+        "name": "Parul Polytechnic Institute",
+        "approverEmail": "",
+        "departments": [
+          {
+            "id": "dept-0-2-3-1787298383373",
+            "name": "Applied Science and Humanities",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-0-2-2-1787298383373",
+            "name": "Computer Engineering",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-0-2-4-1787298383373",
+            "name": "Electrical Engineering",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-0-2-5-1787298383373",
+            "name": "Electronics and Communication",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-0-2-1-1787298383373",
+            "name": "Information Technology",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-0-2-0-1787298383373",
+            "name": "Mechanical Engineering",
+            "approverEmail": ""
+          }
+        ],
+        "authorityEmail": "ppi1@paruluniversity.ac.in"
+      }
+    ],
+    "authorityEmail": "enggdean@paruluniversity.ac.in"
+  },
+  {
+    "id": "fac-16-1787298383373",
+    "name": "Faculty of Fine Arts",
+    "approverEmail": "",
+    "institutes": [
+      {
+        "id": "inst-16-0-1787298383373",
+        "name": "Parul Institute of Fine Arts",
+        "approverEmail": "",
+        "departments": [
+          {
+            "id": "dept-16-0-0-1787298383373",
+            "name": "Fine Arts",
+            "approverEmail": ""
+          }
+        ]
+      }
+    ],
+    "authorityEmail": "ffa@paruluniversity.ac.in"
+  },
+  {
+    "id": "fac-2-1787298383373",
+    "name": "Faculty of Homoeopathy",
+    "approverEmail": "",
+    "institutes": [
+      {
+        "id": "inst-2-1-1787298383373",
+        "name": "Ahmedabad Homoeopathic Medical College",
+        "approverEmail": "",
+        "departments": [
+          {
+            "id": "dept-2-1-2-1787298383373",
+            "name": "Anatomy",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-2-1-13-1787298383373",
+            "name": "Community Medicine",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-2-1-9-1787298383373",
+            "name": "Forensic Medicine and Toxicology",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-2-1-0-1787298383373",
+            "name": "Homeopathic",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-2-1-6-1787298383373",
+            "name": "Homoeopathic Materia Medica",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-2-1-4-1787298383373",
+            "name": "Homoeopathic Pharmacy",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-2-1-1-1787298383373",
+            "name": "Homoeopathy",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-2-1-11-1787298383373",
+            "name": "Obstetrice and Gynaecology",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-2-1-7-1787298383373",
+            "name": "Organon of Medicine",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-2-1-8-1787298383373",
+            "name": "Pathology and Microbiology",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-2-1-5-1787298383373",
+            "name": "Pharmacy",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-2-1-3-1787298383373",
+            "name": "Physiology and Biochemistry",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-2-1-12-1787298383373",
+            "name": "Practice of Medicine",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-2-1-14-1787298383373",
+            "name": "Repertory",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-2-1-15-1787298383373",
+            "name": "Research Methodology and Biostatistics",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-2-1-10-1787298383373",
+            "name": "Surgery",
+            "approverEmail": ""
+          }
+        ],
+        "authorityEmail": "ahmc@paruluniversity.ac.in"
+      },
+      {
+        "id": "inst-2-3-1787298383373",
+        "name": "Jawaharlal Nehru Homoeopathic Medical College",
+        "approverEmail": "",
+        "departments": [
+          {
+            "id": "dept-2-3-2-1787298383373",
+            "name": "Anatomy",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-2-3-13-1787298383373",
+            "name": "Community Medicine",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-2-3-9-1787298383373",
+            "name": "Forensic Medicine and Toxicology",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-2-3-0-1787298383373",
+            "name": "Homeopathic",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-2-3-6-1787298383373",
+            "name": "Homoeopathic Materia Medica",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-2-3-4-1787298383373",
+            "name": "Homoeopathic Pharmacy",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-2-3-1-1787298383373",
+            "name": "Homoeopathy",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-2-3-11-1787298383373",
+            "name": "Obstetrice and Gynaecology",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-2-3-7-1787298383373",
+            "name": "Organon of Medicine",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-2-3-8-1787298383373",
+            "name": "Pathology and Microbiology",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-2-3-5-1787298383373",
+            "name": "Pharmacy",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-2-3-3-1787298383373",
+            "name": "Physiology and Biochemistry",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-2-3-12-1787298383373",
+            "name": "Practice of Medicine",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-2-3-14-1787298383373",
+            "name": "Repertory",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-2-3-15-1787298383373",
+            "name": "Research Methodology and Biostatistics",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-2-3-10-1787298383373",
+            "name": "Surgery",
+            "approverEmail": ""
+          }
+        ],
+        "authorityEmail": "jnhmc@paruluniversity.ac.in"
+      },
+      {
+        "id": "inst-2-0-1787298383373",
+        "name": "Parul Institute of Homeopathy & Research",
+        "approverEmail": "",
+        "departments": [
+          {
+            "id": "dept-2-0-2-1787298383373",
+            "name": "Anatomy",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-2-0-13-1787298383373",
+            "name": "Community Medicine",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-2-0-9-1787298383373",
+            "name": "Forensic Medicine and Toxicology",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-2-0-0-1787298383373",
+            "name": "Homeopathic",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-2-0-6-1787298383373",
+            "name": "Homoeopathic Materia Medica",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-2-0-4-1787298383373",
+            "name": "Homoeopathic Pharmacy",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-2-0-1-1787298383373",
+            "name": "Homoeopathy",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-2-0-11-1787298383373",
+            "name": "Obstetrice and Gynaecology",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-2-0-7-1787298383373",
+            "name": "Organon of Medicine",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-2-0-8-1787298383373",
+            "name": "Pathology and Microbiology",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-2-0-5-1787298383373",
+            "name": "Pharmacy",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-2-0-3-1787298383373",
+            "name": "Physiology and Biochemistry",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-2-0-12-1787298383373",
+            "name": "Practice of Medicine",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-2-0-14-1787298383373",
+            "name": "Repertory",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-2-0-15-1787298383373",
+            "name": "Research Methodology and Biostatistics",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-2-0-10-1787298383373",
+            "name": "Surgery",
+            "approverEmail": ""
+          }
+        ],
+        "authorityEmail": "pihr@paruluniversity.ac.in"
+      },
+      {
+        "id": "inst-2-2-1787298383373",
+        "name": "Rajkot Homoeopathic Medical College",
+        "approverEmail": "",
+        "departments": [
+          {
+            "id": "dept-2-2-2-1787298383373",
+            "name": "Anatomy",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-2-2-13-1787298383373",
+            "name": "Community Medicine",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-2-2-9-1787298383373",
+            "name": "Forensic Medicine and Toxicology",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-2-2-0-1787298383373",
+            "name": "Homeopathic",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-2-2-6-1787298383373",
+            "name": "Homoeopathic Materia Medica",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-2-2-4-1787298383373",
+            "name": "Homoeopathic Pharmacy",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-2-2-1-1787298383373",
+            "name": "Homoeopathy",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-2-2-11-1787298383373",
+            "name": "Obstetrice and Gynaecology",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-2-2-7-1787298383373",
+            "name": "Organon of Medicine",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-2-2-8-1787298383373",
+            "name": "Pathology and Microbiology",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-2-2-5-1787298383373",
+            "name": "Pharmacy",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-2-2-3-1787298383373",
+            "name": "Physiology and Biochemistry",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-2-2-12-1787298383373",
+            "name": "Practice of Medicine",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-2-2-14-1787298383373",
+            "name": "Repertory",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-2-2-15-1787298383373",
+            "name": "Research Methodology and Biostatistics",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-2-2-10-1787298383373",
+            "name": "Surgery",
+            "approverEmail": ""
+          }
+        ],
+        "authorityEmail": "rhmc@paruluniversity.ac.in"
+      }
+    ]
+  },
+  {
+    "id": "fac-8-1787298383373",
+    "name": "Faculty of Hotel Management & Catering Technology",
+    "approverEmail": "",
+    "institutes": [
+      {
+        "id": "inst-8-0-1787298383373",
+        "name": "Parul Institute of Hotel Management & Catering Technology",
+        "approverEmail": "",
+        "departments": [
+          {
+            "id": "dept-8-0-2-1787298383373",
+            "name": "Catering Technology",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-8-0-1-1787298383373",
+            "name": "Hotel Management",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-8-0-0-1787298383373",
+            "name": "Hotel Management and Catering Technology",
+            "approverEmail": ""
+          }
+        ],
+        "authorityEmail": "pihmct@paruluniversity.ac.in"
+      }
+    ],
+    "authorityEmail": "pihmct@paruluniversity.ac.in"
+  },
+  {
+    "id": "fac-11-1787298383373",
+    "name": "Faculty of IT & Computer Science",
+    "approverEmail": "",
+    "institutes": [
+      {
+        "id": "inst-11-0-1787298383373",
+        "name": "Parul Institute of Computer Application",
+        "approverEmail": "",
+        "departments": [
+          {
+            "id": "dept-11-0-0-1787298383373",
+            "name": "Bachelor of Computer Applications",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-11-0-1-1787298383373",
+            "name": "Master of Computer Applications",
+            "approverEmail": ""
+          }
+        ],
+        "authorityEmail": "dean.fitcs@paruluniversity.ac.in"
+      }
+    ],
+    "authorityEmail": "dean.fitcs@paruluniversity.ac.in"
+  },
+  {
+    "id": "fac-5-1787298383373",
+    "name": "Faculty of Law",
+    "approverEmail": "",
+    "institutes": [
+      {
+        "id": "inst-5-0-1787298383373",
+        "name": "Parul Institute of Law",
+        "approverEmail": "",
+        "departments": [
+          {
+            "id": "dept-5-0-0-1787298383373",
+            "name": "Law",
+            "approverEmail": ""
+          }
+        ],
+        "authorityEmail": "dean.pil@paruluniversity.ac.in"
+      }
+    ],
+    "authorityEmail": "dean.pil@paruluniversity.ac.in"
+  },
+  {
+    "id": "fac-4-1787298383373",
+    "name": "Faculty of Liberal Arts",
+    "approverEmail": "",
+    "institutes": [
+      {
+        "id": "inst-4-0-1787298383373",
+        "name": "Parul Institute of Liberal Arts",
+        "approverEmail": "",
+        "departments": [
+          {
+            "id": "dept-4-0-6-1787298383373",
+            "name": "Economics",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-4-0-2-1787298383373",
+            "name": "English",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-4-0-1-1787298383373",
+            "name": "Geography",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-4-0-7-1787298383373",
+            "name": "History",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-4-0-0-1787298383373",
+            "name": "Journalism and Mass Communication",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-4-0-3-1787298383373",
+            "name": "Political Science",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-4-0-4-1787298383373",
+            "name": "Psychology",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-4-0-5-1787298383373",
+            "name": "Sociology",
+            "approverEmail": ""
+          }
+        ],
+        "authorityEmail": "dean.pila@paruluniversity.ac.in"
+      }
+    ],
+    "authorityEmail": "dean.pila@paruluniversity.ac.in"
+  },
+  {
+    "id": "fac-18-1787298383373",
+    "name": "Faculty of Library & Information Science",
+    "approverEmail": "",
+    "institutes": [
+      {
+        "id": "inst-18-0-1787298383373",
+        "name": "Parul Institute of Library & Information Science",
+        "approverEmail": "",
+        "departments": [
+          {
+            "id": "dept-18-0-0-1787298383373",
+            "name": "Library & Information Science",
+            "approverEmail": ""
+          }
+        ],
+        "authorityEmail": ""
+      }
+    ],
+    "authorityEmail": "fls@paruluniversity.ac.in"
+  },
+  {
+    "id": "fac-12-1787298383373",
+    "name": "Faculty of Management Studies",
+    "approverEmail": "",
+    "institutes": [
+      {
+        "id": "inst-12-0-1787298383373",
+        "name": "Parul Institute of Business Administration",
+        "approverEmail": "",
+        "departments": [
+          {
+            "id": "dept-12-0-0-1787298383373",
+            "name": "Bachelor of Business Administration",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-12-0-2-1787298383373",
+            "name": "Management",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-12-0-1-1787298383373",
+            "name": "Master of Business Administration",
+            "approverEmail": ""
+          }
+        ],
+        "authorityEmail": "piba@paruluniversity.ac.in"
+      },
+      {
+        "id": "inst-12-1-1787298383373",
+        "name": "Parul Institute of Management",
+        "approverEmail": "",
+        "departments": [
+          {
+            "id": "dept-12-1-0-1787298383373",
+            "name": "Bachelor of Business Administration",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-12-1-2-1787298383373",
+            "name": "Management",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-12-1-1-1787298383373",
+            "name": "Master of Business Administration",
+            "approverEmail": ""
+          }
+        ],
+        "authorityEmail": "pim@paruluniversity.ac.in"
+      },
+      {
+        "id": "inst-12-2-1787298383373",
+        "name": "Parul Institute of Management & Research",
+        "approverEmail": "",
+        "departments": [
+          {
+            "id": "dept-12-2-0-1787298383373",
+            "name": "Bachelor of Business Administration",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-12-2-2-1787298383373",
+            "name": "Management",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-12-2-1-1787298383373",
+            "name": "Master of Business Administration",
+            "approverEmail": ""
+          }
+        ],
+        "authorityEmail": "pimr@paruluniversity.ac.in"
+      }
+    ],
+    "authorityEmail": "dean.fms@paruluniversity.ac.in"
+  },
+  {
+    "id": "fac-20-1787298383373",
+    "name": "Faculty of Medicine",
+    "approverEmail": "",
+    "institutes": [
+      {
+        "id": "inst-22-0-1787298383373",
+        "name": "Parul Institute of Allied & Healthcare Sciences",
+        "approverEmail": "",
+        "departments": [
+          {
+            "id": "dept-22-0-3-1787298383373",
+            "name": "Allied Health Sciences",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-22-0-0-1787298383373",
+            "name": "Clinical Lab Technology",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-1788412779233-sepbb",
+            "name": "Health Informatics",
+            "authorityEmail": ""
+          },
+          {
+            "id": "dept-22-0-4-1787298383373",
+            "name": "Healthcare Sciences",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-1788412745025-vwjur",
+            "name": "Medical Laboratory and Life Sciences",
+            "authorityEmail": ""
+          },
+          {
+            "id": "dept-1788412767545-so52c",
+            "name": "Medical Radiology, Imaging and Therapeutic Technology",
+            "authorityEmail": ""
+          },
+          {
+            "id": "dept-1788412749945-sio88",
+            "name": "Medical Technology and Health Sciences",
+            "authorityEmail": ""
+          },
+          {
+            "id": "dept-22-0-2-1787298383373",
+            "name": "Operation Theatre Technology",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-1788412759905-z6cpm",
+            "name": "Opthalmic Sciences",
+            "authorityEmail": ""
+          },
+          {
+            "id": "dept-22-0-1-1787298383373",
+            "name": "Radiology",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-1788412754937-bxirs",
+            "name": "Surgical technology and Emergency Sciences",
+            "authorityEmail": ""
+          }
+        ],
+        "authorityEmail": "piahs@paruluniversity.ac.in"
+      },
+      {
+        "id": "inst-20-0-1787298383373",
+        "name": "Parul Institute of Medical Sciences & Research",
+        "approverEmail": "",
+        "departments": [
+          {
+            "id": "dept-20-0-0-1787298383373",
+            "name": "Anaesthesiology",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-20-0-1-1787298383373",
+            "name": "Anatomy",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-20-0-2-1787298383373",
+            "name": "Biochemistry",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-1787553486013-xomt4",
+            "name": "Community Medicine",
+            "authorityEmail": ""
+          },
+          {
+            "id": "dept-1787553494766-1c6dh",
+            "name": "Dentistry",
+            "authorityEmail": ""
+          },
+          {
+            "id": "dept-1787553498093-0oz9s",
+            "name": "Dermatology (Skin & V.D.)",
+            "authorityEmail": ""
+          },
+          {
+            "id": "dept-1787553504269-df9z0",
+            "name": "Emergency Medicine",
+            "authorityEmail": ""
+          },
+          {
+            "id": "dept-1787553512253-4u089",
+            "name": "Forensic Medicine",
+            "authorityEmail": ""
+          },
+          {
+            "id": "dept-1787553515125-sabwg",
+            "name": "General Medicine",
+            "authorityEmail": ""
+          },
+          {
+            "id": "dept-1787553520254-2o5vw",
+            "name": "General Surgery",
+            "authorityEmail": ""
+          },
+          {
+            "id": "dept-1787553529973-ht84r",
+            "name": "Microbiology",
+            "authorityEmail": ""
+          },
+          {
+            "id": "dept-1787553538813-shdu0",
+            "name": "Obstetrics & Gynaecology",
+            "authorityEmail": ""
+          },
+          {
+            "id": "dept-1787553542549-xfclu",
+            "name": "Ophthalmology",
+            "authorityEmail": ""
+          },
+          {
+            "id": "dept-1787553543317-ztjt7",
+            "name": "Orthopaedics",
+            "authorityEmail": ""
+          },
+          {
+            "id": "dept-1787553543604-pk560",
+            "name": "Otorhinolaryngology (E.N.T.)",
+            "authorityEmail": ""
+          },
+          {
+            "id": "dept-1787553559564-kjfuk",
+            "name": "Paediatrics",
+            "authorityEmail": ""
+          },
+          {
+            "id": "dept-1787553559852-722tf",
+            "name": "Pathology",
+            "authorityEmail": ""
+          },
+          {
+            "id": "dept-1787553560204-jgnwm",
+            "name": "Pharmacology",
+            "authorityEmail": ""
+          },
+          {
+            "id": "dept-1787553576293-5fgcs",
+            "name": "Physiology",
+            "authorityEmail": ""
+          },
+          {
+            "id": "dept-1787553584149-6m91h",
+            "name": "Psychiatry",
+            "authorityEmail": ""
+          },
+          {
+            "id": "dept-1787553592301-aclc7",
+            "name": "Radiology",
+            "authorityEmail": ""
+          },
+          {
+            "id": "dept-1787553592548-x3cxs",
+            "name": "Respiratory Medicine",
+            "authorityEmail": ""
+          }
+        ],
+        "authorityEmail": "pimsr@paruluniversity.ac.in"
+      },
+      {
+        "id": "inst-23-0-1787298383373",
+        "name": "Parul Institute of Public Health",
+        "approverEmail": "",
+        "departments": [
+          {
+            "id": "dept-23-0-0-1787298383373",
+            "name": "Public Health",
+            "approverEmail": ""
+          }
+        ],
+        "authorityEmail": "pupublichealth@paruluniversity.ac.in"
+      },
+      {
+        "id": "inst-20-1-1787298383373",
+        "name": "Parul Medical Institute & Hospital",
+        "approverEmail": "",
+        "departments": [
+          {
+            "id": "dept-20-1-0-1787298383373",
+            "name": "Medicine",
+            "approverEmail": ""
+          }
+        ],
+        "authorityEmail": "medical@paruluniversity.ac.in"
+      }
+    ],
+    "authorityEmail": ""
+  },
+  {
+    "id": "fac-21-1787298383373",
+    "name": "Faculty of Nursing",
+    "approverEmail": "",
+    "institutes": [
+      {
+        "id": "inst-21-0-1787298383373",
+        "name": "Parul Institute of Nursing",
+        "approverEmail": "",
+        "departments": [
+          {
+            "id": "dept-21-0-0-1787298383373",
+            "name": "Nursing",
+            "approverEmail": ""
+          }
+        ],
+        "authorityEmail": "pin@paruluniversity.ac.in"
+      },
+      {
+        "id": "inst-21-1-1787298383373",
+        "name": "Parul Institute of Nursing & Research",
+        "approverEmail": "",
+        "departments": [
+          {
+            "id": "dept-21-1-0-1787298383373",
+            "name": "Nursing",
+            "approverEmail": ""
+          }
+        ],
+        "authorityEmail": "pinr@paruluniversity.ac.in"
+      }
+    ],
+    "authorityEmail": "dean.pin@paruluniversity.ac.in"
+  },
+  {
+    "id": "fac-17-1787298383373",
+    "name": "Faculty of Performing Arts",
+    "approverEmail": "",
+    "institutes": [
+      {
+        "id": "inst-17-0-1787298383373",
+        "name": "Parul Institute of Performing Arts",
+        "approverEmail": "",
+        "departments": [
+          {
+            "id": "dept-17-0-0-1787298383373",
+            "name": "Performing Arts",
+            "approverEmail": ""
+          }
+        ],
+        "authorityEmail": "pipa@paruluniversity.ac.in"
+      }
+    ]
+  },
+  {
+    "id": "fac-9-1787298383373",
+    "name": "Faculty of Pharmacy",
+    "approverEmail": "",
+    "institutes": [
+      {
+        "id": "inst-9-3-1787298383373",
+        "name": "Institute of Pharmaceutical Sciences",
+        "approverEmail": "",
+        "departments": [
+          {
+            "id": "dept-9-3-8-1787298383373",
+            "name": "Pharmaceutical Analysis",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-9-3-3-1787298383373",
+            "name": "Pharmaceutical Chemistry",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-9-3-6-1787298383373",
+            "name": "Pharmaceutical Quality Assurance",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-9-3-4-1787298383373",
+            "name": "Pharmaceutics",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-9-3-0-1787298383373",
+            "name": "Pharmacognosy",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-9-3-2-1787298383373",
+            "name": "Pharmacology",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-9-3-9-1787298383373",
+            "name": "Pharmacy",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-9-3-5-1787298383373",
+            "name": "Pharmacy Practice",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-9-3-1-1787298383373",
+            "name": "Quality Assurance",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-9-3-7-1787298383373",
+            "name": "Regulatory Affairs",
+            "approverEmail": ""
+          }
+        ],
+        "authorityEmail": "ips@paruluniversity.ac.in"
+      },
+      {
+        "id": "inst-9-2-1787298383373",
+        "name": "Parul College of Pharmacy & Research",
+        "approverEmail": "",
+        "departments": [
+          {
+            "id": "dept-9-2-8-1787298383373",
+            "name": "Pharmaceutical Analysis",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-9-2-3-1787298383373",
+            "name": "Pharmaceutical Chemistry",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-9-2-6-1787298383373",
+            "name": "Pharmaceutical Quality Assurance",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-9-2-4-1787298383373",
+            "name": "Pharmaceutics",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-9-2-0-1787298383373",
+            "name": "Pharmacognosy",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-9-2-2-1787298383373",
+            "name": "Pharmacology",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-9-2-9-1787298383373",
+            "name": "Pharmacy",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-9-2-5-1787298383373",
+            "name": "Pharmacy Practice",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-9-2-1-1787298383373",
+            "name": "Quality Assurance",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-9-2-7-1787298383373",
+            "name": "Regulatory Affairs",
+            "approverEmail": ""
+          }
+        ],
+        "authorityEmail": "pcpr@paruluniversity.ac.in"
+      },
+      {
+        "id": "inst-9-4-1787298383373",
+        "name": "Parul Institute of Pharmaceutical Education & Research",
+        "approverEmail": "",
+        "departments": [
+          {
+            "id": "dept-9-4-8-1787298383373",
+            "name": "Pharmaceutical Analysis",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-9-4-3-1787298383373",
+            "name": "Pharmaceutical Chemistry",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-9-4-6-1787298383373",
+            "name": "Pharmaceutical Quality Assurance",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-9-4-4-1787298383373",
+            "name": "Pharmaceutics",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-9-4-0-1787298383373",
+            "name": "Pharmacognosy",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-9-4-2-1787298383373",
+            "name": "Pharmacology",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-9-4-9-1787298383373",
+            "name": "Pharmacy",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-9-4-5-1787298383373",
+            "name": "Pharmacy Practice",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-9-4-1-1787298383373",
+            "name": "Quality Assurance",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-9-4-7-1787298383373",
+            "name": "Regulatory Affairs",
+            "approverEmail": ""
+          }
+        ],
+        "authorityEmail": "piper@paruluniversity.ac.in"
+      },
+      {
+        "id": "inst-9-5-1787298383373",
+        "name": "Parul Institute of Pharmacy",
+        "approverEmail": "",
+        "departments": [
+          {
+            "id": "dept-9-5-8-1787298383373",
+            "name": "Pharmaceutical Analysis",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-9-5-3-1787298383373",
+            "name": "Pharmaceutical Chemistry",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-9-5-6-1787298383373",
+            "name": "Pharmaceutical Quality Assurance",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-9-5-4-1787298383373",
+            "name": "Pharmaceutics",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-9-5-0-1787298383373",
+            "name": "Pharmacognosy",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-9-5-2-1787298383373",
+            "name": "Pharmacology",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-9-5-9-1787298383373",
+            "name": "Pharmacy",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-9-5-5-1787298383373",
+            "name": "Pharmacy Practice",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-9-5-1-1787298383373",
+            "name": "Quality Assurance",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-9-5-7-1787298383373",
+            "name": "Regulatory Affairs",
+            "approverEmail": ""
+          }
+        ],
+        "authorityEmail": "piph@paruluniversity.ac.in"
+      },
+      {
+        "id": "inst-9-0-1787298383373",
+        "name": "Parul Institute of Pharmacy & Research",
+        "approverEmail": "",
+        "departments": [
+          {
+            "id": "dept-9-0-8-1787298383373",
+            "name": "Pharmaceutical Analysis",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-9-0-3-1787298383373",
+            "name": "Pharmaceutical Chemistry",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-9-0-6-1787298383373",
+            "name": "Pharmaceutical Quality Assurance",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-9-0-4-1787298383373",
+            "name": "Pharmaceutics",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-9-0-0-1787298383373",
+            "name": "Pharmacognosy",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-9-0-2-1787298383373",
+            "name": "Pharmacology",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-9-0-9-1787298383373",
+            "name": "Pharmacy",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-9-0-5-1787298383373",
+            "name": "Pharmacy Practice",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-9-0-1-1787298383373",
+            "name": "Quality Assurance",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-9-0-7-1787298383373",
+            "name": "Regulatory Affairs",
+            "approverEmail": ""
+          }
+        ],
+        "authorityEmail": "pipr@paruluniversity.ac.in"
+      },
+      {
+        "id": "inst-9-1-1787298383373",
+        "name": "School of Pharmacy",
+        "approverEmail": "",
+        "departments": [
+          {
+            "id": "dept-9-1-8-1787298383373",
+            "name": "Pharmaceutical Analysis",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-9-1-3-1787298383373",
+            "name": "Pharmaceutical Chemistry",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-9-1-6-1787298383373",
+            "name": "Pharmaceutical Quality Assurance",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-9-1-4-1787298383373",
+            "name": "Pharmaceutics",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-9-1-0-1787298383373",
+            "name": "Pharmacognosy",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-9-1-2-1787298383373",
+            "name": "Pharmacology",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-9-1-9-1787298383373",
+            "name": "Pharmacy",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-9-1-5-1787298383373",
+            "name": "Pharmacy Practice",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-9-1-1-1787298383373",
+            "name": "Quality Assurance",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-9-1-7-1787298383373",
+            "name": "Regulatory Affairs",
+            "approverEmail": ""
+          }
+        ],
+        "authorityEmail": "sop@paruluniversity.ac.in"
+      }
+    ],
+    "authorityEmail": "dean.fop@paruluniversity.ac.in"
+  },
+  {
+    "id": "fac-13-1787298383373",
+    "name": "Faculty of Physiotherapy",
+    "approverEmail": "",
+    "institutes": [
+      {
+        "id": "inst-13-1-1787298383373",
+        "name": "Ahmedabad Physiotherapy College",
+        "approverEmail": "",
+        "departments": [
+          {
+            "id": "dept-13-1-0-1787298383373",
+            "name": "Physiotherapy",
+            "approverEmail": ""
+          }
+        ],
+        "authorityEmail": "principal.apc@paruluniversity.ac.in"
+      },
+      {
+        "id": "inst-13-2-1787298383373",
+        "name": "Parul Institute of Physiotherapy",
+        "approverEmail": "",
+        "departments": [
+          {
+            "id": "dept-13-2-0-1787298383373",
+            "name": "Physiotherapy",
+            "approverEmail": ""
+          }
+        ],
+        "authorityEmail": "pipt@paruluniversity.ac.in"
+      },
+      {
+        "id": "inst-13-0-1787298383373",
+        "name": "Parul Institute of Physiotherapy and Research",
+        "approverEmail": "",
+        "departments": [
+          {
+            "id": "dept-13-0-0-1787298383373",
+            "name": "Physiotherapy",
+            "approverEmail": ""
+          }
+        ],
+        "authorityEmail": "piptr@paruluniversity.ac.in"
+      }
+    ],
+    "authorityEmail": "dean.fopt@paruluniversity.ac.in"
+  },
+  {
+    "id": "fac-3-1787298383373",
+    "name": "Faculty of Social Work",
+    "approverEmail": "",
+    "institutes": [
+      {
+        "id": "inst-3-0-1787298383373",
+        "name": "Parul Institute of Social Work",
+        "approverEmail": "",
+        "departments": [
+          {
+            "id": "dept-3-0-0-1787298383373",
+            "name": "Social Work",
+            "approverEmail": ""
+          }
+        ],
+        "authorityEmail": "pisw@paruluniversity.ac.in"
+      }
+    ],
+    "authorityEmail": "fsw@paruluniversity.ac.in"
+  },
+  {
+    "id": "fac-27-1787298383373",
+    "name": "Parul Aarogya Seva Mandal",
+    "approverEmail": "",
+    "institutes": [
+      {
+        "id": "inst-27-0-1787298383373",
+        "name": "Parul Aarogya Seva Mandal",
+        "approverEmail": "",
+        "departments": [
+          {
+            "id": "dept-27-0-0-1787298383373",
+            "name": "Parul Aarogya Seva Mandal",
+            "approverEmail": ""
+          }
+        ]
+      }
+    ],
+    "authorityEmail": "pasm@paruluniversity.ac.in"
+  },
+  {
+    "id": "fac-24-1787298383373",
+    "name": "Parul Sevashram Hospital",
+    "approverEmail": "",
+    "institutes": [
+      {
+        "id": "inst-24-0-1787298383373",
+        "name": "Parul Sevashram Hospital",
+        "approverEmail": "",
+        "departments": [
+          {
+            "id": "dept-24-0-1-1787298383373",
+            "name": "Clinical Services",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-24-0-0-1787298383373",
+            "name": "Hospital Administration",
+            "approverEmail": ""
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "fac-25-1787298383373",
+    "name": "RDC",
+    "approverEmail": "",
+    "institutes": [
+      {
+        "id": "inst-25-0-1787298383373",
+        "name": "RDC",
+        "approverEmail": "",
+        "departments": [
+          {
+            "id": "dept-25-0-1-1787298383373",
+            "name": "Micro-Nano Research & Development Center",
+            "approverEmail": "",
+            "authorityEmail": "micronanornd@paruluniversity.ac.in"
+          },
+          {
+            "id": "dept-1787300602354-1s1d9",
+            "name": "Research & Development Cell",
+            "authorityEmail": "rdc@paruluniversity.ac.in"
+          }
+        ]
+      }
+    ],
+    "authorityEmail": "helpdesk.rdc@paruluniversity.ac.in"
+  },
+  {
+    "id": "fac-26-1787298383373",
+    "name": "University Office/Cells",
+    "approverEmail": "",
+    "institutes": [
+      {
+        "id": "inst-26-0-1787298383373",
+        "name": "University Office/Cells",
+        "approverEmail": "",
+        "departments": [
+          {
+            "id": "dept-26-0-1-1787298383373",
+            "name": "Accounts",
+            "approverEmail": "",
+            "authorityEmail": "cfao@paruluniversity.ac.in"
+          },
+          {
+            "id": "dept-26-0-0-1787298383373",
+            "name": "Administration",
+            "approverEmail": "",
+            "authorityEmail": "centraladm@paruluniversity.ac.in"
+          },
+          {
+            "id": "dept-26-0-4-1787298383373",
+            "name": "Admission",
+            "approverEmail": "",
+            "authorityEmail": "admissions@paruluniversity.ac.in"
+          },
+          {
+            "id": "dept-26-0-5-1787298383373",
+            "name": "Any other Cell",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-1787298408759-pst0q",
+            "name": "CIRR",
+            "approverEmail": "",
+            "authorityEmail": "cirr@paruluniversity.ac.in"
+          },
+          {
+            "id": "dept-26-0-3-1787298383373",
+            "name": "Exam",
+            "approverEmail": "",
+            "authorityEmail": "coe@paruluniversity.ac.in"
+          },
+          {
+            "id": "dept-26-0-2-1787298383373",
+            "name": "HR",
+            "approverEmail": "",
+            "authorityEmail": "hrhead@paruluniversity.ac.in"
+          },
+          {
+            "id": "dept-1787298415543-y78vb",
+            "name": "ISAC",
+            "approverEmail": ""
+          },
+          {
+            "id": "dept-1787298423198-g1zmu",
+            "name": "PIERC",
+            "approverEmail": "",
+            "authorityEmail": "pierc@paruluniversity.ac.in"
+          }
+        ]
+      }
+    ]
+  }
+]

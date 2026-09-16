@@ -7,17 +7,18 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { collection, query, where, getDocs, orderBy } from 'firebase/firestore';
 import { format, startOfToday, subMonths, parseISO, isAfter, isToday, parse, isFuture, subDays } from 'date-fns';
-import { Calendar as CalendarIcon, Loader2, ChevronDown, Info, Edit, Send } from 'lucide-react';
+import { Calendar as CalendarIcon, Loader2, ChevronDown, Info, Edit, Send, CalendarDays, Megaphone, CheckCircle } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 
 import { PageHeader } from '@/components/page-header';
 import { db } from '@/lib/config';
-import type { Project, User, SystemSettings } from '@/types';
+import type { Project, User, SystemSettings, FundingCall, EmrInterest } from '@/types';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
@@ -130,6 +131,7 @@ function HistoryTable({
             <TableHeader>
               <TableRow>
                 <TableHead>Project / PI</TableHead>
+                <TableHead>Meeting Type</TableHead>
                 <TableHead>Meeting Date & Time</TableHead>
                 <TableHead>Venue / Mode</TableHead>
                 <TableHead>Pending Evaluators</TableHead>
@@ -173,6 +175,29 @@ function HistoryTable({
                           </Link>
                         ) : project.pi}
                       </div>
+                    </TableCell>
+                    <TableCell>
+                      {(() => {
+                        if (project.hasHadMidTermReview) {
+                          return (
+                            <span className="inline-flex items-center rounded-full bg-blue-500/10 border border-blue-500/20 px-2.5 py-0.5 text-xs font-semibold text-blue-400">
+                              Mid-term Review Meeting
+                            </span>
+                          );
+                        }
+                        if (project.revisedProposalUrl || project.revisionSubmissionDate) {
+                          return (
+                            <span className="inline-flex items-center rounded-full bg-amber-500/10 border border-amber-500/20 px-2.5 py-0.5 text-xs font-semibold text-amber-400">
+                              Revision Meeting
+                            </span>
+                          );
+                        }
+                        return (
+                          <span className="inline-flex items-center rounded-full bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-0.5 text-xs font-semibold text-emerald-400">
+                            Fresh Meeting
+                          </span>
+                        );
+                      })()}
                     </TableCell>
                     <TableCell>
                       {project.meetingDetails?.date ? format(parseISO(project.meetingDetails.date), 'PPP') : 'N/A'}
@@ -250,6 +275,7 @@ function ProjectListTable({
                 </TableHead>
                 <TableHead>Title</TableHead>
                 <TableHead>PI</TableHead>
+                <TableHead>Times Absent</TableHead>
                 <TableHead>{dateColumnHeader}</TableHead>
               </TableRow>
             </TableHeader>
@@ -298,11 +324,20 @@ function ProjectListTable({
                         ) : (
                           project.pi
                         )}
-                        {piUser?.campus && piUser.campus !== 'Goa' && ` (${piUser.campus})`}
+                        {piUser?.campus && piUser.campus !== 'Vadodara' && ` (${piUser.campus})`}
                       </div>
                       <div className="text-xs text-muted-foreground">
                         {piUser?.department || project.departmentName}, {piUser?.institute || project.institute}
                       </div>
+                    </TableCell>
+                    <TableCell>
+                      {piUser?.absentCount && piUser.absentCount > 0 ? (
+                        <span className="inline-flex items-center rounded-full bg-red-500/10 border border-red-500/20 px-2.5 py-0.5 text-xs font-semibold text-red-600 dark:text-red-400">
+                          {piUser.absentCount}
+                        </span>
+                      ) : (
+                        <span className="text-muted-foreground">0</span>
+                      )}
                     </TableCell>
                     <TableCell>{new Date(displayDate).toLocaleDateString()}</TableCell>
                   </TableRow>
@@ -337,13 +372,18 @@ export default function ScheduleMeetingPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 30;
 
+  const [emrCalls, setEmrCalls] = useState<FundingCall[]>([]);
+  const [emrInterests, setEmrInterests] = useState<EmrInterest[]>([]);
+  const [statsMonth, setStatsMonth] = useState<string>((new Date().getMonth() + 1).toString().padStart(2, '0'));
+  const [statsYear, setStatsYear] = useState<string>(new Date().getFullYear().toString());
+
   const form = useForm<z.infer<typeof scheduleSchema>>({
     resolver: zodResolver(scheduleSchema),
     defaultValues: {
       time: '',
       evaluatorUids: [],
       mode: 'Offline',
-      venue: 'RDC Committee Room, PIMSR',
+      venue: 'RDC Committee Room, PU Goa',
     },
   });
 
@@ -368,7 +408,7 @@ export default function ScheduleMeetingPage() {
     if (meetingMode === 'Online') {
       form.setValue('venue', '');
     } else {
-      form.setValue('venue', 'RDC Committee Room, PIMSR');
+      form.setValue('venue', 'RDC Committee Room, PU Goa');
     }
   }, [meetingMode, form]);
 
@@ -395,17 +435,25 @@ export default function ScheduleMeetingPage() {
 
       const projectsQuery = query(collection(db, 'projects'), orderBy('submissionDate', 'desc'));
       const usersQuery = query(collection(db, 'users'));
+      const emrCallsQuery = query(collection(db, 'fundingCalls'));
+      const emrInterestsQuery = query(collection(db, 'emrInterests'));
 
-      const [projectsSnapshot, usersSnapshot] = await Promise.all([
+      const [projectsSnapshot, usersSnapshot, emrCallsSnapshot, emrInterestsSnapshot] = await Promise.all([
         getDocs(projectsQuery),
         getDocs(usersQuery),
+        getDocs(emrCallsQuery),
+        getDocs(emrInterestsQuery),
       ]);
 
       const projectList = projectsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Project));
       const userList = usersSnapshot.docs.map(doc => ({ uid: doc.id, ...doc.data() } as User));
+      const callList = emrCallsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as FundingCall));
+      const interestList = emrInterestsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as EmrInterest));
 
       setAllProjects(projectList);
       setAllUsers(userList);
+      setEmrCalls(callList);
+      setEmrInterests(interestList);
     } catch (error) {
       console.error("Error fetching data:", error);
       toast({ variant: 'destructive', title: 'Error', description: 'Could not fetch projects or users.' });
@@ -427,12 +475,16 @@ export default function ScheduleMeetingPage() {
         time: meetingToEdit.meetingDetails?.time || '',
         evaluatorUids: meetingToEdit.meetingDetails?.assignedEvaluators || [],
         mode: (meetingToEdit.meetingDetails as any)?.mode || 'Offline',
-        venue: meetingToEdit.meetingDetails?.venue || 'RDC Committee Room, PIMSR',
+        venue: meetingToEdit.meetingDetails?.venue || 'RDC Committee Room, PU Goa',
       });
     }
   }, [meetingToEdit, form]);
 
-  const evaluators = allUsers.filter(u => ['CRO', 'admin', 'Super-admin'].includes(u.role));
+  const evaluators = useMemo(() => {
+    return allUsers
+      .filter(u => ['CRO', 'admin', 'Super-admin'].includes(u.role))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [allUsers]);
 
   const newSubmissions = allProjects.filter(p => p.status === 'Submitted');
 
@@ -554,7 +606,10 @@ export default function ScheduleMeetingPage() {
     const result = await scheduleMeeting(projectsToSchedule, meetingDetails, isMidTerm);
 
     if (result.success) {
-      toast({ title: `Meeting ${meetingToEdit ? 'Rescheduled' : 'Scheduled'}!`, description: 'Participants have been notified.' });
+      toast({ 
+        title: `Meeting ${meetingToEdit ? 'Rescheduled' : 'Scheduled'}!`, 
+        description: result.warning ? `Meeting saved. ${result.warning}` : 'Participants have been notified.' 
+      });
       setMeetingToEdit(null);
       setSelectedProjects([]);
       form.reset();
@@ -588,6 +643,73 @@ export default function ScheduleMeetingPage() {
   const usersMap = useMemo(() => new Map(allUsers.map(u => [u.uid, u])), [allUsers]);
   const usersByEmailMap = useMemo(() => new Map(allUsers.map(u => [u.email.toLowerCase(), u])), [allUsers]);
 
+  const availableStatsYears = useMemo(() => {
+    const yearsSet = new Set<string>();
+    const currentYr = new Date().getFullYear().toString();
+    yearsSet.add(currentYr);
+    allProjects.forEach(p => {
+      if (p.meetingDetails?.date) {
+        const y = new Date(p.meetingDetails.date).getFullYear().toString();
+        if (!isNaN(parseInt(y))) yearsSet.add(y);
+      }
+    });
+    emrCalls.forEach(c => {
+      if (c.meetingDetails?.date) {
+        const y = new Date(c.meetingDetails.date).getFullYear().toString();
+        if (!isNaN(parseInt(y))) yearsSet.add(y);
+      }
+    });
+    emrInterests.forEach(i => {
+      if (i.meetingSlot?.date) {
+        const y = new Date(i.meetingSlot.date).getFullYear().toString();
+        if (!isNaN(parseInt(y))) yearsSet.add(y);
+      }
+    });
+    return Array.from(yearsSet).sort((a, b) => parseInt(b) - parseInt(a));
+  }, [allProjects, emrCalls, emrInterests]);
+
+  const monthlyMeetingStats = useMemo(() => {
+    let imrCount = 0;
+    allProjects.forEach(p => {
+      if (p.meetingDetails?.date) {
+        const date = parseISO(p.meetingDetails.date);
+        const m = (date.getMonth() + 1).toString().padStart(2, '0');
+        const y = date.getFullYear().toString();
+        if ((statsYear === 'all' || y === statsYear) && (statsMonth === 'all' || m === statsMonth)) {
+          imrCount++;
+        }
+      }
+    });
+
+    let emrCount = 0;
+    emrCalls.forEach(c => {
+      if (c.meetingDetails?.date) {
+        const date = parseISO(c.meetingDetails.date);
+        const m = (date.getMonth() + 1).toString().padStart(2, '0');
+        const y = date.getFullYear().toString();
+        if ((statsYear === 'all' || y === statsYear) && (statsMonth === 'all' || m === statsMonth)) {
+          emrCount++;
+        }
+      }
+    });
+
+    emrInterests.forEach(i => {
+      if (i.meetingSlot?.date) {
+        const date = parseISO(i.meetingSlot.date);
+        const m = (date.getMonth() + 1).toString().padStart(2, '0');
+        const y = date.getFullYear().toString();
+        if ((statsYear === 'all' || y === statsYear) && (statsMonth === 'all' || m === statsMonth)) {
+          emrCount++;
+        }
+      }
+    });
+
+    return {
+      imrCount,
+      emrCount,
+      totalCount: imrCount + emrCount
+    };
+  }, [allProjects, emrCalls, emrInterests, statsMonth, statsYear]);
 
   if (loading || !user) {
     return (
@@ -607,31 +729,92 @@ export default function ScheduleMeetingPage() {
     );
   }
 
-  const ScheduleForm = ({ isEditing }: { isEditing: boolean }) => (
-    <Card>
-      <CardHeader>
-        <CardTitle>{isEditing ? 'Reschedule Meeting' : 'Schedule Details'}</CardTitle>
-        <CardDescription>{isEditing ? 'Update the details for this meeting.' : 'Set the time and assign evaluators.'}</CardDescription>
-      </CardHeader>
-      <CardContent>
-        <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} id="schedule-form" className="space-y-6">
-            <FormField name="date" control={form.control} render={({ field }) => (<FormItem className="flex flex-col"><FormLabel>Meeting Date</FormLabel><Popover><PopoverTrigger asChild><FormControl><Button variant={"outline"} className={cn("pl-3 text-left font-normal w-full", !field.value && "text-muted-foreground")}>{field.value ? format(field.value, "PPP") : (<span>Pick a date</span>)}<CalendarIcon className="ml-auto h-4 w-4 opacity-50" /></Button></FormControl></PopoverTrigger><PopoverContent className="w-auto p-0" align="start"><Calendar captionLayout="dropdown-buttons" fromYear={new Date().getFullYear()} toYear={new Date().getFullYear() + 5} mode="single" selected={field.value} onSelect={field.onChange} disabled={(date) => date < startOfToday()} initialFocus /></PopoverContent></Popover><FormMessage /></FormItem>)} />
-            <FormField name="time" control={form.control} render={({ field }) => (<FormItem><FormLabel>Meeting Time</FormLabel><FormControl><Input type="time" {...field} /></FormControl><FormMessage /></FormItem>)} />
-            <FormField name="mode" control={form.control} render={({ field }) => (<FormItem className="space-y-3"><FormLabel>Meeting Mode</FormLabel>{hasGoaCampusPi && (<Alert variant="default" className="bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-700"><Info className="h-4 w-4 text-blue-600" /><AlertTitle>Online Mode Enforced</AlertTitle><AlertDescription className="text-blue-700 dark:text-blue-300">An online meeting is required as one or more selected PIs are from the Goa campus.</AlertDescription></Alert>)}<FormControl><RadioGroup onValueChange={field.onChange} value={field.value} className="flex space-x-4"><FormItem className="flex items-center space-x-2"><FormControl><RadioGroupItem value="Offline" disabled={hasGoaCampusPi} /></FormControl><FormLabel className="font-normal">Offline</FormLabel></FormItem><FormItem className="flex items-center space-x-2"><FormControl><RadioGroupItem value="Online" /></FormControl><FormLabel className="font-normal">Online</FormLabel></FormItem></RadioGroup></FormControl><FormMessage /></FormItem>)} />
-            <FormField name="venue" control={form.control} render={({ field }) => (<FormItem><FormLabel>{meetingMode === 'Online' ? 'Meeting Link' : 'Venue'}</FormLabel><FormControl><Input {...field} placeholder={meetingMode === 'Online' ? 'https://meet.google.com/...' : 'Enter physical venue'} /></FormControl><FormMessage /></FormItem>)} />
-            <FormField control={form.control} name="evaluatorUids" render={({ field }) => (<FormItem className="flex flex-col"><FormLabel>Assign Evaluators</FormLabel><DropdownMenu><DropdownMenuTrigger asChild><Button variant="outline" className="w-full justify-between">{field.value?.length > 0 ? `${field.value.length} selected` : "Select evaluators"}<ChevronDown className="h-4 w-4 opacity-50" /></Button></DropdownMenuTrigger><DropdownMenuContent className="w-[--radix-popover-trigger-width]"><DropdownMenuLabel>Available Staff</DropdownMenuLabel><DropdownMenuSeparator />{evaluators.map((evaluator) => (<DropdownMenuCheckboxItem key={evaluator.uid} checked={field.value?.includes(evaluator.uid)} onCheckedChange={(checked) => { return checked ? field.onChange([...(field.value || []), evaluator.uid]) : field.onChange(field.value?.filter((id) => id !== evaluator.uid)); }}>{evaluator.name}</DropdownMenuCheckboxItem>))}</DropdownMenuContent></DropdownMenu><FormMessage /></FormItem>)} />
-          </form>
-        </Form>
-      </CardContent>
-      <CardFooter>
-        <Button type="submit" form="schedule-form" className="w-full" disabled={form.formState.isSubmitting || (!isEditing && selectedProjects.length === 0)}>
-          {form.formState.isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-          {isEditing ? 'Reschedule Meeting' : `Schedule for ${selectedProjects.length} Project(s)`}
-        </Button>
-      </CardFooter>
-    </Card>
-  );
+  const ScheduleForm = ({ isEditing }: { isEditing: boolean }) => {
+    const [searchVal, setSearchVal] = useState("");
+
+    const filteredEvaluators = useMemo(() => {
+      return evaluators.filter(ev =>
+        ev.name.toLowerCase().includes(searchVal.toLowerCase())
+      );
+    }, [searchVal]);
+
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle>{isEditing ? 'Reschedule Meeting' : 'Schedule Details'}</CardTitle>
+          <CardDescription>{isEditing ? 'Update the details for this meeting.' : 'Set the time and assign evaluators.'}</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Form {...form}>
+            <form onSubmit={form.handleSubmit(onSubmit)} id="schedule-form" className="space-y-6">
+              <FormField name="date" control={form.control} render={({ field }) => (<FormItem className="flex flex-col"><FormLabel>Meeting Date</FormLabel><Popover><PopoverTrigger asChild><FormControl><Button variant={"outline"} className={cn("pl-3 text-left font-normal w-full", !field.value && "text-muted-foreground")}>{field.value ? format(field.value, "PPP") : (<span>Pick a date</span>)}<CalendarIcon className="ml-auto h-4 w-4 opacity-50" /></Button></FormControl></PopoverTrigger><PopoverContent className="w-auto p-0" align="start"><Calendar captionLayout="dropdown-buttons" fromYear={new Date().getFullYear()} toYear={new Date().getFullYear() + 5} mode="single" selected={field.value} onSelect={field.onChange} disabled={(date) => date < startOfToday()} initialFocus /></PopoverContent></Popover><FormMessage /></FormItem>)} />
+              <FormField name="time" control={form.control} render={({ field }) => (<FormItem><FormLabel>Meeting Time</FormLabel><FormControl><Input type="time" {...field} /></FormControl><FormMessage /></FormItem>)} />
+              <FormField name="mode" control={form.control} render={({ field }) => (<FormItem className="space-y-3"><FormLabel>Meeting Mode</FormLabel>{hasGoaCampusPi && (<Alert variant="default" className="bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-700"><Info className="h-4 w-4 text-blue-600" /><AlertTitle>Online Mode Enforced</AlertTitle><AlertDescription className="text-blue-700 dark:text-blue-300">An online meeting is required as one or more selected PIs are from the Goa campus.</AlertDescription></Alert>)}<FormControl><RadioGroup onValueChange={field.onChange} value={field.value} className="flex space-x-4"><FormItem className="flex items-center space-x-2"><FormControl><RadioGroupItem value="Offline" disabled={hasGoaCampusPi} /></FormControl><FormLabel className="font-normal">Offline</FormLabel></FormItem><FormItem className="flex items-center space-x-2"><FormControl><RadioGroupItem value="Online" /></FormControl><FormLabel className="font-normal">Online</FormLabel></FormItem></RadioGroup></FormControl><FormMessage /></FormItem>)} />
+              <FormField name="venue" control={form.control} render={({ field }) => (<FormItem><FormLabel>{meetingMode === 'Online' ? 'Meeting Link' : 'Venue'}</FormLabel><FormControl><Input {...field} placeholder={meetingMode === 'Online' ? 'https://meet.google.com/...' : 'Enter physical venue'} /></FormControl><FormMessage /></FormItem>)} />
+              <FormField
+                control={form.control}
+                name="evaluatorUids"
+                render={({ field }) => (
+                  <FormItem className="flex flex-col">
+                    <FormLabel>Assign Evaluators</FormLabel>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="outline" className="w-full justify-between">
+                          {field.value?.length > 0 ? `${field.value.length} selected` : "Select evaluators"}
+                          <ChevronDown className="h-4 w-4 opacity-50" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent className="w-[--radix-popover-trigger-width] p-2 flex flex-col gap-1">
+                        <div className="px-2 py-1">
+                          <Input
+                            placeholder="Search evaluators..."
+                            value={searchVal}
+                            onChange={(e) => setSearchVal(e.target.value)}
+                            className="h-8 text-xs bg-muted/50"
+                            onClick={(e) => e.stopPropagation()}
+                            onKeyDown={(e) => e.stopPropagation()}
+                          />
+                        </div>
+                        <DropdownMenuSeparator />
+                        <div className="max-h-[240px] overflow-y-auto space-y-0.5">
+                          {filteredEvaluators.length > 0 ? (
+                            filteredEvaluators.map((evaluator) => (
+                              <DropdownMenuCheckboxItem
+                                key={evaluator.uid}
+                                checked={field.value?.includes(evaluator.uid)}
+                                onCheckedChange={(checked) => {
+                                  return checked
+                                    ? field.onChange([...(field.value || []), evaluator.uid])
+                                    : field.onChange(field.value?.filter((id) => id !== evaluator.uid));
+                                }}
+                              >
+                                {evaluator.name}
+                              </DropdownMenuCheckboxItem>
+                            ))
+                          ) : (
+                            <div className="text-xs text-muted-foreground text-center py-2">
+                              No evaluators found
+                            </div>
+                          )}
+                        </div>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </form>
+          </Form>
+        </CardContent>
+        <CardFooter>
+          <Button type="submit" form="schedule-form" className="w-full" disabled={form.formState.isSubmitting || (!isEditing && selectedProjects.length === 0)}>
+            {form.formState.isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+            {isEditing ? 'Reschedule Meeting' : `Schedule for ${selectedProjects.length} Project(s)`}
+          </Button>
+        </CardFooter>
+      </Card>
+    );
+  };
 
   return (
     <>
@@ -640,6 +823,89 @@ export default function ScheduleMeetingPage() {
           title="Schedule IMR Meeting"
           description="Select projects to schedule an initial submission meeting or a mid-term review."
         />
+
+        {/* Monthly Scheduled Meetings Statistics */}
+        <div className="mt-6 p-4 bg-muted/40 border rounded-lg space-y-3">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-primary/10 rounded-full text-primary">
+                <CalendarDays className="h-5 w-5" />
+              </div>
+              <div>
+                <h3 className="font-semibold text-base">Monthly Scheduled Meetings Statistics</h3>
+                <p className="text-xs text-muted-foreground">Stats of meetings scheduled in a month for both IMR and EMR</p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-3">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-medium">Month:</span>
+                <Select value={statsMonth} onValueChange={setStatsMonth}>
+                  <SelectTrigger className="w-[130px] h-8 text-xs bg-background">
+                    <SelectValue placeholder="Month" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Months</SelectItem>
+                    <SelectItem value="01">January</SelectItem>
+                    <SelectItem value="02">February</SelectItem>
+                    <SelectItem value="03">March</SelectItem>
+                    <SelectItem value="04">April</SelectItem>
+                    <SelectItem value="05">May</SelectItem>
+                    <SelectItem value="06">June</SelectItem>
+                    <SelectItem value="07">July</SelectItem>
+                    <SelectItem value="08">August</SelectItem>
+                    <SelectItem value="09">September</SelectItem>
+                    <SelectItem value="10">October</SelectItem>
+                    <SelectItem value="11">November</SelectItem>
+                    <SelectItem value="12">December</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-medium">Year:</span>
+                <Select value={statsYear} onValueChange={setStatsYear}>
+                  <SelectTrigger className="w-[100px] h-8 text-xs bg-background">
+                    <SelectValue placeholder="Year" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Years</SelectItem>
+                    {availableStatsYears.map(yr => (
+                      <SelectItem key={yr} value={yr}>{yr}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-1">
+            <div className="p-3 bg-background rounded-md border flex items-center justify-between">
+              <div>
+                <p className="text-xs text-muted-foreground font-medium uppercase">Total Scheduled</p>
+                <p className="text-2xl font-bold text-primary">{monthlyMeetingStats.totalCount}</p>
+              </div>
+              <CalendarDays className="h-6 w-6 text-primary/40" />
+            </div>
+
+            <div className="p-3 bg-background rounded-md border flex items-center justify-between">
+              <div>
+                <p className="text-xs text-muted-foreground font-medium uppercase">IMR Meetings Scheduled</p>
+                <p className="text-2xl font-bold text-blue-600 dark:text-blue-400">{monthlyMeetingStats.imrCount}</p>
+              </div>
+              <Badge variant="secondary">IMR</Badge>
+            </div>
+
+            <div className="p-3 bg-background rounded-md border flex items-center justify-between">
+              <div>
+                <p className="text-xs text-muted-foreground font-medium uppercase">EMR Meetings Scheduled</p>
+                <p className="text-2xl font-bold text-emerald-600 dark:text-emerald-400">{monthlyMeetingStats.emrCount}</p>
+              </div>
+              <Badge variant="outline" className="bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">EMR</Badge>
+            </div>
+          </div>
+        </div>
+
         <div className="mt-8">
           <Tabs value={activeTab} onValueChange={setActiveTab}>
             <TabsList className="grid w-full grid-cols-4">

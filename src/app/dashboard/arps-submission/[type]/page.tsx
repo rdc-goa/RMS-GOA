@@ -15,6 +15,91 @@ import { fetchAdvancedScopusData } from '@/app/scopus-actions';
 import { fetchWosDataByUrl } from '@/app/wos-actions';
 import { type ArpsSubmission, type User } from '@/types';
 import { submitArpsSubmission, updateArpsSubmission, getPolicyRules, getArpsSubmissions, getArpsEvaluationCycles } from '@/app/arps-actions';
+import { getDefaultModulesForRole } from '@/lib/modules';
+const FIELD_LABELS: Record<string, string> = {
+  // Publication
+  paperTitle: 'Paper Title',
+  doi: 'DOI',
+  scopusLink: 'Scopus Link',
+  journalName: 'Journal/Book Name',
+  bookTitleForChapter: 'Book Name (for Chapter)',
+  journalClassification: 'Journal Quartile',
+  indexType: 'Indexing Type',
+  articleType: 'Article Type',
+  publicationType: 'Publication Type',
+  authorPosition: 'Author Position',
+  authorOrder: 'Author Order',
+  totalAuthors: 'Total Authors',
+  isSinglePuAuthorWithExternal: 'Single PU Author with Externals',
+  hasImrAcknowledgement: 'IMR Acknowledgement',
+  hasEmrAcknowledgement: 'EMR Acknowledgement',
+  publicationDate: 'Publication Date',
+  fundingAcknowledgement: 'Funding Acknowledgement',
+  publisherName: 'Publisher Name',
+  publisherWebsite: 'Publisher Website',
+  isbn: 'ISBN',
+
+  // Patent
+  patentTitle: 'Patent Title',
+  patentCategory: 'Patent Category',
+  patentNumber: 'Patent Number',
+  filingDate: 'Filing Date',
+  grantDate: 'Grant Date',
+  applicantStructure: 'Applicant Structure',
+  isPuJointApplicant: 'PU Joint Applicant',
+  isPuSoleApplicant: 'PU Sole Applicant',
+  patentInventors: 'Patent Inventors',
+
+  // Consultancy
+  consultancyTitle: 'Consultancy Title',
+  clientOrganization: 'Client Organization',
+  revenueAmount: 'Revenue Amount',
+  transactionDate: 'Transaction Date',
+
+  // EMR
+  projectTitle: 'Project Title',
+  fundingAgency: 'Funding Agency',
+  sanctionAmount: 'Sanction Amount',
+  role: 'Role',
+  projectStatus: 'Project Status',
+  durationMonths: 'Duration (Months)',
+  startDate: 'Start Date',
+  endDate: 'End Date',
+
+  // Student
+  studentName: 'Student Name',
+  studentEnrollmentNo: 'Student Enrollment No',
+  studentInstitute: 'Student Institute',
+  studentDepartment: 'Student Department',
+  program: 'Program',
+  studentStatus: 'Student Status',
+  allotmentDetails: 'Allotment Details',
+
+  // Activity
+  activityCategory: 'Activity Category',
+  eventName: 'Event Name',
+  organization: 'Organization',
+  eventDurationDays: 'Event Duration Days',
+  location: 'Location',
+  membershipType: 'Membership Type',
+  societyType: 'Society Type',
+  details: 'Details / Description',
+  proofUrls: 'Proof Documents'
+};
+
+function getComparisonValue(val: any): string {
+  if (val === undefined || val === null) return '';
+  if (Array.isArray(val)) {
+    if (val.length > 0 && typeof val[0] === 'object') {
+      return val.map((item: any) => item.name || JSON.stringify(item)).join(', ');
+    }
+    return val.join(', ');
+  }
+  if (typeof val === 'boolean') {
+    return val ? 'Yes' : 'No';
+  }
+  return String(val);
+}
 
 export default function ArpsSubmissionForm() {
   const params = useParams();
@@ -49,14 +134,16 @@ export default function ArpsSubmissionForm() {
     // Publication
     paperTitle: '',
     doi: '',
+    scopusLink: '',
     journalName: '',
-    journalClassification: 'Q4',
-    indexType: 'scopus',
-    articleType: 'Original Research',
+    bookTitleForChapter: '',
+    journalClassification: '' as any,
+    indexType: '' as any,
+    articleType: '' as any,
     publicationType: 'Journal',
-    authorPosition: 'First Author',
+    authorPosition: '' as any,
     authorOrder: 2,
-    totalAuthors: 1,
+    totalAuthors: '' as any,
     isSinglePuAuthorWithExternal: false,
     hasImrAcknowledgement: false,
     hasEmrAcknowledgement: false,
@@ -106,19 +193,32 @@ export default function ArpsSubmissionForm() {
     organization: '',
     eventDurationDays: 1,
     location: 'In PU',
-    rolePerformed: '',
+    membershipType: 'Yearly',
+    societyType: 'National',
+    details: '',
   });
 
-  const validTypes = ['publication', 'patent', 'consultancy', 'EMR', 'student', 'activity'];
+  const validTypes = ['publication', 'patent', 'consultancy', 'EMR', 'student', 'activity', 'other'];
 
   useEffect(() => {
     const storedUser = localStorage.getItem('user');
     if (storedUser) {
-      setCurrentUser(JSON.parse(storedUser));
+      const parsedUser = JSON.parse(storedUser);
+      const allowedModules = parsedUser.allowedModules || getDefaultModulesForRole(parsedUser.role, parsedUser.designation);
+      if (!allowedModules.includes('arps-submission')) {
+        toast({
+          title: 'Access Denied',
+          description: "You don't have permission to view this page.",
+          variant: 'destructive',
+        });
+        router.replace('/dashboard');
+        return;
+      }
+      setCurrentUser(parsedUser);
     } else {
       router.push('/login');
     }
-  }, [router]);
+  }, [router, toast]);
 
   useEffect(() => {
     if (!type || !validTypes.includes(type)) {
@@ -137,7 +237,7 @@ export default function ArpsSubmissionForm() {
 
         const cycleRes = await getArpsEvaluationCycles();
         let isLocked = false;
-        if (cycleRes.success && cycleRes.cycles[academicYear]) {
+        if (cycleRes.success && cycleRes.cycles && cycleRes.cycles[academicYear]) {
           const cycle = cycleRes.cycles[academicYear];
           if (cycle.finalDate && new Date() > new Date(cycle.finalDate)) {
             isLocked = true;
@@ -145,6 +245,9 @@ export default function ArpsSubmissionForm() {
           if (cycle.status === 'frozen') {
             isLocked = true;
           }
+        }
+        if (currentUser?.manualArpsEnabled) {
+          isLocked = false;
         }
         setCycleLocked(isLocked);
 
@@ -159,7 +262,7 @@ export default function ArpsSubmissionForm() {
                 return;
               }
 
-              if (isLocked && currentSub.status !== 'Resubmission Required' && currentSub.status !== 'Returned for Correction') {
+              if (isLocked && currentSub.status !== 'Resubmission Required') {
                 toast({ variant: 'destructive', title: 'Submission Window Closed', description: 'You can only edit applications that were explicitly returned for correction.' });
                 router.push('/dashboard/arps-submission');
                 return;
@@ -195,6 +298,15 @@ export default function ArpsSubmissionForm() {
       initData();
     }
   }, [currentUser, type, editId]);
+
+  useEffect(() => {
+    const pos = formData.authorPosition;
+    if (pos === 'First Author' || pos === 'First & Corresponding Author' || pos === 'Single Author') {
+      if (formData.authorOrder !== 1) {
+        setFormData(prev => ({ ...prev, authorOrder: 1 }));
+      }
+    }
+  }, [formData.authorPosition]);
 
   const handleInputChange = (field: keyof ArpsSubmission, value: any) => {
     setFormData(prev => ({
@@ -232,15 +344,15 @@ export default function ArpsSubmissionForm() {
           ...prev,
           paperTitle: d.paperTitle || d.title || prev.paperTitle,
           journalName: d.journalName || prev.journalName,
+          bookTitleForChapter: d.journalName || prev.bookTitleForChapter,
           doi: prev.doi || identifier,
           publicationDate,
-          totalAuthors: d.totalAuthors || prev.totalAuthors,
-          journalClassification: d.journalClassification || prev.journalClassification,
           publisherName: d.publisherName || d.publisher || prev.publisherName,
           publisherWebsite: d.publisherWebsite || prev.publisherWebsite,
+          fetchedFrom: source,
         }));
 
-        toast({ title: 'Auto-fill Complete', description: 'Publication fields updated.' });
+        toast({ title: 'Auto-fill Complete', description: `Publication fields updated and verified via ${source.toUpperCase()}.` });
       } else {
         toast({ variant: 'destructive', title: 'Fetch Failed', description: result?.error || 'No data returned.' });
       }
@@ -286,8 +398,17 @@ export default function ArpsSubmissionForm() {
   const handleSave = async (submitStatus: ArpsSubmission['status']) => {
     if (!currentUser) return;
 
+    if (submitStatus === 'Draft' && existingSubmission?.status === 'Resubmission Required') {
+      toast({
+        variant: 'destructive',
+        title: 'Draft Not Allowed',
+        description: 'Applications requiring revision must be fully submitted for verification and cannot be saved as drafts.'
+      });
+      return;
+    }
+
     // Common validations
-    if (proofs.length === 0 && submitStatus === 'Submitted') {
+    if (proofs.length === 0 && submitStatus === 'Submitted' && type !== 'other') {
       toast({ variant: 'destructive', title: 'Proof Required', description: 'Please upload at least one documentary proof before submitting.' });
       return;
     }
@@ -296,6 +417,19 @@ export default function ArpsSubmissionForm() {
     if (type === 'publication') {
       if (!formData.paperTitle?.trim()) {
         toast({ variant: 'destructive', title: 'Validation Error', description: 'Title is required.' });
+        return;
+      }
+      if (!formData.authorPosition) {
+        toast({ variant: 'destructive', title: 'Validation Error', description: 'Your Role is required.' });
+        return;
+      }
+      const order = formData.authorOrder;
+      if (order === undefined || order === null || isNaN(order as any)) {
+        toast({ variant: 'destructive', title: 'Validation Error', description: 'Your Author Position is required.' });
+        return;
+      }
+      if (Number(order) < 1 || Number(order) > 10) {
+        toast({ variant: 'destructive', title: 'Validation Error', description: 'Your Author Position must be an integer between 1 and 10.' });
         return;
       }
       if (
@@ -307,9 +441,41 @@ export default function ArpsSubmissionForm() {
           toast({ variant: 'destructive', title: 'Validation Error', description: 'DOI is required for Journal, Book Chapter, and Conference Proceedings submissions.' });
           return;
         }
+
+        const requiresScopus =
+          formData.publicationType === 'Book Chapter' ||
+          formData.publicationType === 'Conference Proceedings' ||
+          (formData.publicationType === 'Journal' && (formData.indexType === 'scopus' || formData.indexType === 'both'));
+
+        if (requiresScopus) {
+          if (!formData.scopusLink?.trim()) {
+            toast({ variant: 'destructive', title: 'Validation Error', description: 'Scopus Link is required for Scopus-indexed publications.' });
+            return;
+          }
+          if (formData.scopusLink && !formData.scopusLink.startsWith('http')) {
+            toast({ variant: 'destructive', title: 'Validation Error', description: 'Please enter a valid Scopus URL.' });
+            return;
+          }
+        }
+      }
+      if (!formData.publicationDate) {
+        toast({ variant: 'destructive', title: 'Validation Error', description: 'Publication Date is required.' });
+        return;
+      }
+      if (!formData.publisherName?.trim()) {
+        toast({ variant: 'destructive', title: 'Validation Error', description: 'Publisher Name is required.' });
+        return;
+      }
+      if (!formData.publisherWebsite?.trim()) {
+        toast({ variant: 'destructive', title: 'Validation Error', description: 'Article Link is required.' });
+        return;
       }
       if (formData.publicationType === 'Book Editor' && !formData.isbn?.trim()) {
         toast({ variant: 'destructive', title: 'Validation Error', description: 'ISBN is required for book submissions.' });
+        return;
+      }
+      if (formData.publicationType === 'Book Chapter' && !formData.bookTitleForChapter?.trim()) {
+        toast({ variant: 'destructive', title: 'Validation Error', description: 'Book Name is required for Book Chapter.' });
         return;
       }
     } else if (type === 'patent') {
@@ -382,6 +548,42 @@ export default function ArpsSubmissionForm() {
         toast({ variant: 'destructive', title: 'Validation Error', description: 'Event Name is required.' });
         return;
       }
+      if (formData.activityCategory !== 'Membership' && formData.activityCategory !== 'EMR team member') {
+        if (!formData.startDate) {
+          toast({ variant: 'destructive', title: 'Validation Error', description: 'Event Start Date is required.' });
+          return;
+        }
+        if (!formData.endDate) {
+          toast({ variant: 'destructive', title: 'Validation Error', description: 'Event End Date is required.' });
+          return;
+        }
+        const yearParts = academicYear.split('-');
+        const startYear = parseInt(yearParts[0], 10);
+        const endYear = startYear + 1;
+        const minDate = new Date(`${startYear}-06-01`);
+        const maxDate = new Date(`${endYear}-05-31`);
+
+        const sDate = new Date(formData.startDate);
+        const eDate = new Date(formData.endDate);
+
+        if (sDate < minDate || sDate > maxDate) {
+          toast({ variant: 'destructive', title: 'Validation Error', description: `Start Date must be within the current evaluation year (01/06/${startYear} to 31/05/${endYear}).` });
+          return;
+        }
+        if (eDate < minDate || eDate > maxDate) {
+          toast({ variant: 'destructive', title: 'Validation Error', description: `End Date must be within the current evaluation year (01/06/${startYear} to 31/05/${endYear}).` });
+          return;
+        }
+        if (sDate > eDate) {
+          toast({ variant: 'destructive', title: 'Validation Error', description: 'Start Date cannot be after the End Date.' });
+          return;
+        }
+      }
+    } else if (type === 'other') {
+      if (!formData.details?.trim()) {
+        toast({ variant: 'destructive', title: 'Validation Error', description: 'Paragraph & Description is required.' });
+        return;
+      }
     }
 
     setSaving(true);
@@ -397,6 +599,25 @@ export default function ArpsSubmissionForm() {
         userEmail: currentUser.email,
         faculty: currentUser.faculty || 'N/A',
       };
+
+      if (editId && existingSubmission && existingSubmission.status === 'Resubmission Required') {
+        const diffs: Record<string, { oldValue: any; newValue: any }> = {};
+        Object.keys(FIELD_LABELS).forEach((key) => {
+          const oldRaw = (existingSubmission as any)[key];
+          const newRaw = (payload as any)[key];
+          const oldVal = getComparisonValue(oldRaw);
+          const newVal = getComparisonValue(newRaw);
+          if (oldVal !== newVal) {
+            diffs[key] = {
+              oldValue: oldRaw === undefined ? null : oldRaw,
+              newValue: newRaw === undefined ? null : newRaw
+            };
+          }
+        });
+        if (Object.keys(diffs).length > 0) {
+          payload.revisionDiffs = diffs;
+        }
+      }
 
       let result;
       if (editId) {
@@ -555,8 +776,12 @@ export default function ArpsSubmissionForm() {
           return formData.location === 'In PU' ? rules.activities.expertTalkInPu : rules.activities.expertTalkOutsidePu;
         } else if (cat === 'Participation') {
           return formData.location === 'In PU' ? rules.activities.participationInPu : rules.activities.participationOutsidePu;
-        } else if (cat === 'Membership') return rules.activities.membership;
-        else if (cat === 'EMR team member') return rules.activities.emrTeamMember;
+        } else if (cat === 'Membership') {
+          return formData.membershipType === 'Lifetime' ? 0 : rules.activities.membership;
+        } else if (cat === 'EMR team member') return rules.activities.emrTeamMember;
+      }
+      if (type === 'other') {
+        return 0;
       }
     } catch (e) {
       console.error(e);
@@ -570,7 +795,7 @@ export default function ArpsSubmissionForm() {
     return (
       <div className="flex flex-col justify-center items-center py-40 space-y-4">
         <Loader2 className="h-12 w-12 animate-spin text-primary" />
-        <span className="text-muted-foreground text-sm font-medium">Preparing evaluation parameters...</span>
+        <span className="text-muted-foreground text-sm font-medium">Loading...</span>
       </div>
     );
   }
@@ -605,7 +830,7 @@ export default function ArpsSubmissionForm() {
             {type === 'publication' && (
               <div className="space-y-4">
                 <div className="space-y-2">
-                  <Label htmlFor="publicationType">Publication Type</Label>
+                  <Label htmlFor="publicationType">Publication Type <span className="text-rose-500">*</span></Label>
                   <select
                     id="publicationType"
                     value={formData.publicationType}
@@ -621,7 +846,7 @@ export default function ArpsSubmissionForm() {
 
                 {(formData.publicationType === 'Journal' || formData.publicationType === 'Book Chapter' || formData.publicationType === 'Conference Proceedings') && (
                   <div className="space-y-2">
-                    <Label htmlFor="doi">Digital Object Identifier (DOI)</Label>
+                    <Label htmlFor="doi">Digital Object Identifier (DOI) <span className="text-rose-500">*</span></Label>
                     <Input
                       id="doi"
                       value={formData.doi || ''}
@@ -642,7 +867,7 @@ export default function ArpsSubmissionForm() {
 
                 {formData.publicationType === 'Book Editor' && (
                   <div className="space-y-2">
-                    <Label htmlFor="isbn">Book ISBN</Label>
+                    <Label htmlFor="isbn">Book ISBN <span className="text-rose-500">*</span></Label>
                     <Input
                       id="isbn"
                       value={formData.isbn || ''}
@@ -653,18 +878,16 @@ export default function ArpsSubmissionForm() {
                 )}
 
                 <div className="space-y-2">
-                  <Label htmlFor="paperTitle">Title of the Work / Paper</Label>
+                  <Label htmlFor="paperTitle">Title of the Work / Paper <span className="text-rose-500">*</span></Label>
                   <Input
                     id="paperTitle"
                     value={formData.paperTitle || ''}
                     onChange={(e) => handleInputChange('paperTitle', e.target.value)}
                     placeholder="Enter full title of publication"
                   />
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                </div>                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <Label htmlFor="publisherName">Publisher Name</Label>
+                    <Label htmlFor="publisherName">Publisher Name <span className="text-rose-500">*</span></Label>
                     <Input
                       id="publisherName"
                       value={formData.publisherName || ''}
@@ -673,7 +896,7 @@ export default function ArpsSubmissionForm() {
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="publisherWebsite">Article Link</Label>
+                    <Label htmlFor="publisherWebsite">Article Link <span className="text-rose-500">*</span></Label>
                     <Input
                       id="publisherWebsite"
                       type="url"
@@ -684,51 +907,56 @@ export default function ArpsSubmissionForm() {
                   </div>
                 </div>
 
+                {formData.publicationType === 'Book Chapter' && (
+                  <div className="space-y-2 animate-in slide-in-from-top-2">
+                    <Label htmlFor="bookTitleForChapter">Book Name <span className="text-rose-500">*</span></Label>
+                    <Input
+                      id="bookTitleForChapter"
+                      value={formData.bookTitleForChapter || ''}
+                      onChange={(e) => handleInputChange('bookTitleForChapter', e.target.value)}
+                      placeholder="Title of the Book"
+                    />
+                  </div>
+                )}
+
+                {(formData.publicationType === 'Book Chapter' || formData.publicationType === 'Conference Proceedings') && (
+                  <div className="space-y-2">
+                    <Label htmlFor="scopusLink">Scopus Link of Publication <span className="text-rose-500">*</span></Label>
+                    <Input
+                      id="scopusLink"
+                      type="url"
+                      value={formData.scopusLink || ''}
+                      onChange={(e) => handleInputChange('scopusLink', e.target.value)}
+                      placeholder="https://www.scopus.com/pages/publications/..."
+                    />
+                  </div>
+                )}
+
                 {(formData.publicationType === 'Journal' || formData.publicationType === 'Book Chapter' || formData.publicationType === 'Conference Proceedings') && (
                   <>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {formData.publicationType === 'Journal' && (
                       <div className="space-y-2">
-                        <Label htmlFor="doi">Digital Object Identifier (DOI)</Label>
+                        <Label htmlFor="journalName">Journal Name <span className="text-rose-500">*</span></Label>
                         <Input
-                          id="doi"
-                          value={formData.doi || ''}
-                          onChange={(e) => handleInputChange('doi', e.target.value)}
-                          placeholder={formData.publicationType === 'Conference Proceedings' ? 'e.g. 10.1007/978-3-030-12345-6_7' : 'e.g. 10.1016/j.cell.2026.05.01'}
+                          id="journalName"
+                          value={formData.journalName || ''}
+                          onChange={(e) => handleInputChange('journalName', e.target.value)}
+                          placeholder="Full name of the journal"
                         />
-                        <div className="flex items-center gap-2 mt-2">
-                          <Button size="sm" onClick={() => handleFetchMetadata('scopus')} disabled={!formData.doi || isFetchingMeta}>
-                            Fetch from Scopus
-                          </Button>
-                          <Button size="sm" variant="outline" onClick={() => handleFetchMetadata('wos')} disabled={!formData.doi || isFetchingMeta}>
-                            Fetch from WoS
-                          </Button>
-                          {isFetchingMeta && <span className="text-xs text-muted-foreground ml-2">Fetching metadata…</span>}
-                        </div>
                       </div>
-
-                      {formData.publicationType === 'Journal' && (
-                        <div className="space-y-2">
-                          <Label htmlFor="journalName">Journal Name</Label>
-                          <Input
-                            id="journalName"
-                            value={formData.journalName || ''}
-                            onChange={(e) => handleInputChange('journalName', e.target.value)}
-                            placeholder="Full name of the journal"
-                          />
-                        </div>
-                      )}
-                    </div>
+                    )}
 
                     {formData.publicationType === 'Journal' && (
                       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                         <div className="space-y-2">
-                          <Label htmlFor="journalClassification">Journal Quartile Rating</Label>
+                          <Label htmlFor="journalClassification">Journal Quartile Rating <span className="text-rose-500">*</span></Label>
                           <select
                             id="journalClassification"
                             value={formData.journalClassification}
                             onChange={(e) => handleInputChange('journalClassification', e.target.value)}
                             className="w-full text-sm bg-background border border-input rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary"
                           >
+                            <option value="">Select Quartile</option>
                             <option value="Q1">Q1</option>
                             <option value="Q2">Q2</option>
                             <option value="Q3">Q3</option>
@@ -737,13 +965,14 @@ export default function ArpsSubmissionForm() {
                         </div>
 
                         <div className="space-y-2">
-                          <Label htmlFor="indexType">Indexing Verification</Label>
+                          <Label htmlFor="indexType">Indexing Verification <span className="text-rose-500">*</span></Label>
                           <select
                             id="indexType"
                             value={formData.indexType}
                             onChange={(e) => handleInputChange('indexType', e.target.value)}
                             className="w-full text-sm bg-background border border-input rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary"
                           >
+                            <option value="">Select Indexing</option>
                             <option value="scopus">Scopus</option>
                             <option value="wos">Web of Science (WoS)</option>
                             <option value="both">Both (Scopus & WoS)</option>
@@ -751,13 +980,14 @@ export default function ArpsSubmissionForm() {
                         </div>
 
                         <div className="space-y-2">
-                          <Label htmlFor="articleType">Article Type Category</Label>
+                          <Label htmlFor="articleType">Article Type Category <span className="text-rose-500">*</span></Label>
                           <select
                             id="articleType"
                             value={formData.articleType}
                             onChange={(e) => handleInputChange('articleType', e.target.value)}
                             className="w-full text-sm bg-background border border-input rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary"
                           >
+                            <option value="">Select Article Type</option>
                             <option value="Original Research">Original Research / Short Comm.</option>
                             <option value="Review">Review Article</option>
                             <option value="Case Report">Case Report</option>
@@ -766,18 +996,40 @@ export default function ArpsSubmissionForm() {
                         </div>
                       </div>
                     )}
+
+                    {formData.publicationType === 'Journal' && (formData.indexType === 'scopus' || formData.indexType === 'both') && (
+                      <div className="space-y-2 mt-4 animate-in slide-in-from-top-2">
+                        <Label htmlFor="scopusLink">Scopus Link of Publication <span className="text-rose-500">*</span></Label>
+                        <Input
+                          id="scopusLink"
+                          type="url"
+                          value={formData.scopusLink || ''}
+                          onChange={(e) => handleInputChange('scopusLink', e.target.value)}
+                          placeholder="https://www.scopus.com/pages/publications/..."
+                        />
+                      </div>
+                    )}
                   </>
                 )}
 
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div className="space-y-2">
-                    <Label htmlFor="authorPosition">Your Role</Label>
+                    <Label htmlFor="authorPosition">Your Role <span className="text-rose-500">*</span></Label>
                     <select
                       id="authorPosition"
                       value={formData.authorPosition}
-                      onChange={(e) => handleInputChange('authorPosition', e.target.value)}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        handleInputChange('authorPosition', val);
+                        if (val === 'Single Author' || val === 'First Author' || val === 'First & Corresponding Author') {
+                          handleInputChange('authorOrder', 1);
+                        } else if (val === 'Co-Author' || val === 'Corresponding Author') {
+                          handleInputChange('authorOrder', 2);
+                        }
+                      }}
                       className="w-full text-sm bg-background border border-input rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary"
                     >
+                      <option value="">Select Your Role</option>
                       <option value="Single Author">Single Author</option>
                       <option value="First Author">First Author</option>
                       <option value="Corresponding Author">Corresponding Author</option>
@@ -786,34 +1038,46 @@ export default function ArpsSubmissionForm() {
                     </select>
                   </div>
 
-                  {formData.authorPosition === 'Co-Author' && (
-                    <div className="space-y-2">
-                      <Label htmlFor="authorOrder">Your Position Order (1,2...)</Label>
-                      <Input
-                        id="authorOrder"
-                        type="number"
-                        min="2"
-                        value={formData.authorOrder || 2}
-                        onChange={(e) => handleInputChange('authorOrder', Number(e.target.value))}
-                      />
-                    </div>
-                  )}
+                  <div className="space-y-2 animate-in slide-in-from-top-2">
+                    <Label htmlFor="authorOrder">Your Author Position (1-10) <span className="text-rose-500">*</span></Label>
+                    <Input
+                      id="authorOrder"
+                      type="number"
+                      min="1"
+                      max="10"
+                      value={formData.authorOrder !== undefined ? formData.authorOrder : ''}
+                      disabled={!formData.authorPosition || formData.authorPosition === 'First Author' || formData.authorPosition === 'First & Corresponding Author' || formData.authorPosition === 'Single Author'}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        if (val === '') {
+                          handleInputChange('authorOrder', '');
+                          return;
+                        }
+                        let num = parseInt(val, 10);
+                        if (isNaN(num)) return;
+                        if (num > 10) num = 10;
+                        if (num < 1) num = 1;
+                        handleInputChange('authorOrder', num);
+                      }}
+                      placeholder="e.g. 1"
+                    />
+                  </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="totalAuthors">Total Authors count</Label>
+                    <Label htmlFor="totalAuthors">Total Authors count <span className="text-rose-500">*</span></Label>
                     <Input
                       id="totalAuthors"
                       type="number"
                       min="1"
-                      value={formData.totalAuthors || 1}
-                      onChange={(e) => handleInputChange('totalAuthors', Number(e.target.value))}
+                      value={formData.totalAuthors !== undefined ? formData.totalAuthors : ''}
+                      onChange={(e) => handleInputChange('totalAuthors', e.target.value === '' ? '' : Number(e.target.value))}
                     />
                   </div>
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <Label htmlFor="publicationDate">Publication Date</Label>
+                    <Label htmlFor="publicationDate">Publication Date (As in Scopus)<span className="text-rose-500">*</span></Label>
                     <Input
                       id="publicationDate"
                       type="date"
@@ -822,7 +1086,7 @@ export default function ArpsSubmissionForm() {
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="fundingAcknowledgement">Funding Agency Acknowledged</Label>
+                    <Label htmlFor="fundingAcknowledgement">Funding Agency Acknowledged (Optional)</Label>
                     <Input
                       id="fundingAcknowledgement"
                       value={formData.fundingAcknowledgement || ''}
@@ -840,7 +1104,7 @@ export default function ArpsSubmissionForm() {
                       onCheckedChange={(checked) => handleInputChange('isSinglePuAuthorWithExternal', !!checked)}
                     />
                     <label htmlFor="isSinglePuAuthorWithExternal" className="text-xs font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
-                      I am the single Parul University Goa co-author working with external international/national authors
+                      I am the single Parul University co-author working with external international/national authors
                     </label>
                   </div>
                   <div className="flex items-center space-x-2">
@@ -861,7 +1125,7 @@ export default function ArpsSubmissionForm() {
             {type === 'patent' && (
               <div className="space-y-4">
                 <div className="space-y-2">
-                  <Label htmlFor="patentTitle">Patent Title / Invention Description</Label>
+                  <Label htmlFor="patentTitle">Patent Title / Invention Description <span className="text-rose-500">*</span></Label>
                   <Input
                     id="patentTitle"
                     value={formData.patentTitle || ''}
@@ -872,21 +1136,21 @@ export default function ArpsSubmissionForm() {
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <Label htmlFor="patentCategory">Patent Status Category</Label>
+                    <Label htmlFor="patentCategory">Patent Status Category <span className="text-rose-500">*</span></Label>
                     <select
                       id="patentCategory"
                       value={formData.patentCategory}
                       onChange={(e) => handleInputChange('patentCategory', e.target.value)}
                       className="w-full text-sm bg-background border border-input rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary"
                     >
-                      <option value="Published">Patent Published (Raw 10 points)</option>
-                      <option value="Granted India">Patent Granted India (Raw 50 points)</option>
-                      <option value="Granted International">Patent Granted International (Raw 75 points)</option>
+                      <option value="Published">Patent Published</option>
+                      <option value="Granted India">Patent Granted India</option>
+                      <option value="Granted International">Patent Granted International</option>
                     </select>
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="patentNumber">Filing / Grant / Application Number</Label>
+                    <Label htmlFor="patentNumber">Filing / Grant / Application Number <span className="text-rose-500">*</span></Label>
                     <Input
                       id="patentNumber"
                       value={formData.patentNumber || ''}
@@ -898,7 +1162,7 @@ export default function ArpsSubmissionForm() {
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <Label htmlFor="filingDate">Filing Date</Label>
+                    <Label htmlFor="filingDate">Publishing Date <span className="text-rose-500">*</span></Label>
                     <Input
                       id="filingDate"
                       type="date"
@@ -938,7 +1202,7 @@ export default function ArpsSubmissionForm() {
                       }}
                     />
                     <label htmlFor="isPuSoleApplicant" className="text-xs font-medium leading-none">
-                      Parul University Goa is the SOLE applicant of the patent
+                      Parul University is the SOLE applicant of the patent
                     </label>
                   </div>
                   <div className="flex items-center space-x-2">
@@ -951,7 +1215,7 @@ export default function ArpsSubmissionForm() {
                       }}
                     />
                     <label htmlFor="isPuJointApplicant" className="text-xs font-medium leading-none">
-                      Parul University Goa is a JOINT co-applicant of the patent
+                      Parul University is a JOINT co-applicant of the patent
                     </label>
                   </div>
                 </div>
@@ -962,7 +1226,7 @@ export default function ArpsSubmissionForm() {
             {type === 'consultancy' && (
               <div className="space-y-4">
                 <div className="space-y-2">
-                  <Label htmlFor="consultancyTitle">Consultancy Project Assignment Title</Label>
+                  <Label htmlFor="consultancyTitle">Consultancy Project Assignment Title <span className="text-rose-500">*</span></Label>
                   <Input
                     id="consultancyTitle"
                     value={formData.consultancyTitle || ''}
@@ -972,7 +1236,7 @@ export default function ArpsSubmissionForm() {
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="clientOrganization">Client Sponsoring Organization</Label>
+                  <Label htmlFor="clientOrganization">Client Sponsoring Organization <span className="text-rose-500">*</span></Label>
                   <Input
                     id="clientOrganization"
                     value={formData.clientOrganization || ''}
@@ -983,7 +1247,7 @@ export default function ArpsSubmissionForm() {
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <Label htmlFor="revenueAmount">Revenue Amount Received (₹)</Label>
+                    <Label htmlFor="revenueAmount">Revenue Amount Received (₹) <span className="text-rose-500">*</span></Label>
                     <Input
                       id="revenueAmount"
                       type="number"
@@ -994,7 +1258,7 @@ export default function ArpsSubmissionForm() {
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="transactionDate">Financial Transaction Date</Label>
+                    <Label htmlFor="transactionDate">Financial Transaction Date <span className="text-rose-500">*</span></Label>
                     <Input
                       id="transactionDate"
                       type="date"
@@ -1010,7 +1274,7 @@ export default function ArpsSubmissionForm() {
             {type === 'EMR' && (
               <div className="space-y-4">
                 <div className="space-y-2">
-                  <Label htmlFor="projectTitle">EMR Sponsoring Project Title</Label>
+                  <Label htmlFor="projectTitle">EMR Sponsoring Project Title <span className="text-rose-500">*</span></Label>
                   <Input
                     id="projectTitle"
                     value={formData.projectTitle || ''}
@@ -1031,7 +1295,7 @@ export default function ArpsSubmissionForm() {
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <Label htmlFor="fundingAgency">External Funding Sponsoring Agency</Label>
+                    <Label htmlFor="fundingAgency">External Funding Sponsoring Agency <span className="text-rose-500">*</span></Label>
                     <Input
                       id="fundingAgency"
                       value={formData.fundingAgency || ''}
@@ -1040,7 +1304,7 @@ export default function ArpsSubmissionForm() {
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="sanctionAmount">Sanction Grant Value Amount (₹)</Label>
+                    <Label htmlFor="sanctionAmount">Sanction Grant Value Amount (₹) <span className="text-rose-500">*</span></Label>
                     <Input
                       id="sanctionAmount"
                       type="number"
@@ -1053,7 +1317,7 @@ export default function ArpsSubmissionForm() {
 
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div className="space-y-2">
-                    <Label htmlFor="role">Your Role performed</Label>
+                    <Label htmlFor="role">Your Role performed <span className="text-rose-500">*</span></Label>
                     <select
                       id="role"
                       value={formData.role}
@@ -1062,12 +1326,11 @@ export default function ArpsSubmissionForm() {
                     >
                       <option value="PI">Principal Investigator (PI)</option>
                       <option value="Co-PI">Co-Investigator (Co-PI)</option>
-                      <option value="Team Member">Project Team Member</option>
                     </select>
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="projectStatus">Project Active State</Label>
+                    <Label htmlFor="projectStatus">Project Active State <span className="text-rose-500">*</span></Label>
                     <select
                       id="projectStatus"
                       value={formData.projectStatus}
@@ -1080,7 +1343,7 @@ export default function ArpsSubmissionForm() {
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="durationMonths">Sanction Duration (Months)</Label>
+                    <Label htmlFor="durationMonths">Sanction Duration (Months) <span className="text-rose-500">*</span></Label>
                     <Input
                       id="durationMonths"
                       type="number"
@@ -1093,7 +1356,7 @@ export default function ArpsSubmissionForm() {
 
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div className="space-y-2">
-                    <Label htmlFor="sanctionDate">Sanction Date</Label>
+                    <Label htmlFor="sanctionDate">Sanction Date <span className="text-rose-500">*</span></Label>
                     <Input
                       id="sanctionDate"
                       type="date"
@@ -1102,7 +1365,7 @@ export default function ArpsSubmissionForm() {
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="startDate">Project Start Date</Label>
+                    <Label htmlFor="startDate">Project Start Date <span className="text-rose-500">*</span></Label>
                     <Input
                       id="startDate"
                       type="date"
@@ -1129,7 +1392,7 @@ export default function ArpsSubmissionForm() {
               <div className="space-y-4">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <Label htmlFor="studentName">Student Researcher Name</Label>
+                    <Label htmlFor="studentName">Student Researcher Name <span className="text-rose-500">*</span></Label>
                     <Input
                       id="studentName"
                       value={formData.studentName || ''}
@@ -1139,7 +1402,7 @@ export default function ArpsSubmissionForm() {
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="program">Enrolled Program Type</Label>
+                    <Label htmlFor="program">Enrolled Program Type <span className="text-rose-500">*</span></Label>
                     <select
                       id="program"
                       value={formData.program}
@@ -1154,7 +1417,7 @@ export default function ArpsSubmissionForm() {
 
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div className="space-y-2">
-                    <Label htmlFor="studentEnrollmentNo">Enrollment Number</Label>
+                    <Label htmlFor="studentEnrollmentNo">Enrollment Number <span className="text-rose-500">*</span></Label>
                     <Input
                       id="studentEnrollmentNo"
                       value={formData.studentEnrollmentNo || ''}
@@ -1163,7 +1426,7 @@ export default function ArpsSubmissionForm() {
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="studentInstitute">Institute</Label>
+                    <Label htmlFor="studentInstitute">Institute <span className="text-rose-500">*</span></Label>
                     <select
                       id="studentInstitute"
                       value={formData.studentInstitute || ''}
@@ -1171,19 +1434,26 @@ export default function ArpsSubmissionForm() {
                       className="w-full text-sm bg-background border border-input rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary"
                     >
                       <option value="">Select Institute</option>
-                      <option value="Parul College of Applied and Health Sciences">Parul College of Applied and Health Sciences</option>
-                      <option value="Parul College of Engineering">Parul College of Engineering</option>
-                      <option value="Parul College of Information Technology & Computer Science">Parul College of Information Technology & Computer Science</option>
-                      <option value="Parul College of Management">Parul College of Management</option>
-                      <option value="Parul College of Hotel Management">Parul College of Hotel Management</option>
-                      <option value="Parul College of Nursing">Parul College of Nursing</option>
-                      <option value="Parul College of Pharmacy">Parul College of Pharmacy</option>
-                      <option value="Parul College of Physiotherapy">Parul College of Physiotherapy</option>
-                      <option value="University Office">University Office</option>
+                      <option value="PIET">Parul Institute of Engineering & Technology (PIET)</option>
+                      <option value="PIT">Parul Institute of Technology (PIT)</option>
+                      <option value="PIAR">Parul Institute of Architecture & Research (PIAR)</option>
+                      <option value="PIPR">Parul Institute of Pharmacy & Research (PIPR)</option>
+                      <option value="PIA">Parul Institute of Ayurved (PIA)</option>
+                      <option value="PIMR">Parul Institute of Management & Research (PIMR)</option>
+                      <option value="PIAHS">Parul Institute of Applied Health Sciences (PIAHS)</option>
+                      <option value="PIMSR">Parul Institute of Medical Sciences & Research (PIMSR)</option>
+                      <option value="PIAS">Parul Institute of Applied Sciences (PIAS)</option>
+                      <option value="PIFA">Parul Institute of Fine Arts (PIFA)</option>
+                      <option value="PIPA">Parul Institute of Performing Arts (PIPA)</option>
+                      <option value="PID">Parul Institute of Design (PID)</option>
+                      <option value="PIL">Parul Institute of Law (PIL)</option>
+                      <option value="PIN">Parul Institute of Nursing (PIN)</option>
+                      <option value="PIIT">Parul Institute of IT & Computer Science (PIIT)</option>
+                      <option value="Other">Other / Not Listed</option>
                     </select>
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="studentDepartment">Department</Label>
+                    <Label htmlFor="studentDepartment">Department <span className="text-rose-500">*</span></Label>
                     <Input
                       id="studentDepartment"
                       value={formData.studentDepartment || ''}
@@ -1195,7 +1465,7 @@ export default function ArpsSubmissionForm() {
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <Label htmlFor="studentStatus">Degree Status</Label>
+                    <Label htmlFor="studentStatus">Degree Status <span className="text-rose-500">*</span></Label>
                     <select
                       id="studentStatus"
                       value={formData.studentStatus}
@@ -1225,7 +1495,7 @@ export default function ArpsSubmissionForm() {
               <div className="space-y-4">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <Label htmlFor="activityCategory">Activity Category Type</Label>
+                    <Label htmlFor="activityCategory">Activity Category Type <span className="text-rose-500">*</span></Label>
                     <select
                       id="activityCategory"
                       value={formData.activityCategory}
@@ -1243,7 +1513,7 @@ export default function ArpsSubmissionForm() {
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="eventName">Event / Professional Body Name</Label>
+                    <Label htmlFor="eventName">Event / Professional Body Name <span className="text-rose-500">*</span></Label>
                     <Input
                       id="eventName"
                       value={formData.eventName || ''}
@@ -1254,7 +1524,7 @@ export default function ArpsSubmissionForm() {
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="organization">Sponsoring / Host Organization</Label>
+                  <Label htmlFor="organization">Sponsoring / Host Organization <span className="text-rose-500">*</span></Label>
                   <Input
                     id="organization"
                     value={formData.organization || ''}
@@ -1263,41 +1533,147 @@ export default function ArpsSubmissionForm() {
                   />
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="eventDurationDays">Event Duration (Days)</Label>
-                    <Input
-                      id="eventDurationDays"
-                      type="number"
-                      min="1"
-                      value={formData.eventDurationDays || 1}
-                      onChange={(e) => handleInputChange('eventDurationDays', Number(e.target.value))}
-                    />
-                  </div>
+                {/* Conditional fields: membership vs. event-based */}
+                {formData.activityCategory === 'Membership' ? (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="membershipType">Membership Duration Type <span className="text-rose-500">*</span></Label>
+                      <select
+                        id="membershipType"
+                        value={formData.membershipType || 'Yearly'}
+                        onChange={(e) => handleInputChange('membershipType', e.target.value)}
+                        className="w-full text-sm bg-background border border-input rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary"
+                      >
+                        <option value="Lifetime">Lifetime</option>
+                        <option value="Yearly">Yearly</option>
+                      </select>
+                    </div>
 
-                  <div className="space-y-2">
-                    <Label htmlFor="location">Event Location Stature</Label>
-                    <select
-                      id="location"
-                      value={formData.location}
-                      onChange={(e) => handleInputChange('location', e.target.value)}
-                      className="w-full text-sm bg-background border border-input rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary"
-                    >
-                      <option value="In PU">Internal (Hosted inside PU)</option>
-                      <option value="Outside PU">National (Hosted in India, outside PU)</option>
-                      <option value="Outside India">International (Outside India)</option>
-                    </select>
+                    <div className="space-y-2">
+                      <Label htmlFor="societyType">Society / Board Type <span className="text-rose-500">*</span></Label>
+                      <select
+                        id="societyType"
+                        value={formData.societyType || 'National'}
+                        onChange={(e) => handleInputChange('societyType', e.target.value)}
+                        className="w-full text-sm bg-background border border-input rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary"
+                      >
+                        <option value="National">National</option>
+                        <option value="International">International</option>
+                      </select>
+                    </div>
                   </div>
+                ) : formData.activityCategory === 'EMR team member' ? null : (
+                  <div className="space-y-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="startDate">Event Start Date <span className="text-rose-500">*</span></Label>
+                        <Input
+                          id="startDate"
+                          type="date"
+                          min={`${parseInt(academicYear.split('-')[0], 10)}-06-01`}
+                          max={`${parseInt(academicYear.split('-')[0], 10) + 1}-05-31`}
+                          value={formData.startDate || ''}
+                          onChange={(e) => {
+                            const sVal = e.target.value;
+                            handleInputChange('startDate', sVal);
+                            if (sVal && formData.endDate) {
+                              const start = new Date(sVal);
+                              const end = new Date(formData.endDate);
+                              const diffTime = end.getTime() - start.getTime();
+                              const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24)) + 1;
+                              if (diffDays >= 1) {
+                                handleInputChange('eventDurationDays', diffDays);
+                              } else {
+                                handleInputChange('eventDurationDays', 0);
+                              }
+                            }
+                          }}
+                        />
+                      </div>
 
-                  <div className="space-y-2">
-                    <Label htmlFor="rolePerformed">Specific Role performed</Label>
-                    <Input
-                      id="rolePerformed"
-                      value={formData.rolePerformed || ''}
-                      onChange={(e) => handleInputChange('rolePerformed', e.target.value)}
-                      placeholder="e.g. Session chair, Keynote, Moderator"
-                    />
+                      <div className="space-y-2">
+                        <Label htmlFor="endDate">Event End Date <span className="text-rose-500">*</span></Label>
+                        <Input
+                          id="endDate"
+                          type="date"
+                          min={`${parseInt(academicYear.split('-')[0], 10)}-06-01`}
+                          max={`${parseInt(academicYear.split('-')[0], 10) + 1}-05-31`}
+                          value={formData.endDate || ''}
+                          onChange={(e) => {
+                            const eVal = e.target.value;
+                            handleInputChange('endDate', eVal);
+                            if (formData.startDate && eVal) {
+                              const start = new Date(formData.startDate);
+                              const end = new Date(eVal);
+                              const diffTime = end.getTime() - start.getTime();
+                              const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24)) + 1;
+                              if (diffDays >= 1) {
+                                handleInputChange('eventDurationDays', diffDays);
+                              } else {
+                                handleInputChange('eventDurationDays', 0);
+                              }
+                            }
+                          }}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="eventDurationDays">Event Duration (Days) <span className="text-rose-500">*</span></Label>
+                        <Input
+                          id="eventDurationDays"
+                          type="number"
+                          value={formData.eventDurationDays || 0}
+                          disabled
+                          placeholder="Calculated from dates"
+                        />
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label htmlFor="location">Event Location Stature <span className="text-rose-500">*</span></Label>
+                        <select
+                          id="location"
+                          value={formData.location}
+                          onChange={(e) => handleInputChange('location', e.target.value)}
+                          className="w-full text-sm bg-background border border-input rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary"
+                        >
+                          <option value="In PU">Internal (Hosted inside PU)</option>
+                          <option value="Outside PU">National (Hosted in India, outside PU)</option>
+                          <option value="Outside India">International (Outside India)</option>
+                        </select>
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label htmlFor="rolePerformed">Specific Role performed</Label>
+                        <Input
+                          id="rolePerformed"
+                          value={formData.rolePerformed || ''}
+                          onChange={(e) => handleInputChange('rolePerformed', e.target.value)}
+                          placeholder="e.g. Session chair, Keynote, Moderator"
+                        />
+                      </div>
+                    </div>
                   </div>
+                )}
+              </div>
+            )}
+
+            {/* G. Other Details Form */}
+            {type === 'other' && (
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="details">Paragraph & Description <span className="text-rose-500">*</span></Label>
+                  <Textarea
+                    id="details"
+                    rows={6}
+                    value={formData.details || ''}
+                    onChange={(e) => handleInputChange('details', e.target.value)}
+                    placeholder="Enter the Paragraph and Description of your achievement here."
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Please provide a clear and concise description of the achievement.
+                  </p>
                 </div>
               </div>
             )}
@@ -1321,7 +1697,7 @@ export default function ArpsSubmissionForm() {
                   {uploading ? (
                     <>
                       <Loader2 className="h-8 w-8 animate-spin text-primary" />
-                      <span className="text-xs text-muted-foreground">Uploading files securely to Firestore...</span>
+                      <span className="text-xs text-muted-foreground">Uploading files...</span>
                     </>
                   ) : (
                     <>
@@ -1329,7 +1705,7 @@ export default function ArpsSubmissionForm() {
                         <Upload className="h-6 w-6" />
                       </div>
                       <span className="text-xs font-semibold">Click or drag files to upload proofs</span>
-                      <span className="text-[10px] text-muted-foreground">Accepted formats: PDF, PNG, JPEG, DOCX up to 25MB</span>
+                      <span className="text-[10px] text-muted-foreground">Accepted formats: PDF, PNG, JPEG, DOCX up to 10MB</span>
                     </>
                   )}
                 </div>
@@ -1376,7 +1752,9 @@ export default function ArpsSubmissionForm() {
             <div className="flex flex-col md:flex-row justify-between items-center mt-10 pt-8 border-t gap-4">
               <div className="flex items-center gap-2 w-full md:w-auto">
                 <Button variant="ghost" type="button" onClick={() => router.back()} className="flex-1 md:flex-none rounded-xl h-12 font-semibold hover:bg-muted">Cancel</Button>
-                <Button variant="outline" type="button" disabled={saving} onClick={() => handleSave('Draft')} className="flex-1 md:flex-none rounded-xl h-12 border-primary/30 text-primary hover:bg-primary/5">Save for later</Button>
+                {existingSubmission?.status !== 'Resubmission Required' && (
+                  <Button variant="outline" type="button" disabled={saving} onClick={() => handleSave('Draft')} className="flex-1 md:flex-none rounded-xl h-12 border-primary/30 text-primary hover:bg-primary/5">Save for later</Button>
+                )}
               </div>
               <Button type="button" size="lg" disabled={saving} onClick={() => handleSave('Submitted')} className="w-full md:w-auto rounded-xl h-12 px-12 font-black shadow-lg shadow-primary/25 hover:shadow-primary/40 transition-all">
                 {saving ? (

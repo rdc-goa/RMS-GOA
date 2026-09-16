@@ -1,6 +1,7 @@
 'use server';
 
 import { adminDb } from "@/lib/admin"
+import { FieldValue } from "firebase-admin/firestore"
 import { User, Project } from "@/types"
 import { sendEmail as sendEmailUtility } from "@/lib/email"
 import { format, addHours, parseISO, isToday } from "date-fns"
@@ -42,6 +43,13 @@ export async function scheduleMeeting(
 
       const updateData: any = { meetingDetails: newMeetingDetails };
       updateData.wasAbsent = false;
+      if (isReschedule && existingProject?.meetingDetails) {
+        updateData.pastMeetings = FieldValue.arrayUnion({
+          ...existingProject.meetingDetails,
+          wasAbsent: !!existingProject.wasAbsent,
+          status: "Rescheduled"
+        });
+      }
       if (isMidTermReview) {
         updateData.hasHadMidTermReview = true;
       } else {
@@ -125,7 +133,7 @@ export async function scheduleMeeting(
     }
 
     // Notify Evaluators
-    const projectListHtml = projectsToSchedule.map(p => `<li>${p.title} (PI: ${p.pi})</li>`).join('');
+    const projectListHtml = projectsToSchedule.map(p => `<li><a href="${process.env.NEXT_PUBLIC_BASE_URL}/dashboard/project/${p.id}" style="color: #64b5f6; text-decoration: underline;">${p.title}</a> (PI: ${p.pi})</li>`).join('');
     const startTimeUTC = formatInTimeZone(meetingDate, 'UTC', "yyyyMMdd'T'HHmmss'Z'");
     const endTimeUTC = formatInTimeZone(addHours(meetingDate, 1), 'UTC', "yyyyMMdd'T'HHmmss'Z'");
 
@@ -187,32 +195,33 @@ export async function scheduleMeeting(
       }
     }
 
-    if (emailPromises.length === 0) {
-      return {
-        success: false,
-        error: "No recipients found for notification. Meeting was NOT scheduled. Please contact the developer."
-      };
-    }
-
-    const emailResults = await Promise.all(emailPromises);
-    const failedEmails = emailResults.filter(r => !r.success);
-
-    if (failedEmails.length > 0) {
-      const errorMsg = failedEmails[0].error || "Unknown email error";
-      return {
-        success: false,
-        error: `Notification failed for ${failedEmails.length} recipient(s): ${errorMsg}. Meeting was NOT scheduled. Please contact the developer.`
-      };
-    }
-
     await batch.commit();
+
+    let emailFailureWarning = "";
+    try {
+      if (emailPromises.length === 0) {
+        emailFailureWarning = "No recipients found for email notification.";
+      } else {
+        const emailResults = await Promise.all(emailPromises);
+        const failedEmails = emailResults.filter(r => !r.success);
+
+        if (failedEmails.length > 0) {
+          const errorMsg = failedEmails[0].error || "Unknown email error";
+          emailFailureWarning = `Email notifications failed for ${failedEmails.length} recipient(s): ${errorMsg}`;
+          console.warn(emailFailureWarning);
+        }
+      }
+    } catch (e: any) {
+      emailFailureWarning = `Failed to send email notifications: ${e.message || e}`;
+      console.error(emailFailureWarning);
+    }
     await logActivity("INFO", "Review meeting scheduled", { projectIds: projectsToSchedule.map((p) => p.id), meetingDate: meetingDetails.date })
     await logEvent('WORKFLOW', 'Review meeting scheduled', {
       metadata: { projectIds: projectsToSchedule.map((p) => p.id), meetingDate: meetingDetails.date, venue: meetingDetails.venue },
       user: { uid: '', email: '', role: 'admin' },
       status: 'success'
     });
-    return { success: true };
+    return { success: true, warning: emailFailureWarning || undefined };
   } catch (error: any) {
     console.error("Error scheduling meeting:", error)
     await logActivity("ERROR", "Failed to schedule IMR meeting", { error: error.message })

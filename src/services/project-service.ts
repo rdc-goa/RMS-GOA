@@ -556,3 +556,248 @@ export async function adminUploadProposal(
     return { success: false, error: error.message || "Failed to upload proposal." }
   }
 }
+
+export async function rejectProjectDueToPiAbsence(projectId: string, comments: string) {
+  try {
+    const session = await checkAuth({ role: ['admin', 'super-admin', 'cro'] });
+    if (!session.authenticated) return { success: false, error: session.error || "Session expired. Please log out of the portal and log back in." };
+    if (!session.authorized) return { success: false, error: "Unauthorized. Admin access required." };
+
+    const projectRef = adminDb.collection("projects").doc(projectId);
+    const projectSnap = await projectRef.get();
+
+    if (!projectSnap.exists) {
+      return { success: false, error: "Project not found." };
+    }
+    const project = projectSnap.data() as Project;
+
+    // 1. Update the original project document to "Not Recommended"
+    const updateData = {
+      status: "Not Recommended" as const,
+      rejectionComments: comments
+    };
+    await projectRef.update(updateData);
+
+    // Log transitions
+    await GovernanceLogger.logEntityChange(
+      projectId,
+      'PROJECT',
+      'SYSTEM_ADMIN',
+      project,
+      { ...project, ...updateData }
+    );
+
+    await logActivity("INFO", "Project rejected due to PI absence", { projectId, piUid: project.pi_uid, comments });
+    await logEvent('WORKFLOW', 'Project rejected due to PI absence', {
+      metadata: { projectId, action: 'REJECT_PROJECT_ABSENT', from: project.status, to: 'Not Recommended', comments },
+      user: { uid: session.uid || '', email: session.user?.email || '', role: session.role || '' },
+      status: 'warning'
+    });
+
+    // Send Email notification to PI
+    if (project.pi_email) {
+      const emailHtml = `
+        <div ${EMAIL_STYLES.background}>
+          ${EMAIL_STYLES.logo}
+          <p style="color:#ffffff;">Dear ${project.pi},</p>
+          <p style="color:#e0e0e0;">
+            Your project, "<strong style="color:#ffffff;">${project.title}</strong>", has been marked as <strong style="color:#ef5350;">Not Recommended</strong> due to continuous absence in scheduled presentation meetings.
+          </p>
+          <div style="margin-top:20px; padding:15px; border:1px solid #4f5b62; border-radius:6px; background-color:#2c3e50;">
+            <h4 style="color:#ffffff; margin-top:0;">Reason for Decision:</h4>
+            <p style="color:#e0e0e0; white-space: pre-wrap;">${comments}</p>
+          </div>
+          <p style="color:#e0e0e0; margin-top:20px;">
+            You can view your project details on the 
+            <a href="${process.env.NEXT_PUBLIC_BASE_URL}/dashboard/project/${projectId}" style="color:#64b5f6; text-decoration:underline;">
+              PU Research Projects Portal
+            </a>.
+          </p>
+          ${EMAIL_STYLES.footer}
+        </div>`;
+
+      await sendEmailUtility({
+        to: project.pi_email,
+        subject: `Project Not Recommended: ${project.title}`,
+        html: emailHtml,
+        from: "default",
+        category: 'IMR',
+      });
+    }
+
+    return { success: true };
+  } catch (error: any) {
+    console.error("Error in rejectProjectDueToPiAbsence:", error);
+    return { success: false, error: error.message || "Failed to reject project." };
+  }
+}
+
+export async function updateNonTechnicalComments(projectId: string, comments: string) {
+  try {
+    const session = await checkAuth({ role: ['admin', 'super-admin', 'cro'] });
+    if (!session.authenticated) return { success: false, error: session.error || "Session expired. Please log out of the portal and log back in." };
+    if (!session.authorized) return { success: false, error: "Unauthorized. Admin access required." };
+
+    const projectRef = adminDb.collection("projects").doc(projectId)
+    const projectSnap = await projectRef.get()
+
+    if (!projectSnap.exists) {
+      return { success: false, error: "Project not found." }
+    }
+    const project = projectSnap.data() as Project
+
+    await projectRef.update({
+      nonTechnicalComments: comments,
+      updatedAt: new Date().toISOString(),
+    })
+
+    await logActivity("INFO", "Non-technical comments updated", { projectId, comments })
+    await logEvent('AUDIT', 'Non-technical comments updated by admin', {
+      metadata: { projectId, comments },
+      user: { uid: session.uid || '', email: '', role: 'admin' }
+    })
+
+    // Send Email to PI
+    if (project.pi_email) {
+      const emailHtml = `
+        <div ${EMAIL_STYLES.background}>
+          ${EMAIL_STYLES.logo}
+          <p style="color:#ffffff;">Dear ${project.pi},</p>
+          <p style="color:#e0e0e0;">
+            An administrator has added non-technical comments to your recommended project, "<strong style="color:#ffffff;">${project.title}</strong>".
+          </p>
+          <div style="margin-top:20px; padding:15px; border:1px solid #4f5b62; border-radius:6px; background-color:#2c3e50;">
+            <h4 style="color:#ffffff; margin-top:0;">Non-Technical Comments / Feedback:</h4>
+            <p style="color:#e0e0e0; white-space: pre-wrap;">${comments}</p>
+          </div>
+          <p style="color:#e0e0e0; margin-top:20px;">
+            You can view your project details on the 
+            <a href="${process.env.NEXT_PUBLIC_BASE_URL}/dashboard/project/${projectId}" style="color:#64b5f6; text-decoration:underline;">
+              PU Research Projects Portal
+            </a>.
+          </p>
+          ${EMAIL_STYLES.footer}
+        </div>`
+
+      await sendEmailUtility({
+        to: project.pi_email,
+        subject: `Non-Technical Comments for Project: ${project.title}`,
+        html: emailHtml,
+        from: "default",
+        category: 'IMR',
+      })
+    }
+
+    return { success: true }
+  } catch (error: any) {
+    console.error("Error updating non-technical comments:", error)
+    return { success: false, error: error.message || "Failed to update non-technical comments." }
+  }
+}
+
+export async function getDirectPublicProofUrl(rawUrl?: string): Promise<string> {
+  if (!rawUrl) return "";
+  const trimmed = rawUrl.trim();
+  if (!trimmed) return "";
+
+  // If already a direct public Firebase Storage URL with download token
+  if (trimmed.startsWith("https://firebasestorage.googleapis.com") && trimmed.includes("token=")) {
+    return trimmed;
+  }
+  // If already a direct public Vercel Blob, Google Drive, or GCS URL
+  if (
+    trimmed.startsWith("https://") &&
+    (trimmed.includes("blob.vercel-storage.com") ||
+      trimmed.includes("drive.google.com") ||
+      trimmed.includes("storage.googleapis.com"))
+  ) {
+    return trimmed;
+  }
+
+  // Extract storage path if it's an API route or relative path
+  let storagePath = trimmed;
+  if (storagePath.includes("/api/documents/")) {
+    storagePath = storagePath.substring(storagePath.indexOf("/api/documents/") + "/api/documents/".length);
+  } else if (storagePath.includes("/api/unsecured-documents/")) {
+    storagePath = storagePath.substring(storagePath.indexOf("/api/unsecured-documents/") + "/api/unsecured-documents/".length);
+  } else if (storagePath.startsWith("/")) {
+    storagePath = storagePath.substring(1);
+  }
+
+  try {
+    storagePath = decodeURIComponent(storagePath);
+  } catch {}
+
+  try {
+    const bucket = adminStorage.bucket();
+    const file = bucket.file(storagePath);
+    const [exists] = await file.exists();
+    if (exists) {
+      let [metadata] = await file.getMetadata();
+      let token = metadata.metadata?.firebaseStorageDownloadTokens;
+      if (!token) {
+        token = crypto.randomUUID();
+        await file.setMetadata({
+          metadata: {
+            ...metadata.metadata,
+            firebaseStorageDownloadTokens: token,
+          },
+        });
+      }
+      return `https://firebasestorage.googleapis.com/v0/b/${bucket.name}/o/${encodeURIComponent(storagePath)}?alt=media&token=${token}`;
+    }
+  } catch (err) {
+    console.warn(`Error resolving direct public URL for ${rawUrl}:`, err);
+  }
+
+  // Fallback if not found in bucket or error
+  if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
+    if (trimmed.includes("/api/documents/")) {
+      return trimmed.replace("/api/documents/", "/api/unsecured-documents/");
+    }
+    return trimmed;
+  }
+  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || "https://rndprojects.paruluniversity.ac.in";
+  const cleanPath = trimmed.startsWith("/") ? trimmed : `/${trimmed}`;
+  if (cleanPath.startsWith("/api/documents/")) {
+    return `${baseUrl}${cleanPath.replace("/api/documents/", "/api/unsecured-documents/")}`;
+  }
+  return `${baseUrl}${cleanPath}`;
+}
+
+export async function adminUploadSanctionOrder(
+  projectId: string,
+  fileDataUrl: string,
+  fileName: string,
+): Promise<{ success: boolean; url?: string; error?: string }> {
+  try {
+    const session = await checkAuth({ role: ['admin', 'super-admin', 'cro'] });
+    if (!session.authenticated) return { success: false, error: session.error || "Session expired. Please log out and log back in." };
+    if (!session.authorized) return { success: false, error: "Unauthorized. Admin access required." };
+
+    const { uploadFileToServer } = await import("./storage-service")
+    const path = `projects/${projectId}/${fileName}`
+    const uploadResult = await uploadFileToServer(fileDataUrl, path)
+
+    if (!uploadResult.success) {
+      return { success: false, error: uploadResult.error }
+    }
+
+    const projectRef = adminDb.collection("projects").doc(projectId)
+    const projectSnap = await projectRef.get()
+    if (!projectSnap.exists) {
+      return { success: false, error: "Project not found." }
+    }
+
+    await projectRef.update({
+      sanctionLetterUrl: uploadResult.url,
+      updatedAt: new Date().toISOString(),
+    })
+
+    await logActivity("INFO", "Admin uploaded sanction order", { projectId, fileName })
+    return { success: true, url: uploadResult.url }
+  } catch (error: any) {
+    console.error("Error in adminUploadSanctionOrder:", error)
+    return { success: false, error: error.message || "Failed to upload sanction order." }
+  }
+}

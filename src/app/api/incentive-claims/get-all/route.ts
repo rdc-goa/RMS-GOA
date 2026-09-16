@@ -15,7 +15,7 @@ export async function GET(req: NextRequest) {
     }
 
     const { user: decodedToken } = authResult;
-    const user = decodedToken as User;
+    const user = decodedToken as unknown as User;
 
     const claims = await fetchAllClaimsAction(user);
 

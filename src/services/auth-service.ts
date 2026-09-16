@@ -1,3 +1,4 @@
+
 'use server';
 
 import { adminDb, adminAuth } from "@/lib/admin"
@@ -7,16 +8,117 @@ import { logActivity, EMAIL_STYLES } from "./utils"
 import { getSystemSettings } from "./system-service"
 import { checkRateLimit } from "@/lib/rate-limit"
 import { cookies } from "next/headers"
+import { getDefaultModulesForRole } from "@/lib/modules"
+
+export async function createGuestEvaluatorAction(
+  currentUserEmail: string,
+  userData: {
+    name: string;
+    email: string;
+    role: User['role'];
+    designation: string;
+    faculty: string;
+    department: string;
+    institute: string;
+    campus: User['campus'];
+    faculties?: string[];
+    allowedModules?: string[];
+    phoneNumber?: string;
+  }
+): Promise<{ success: boolean; error?: string; tempPassword?: string }> {
+  try {
+    // 1. Verify caller has Super-admin privileges
+    const callerSnap = await adminDb.collection("users").where("email", "==", currentUserEmail).limit(1).get();
+    if (callerSnap.empty || callerSnap.docs[0].data().role !== "Super-admin") {
+      return { success: false, error: "Unauthorized. Only Super-admins can create accounts." };
+    }
+
+    // 2. Validate email is unique
+    try {
+      await adminAuth.getUserByEmail(userData.email);
+      return { success: false, error: "A user with this email address already exists." };
+    } catch (e: any) {
+      if (e.code !== 'auth/user-not-found') {
+        throw e;
+      }
+    }
+
+    // 3. Generate a temporary password
+    const tempPassword = Math.random().toString(36).substring(2, 10) + "A1!";
+
+    // 4. Create user in Firebase Auth
+    const userRecord = await adminAuth.createUser({
+      email: userData.email,
+      password: tempPassword,
+      displayName: userData.name,
+    });
+
+    // 5. Create user document in Firestore
+    const defaultModules = userData.allowedModules || getDefaultModulesForRole(userData.role, userData.designation);
+    const slug = userData.name.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+    const newUser: User = {
+      uid: userRecord.uid,
+      name: userData.name,
+      email: userData.email.toLowerCase(),
+      role: userData.role,
+      designation: userData.designation,
+      faculty: userData.faculty,
+      department: userData.department,
+      institute: userData.institute,
+      campus: userData.campus || 'Goa',
+      faculties: userData.faculties || [],
+      allowedModules: defaultModules,
+      profileComplete: true,
+      hasCompletedTutorial: false,
+      phoneNumber: userData.phoneNumber || '',
+      slug,
+    };
+
+    await adminDb.collection("users").doc(userRecord.uid).set(newUser);
+    await logActivity("INFO", "Super-admin created guest evaluator account", { 
+      uid: userRecord.uid, 
+      email: userData.email, 
+      role: userData.role 
+    });
+
+    return { success: true, tempPassword };
+  } catch (error: any) {
+    console.error("Error creating guest evaluator account:", error);
+    return { success: false, error: error.message || "Failed to create account." };
+  }
+}
 
 export async function getUserByMisId(misId: string): Promise<User | null> {
   try {
     const usersRef = adminDb.collection("users")
-    const snapshot = await usersRef.where("misId", "==", misId).limit(1).get()
-    if (snapshot.empty) return null;
-    const doc = snapshot.docs[0];
-    return { ...doc.data(), uid: doc.id } as User;
+    let snapshot = await usersRef.where("misId", "==", misId).limit(1).get()
+    if (!snapshot.empty) {
+      const doc = snapshot.docs[0];
+      return { ...doc.data(), uid: doc.id } as User;
+    }
+
+    // Try by slug
+    snapshot = await usersRef.where("slug", "==", misId.toLowerCase()).limit(1).get()
+    if (!snapshot.empty) {
+      const doc = snapshot.docs[0];
+      return { ...doc.data(), uid: doc.id } as User;
+    }
+
+    // Fallback computed slug match for users without slug field
+    const allSnapshot = await usersRef.get();
+    for (const doc of allSnapshot.docs) {
+      const data = doc.data();
+      if (data.name) {
+        const computedSlug = data.name.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+        if (computedSlug === misId.toLowerCase()) {
+          return { ...data, uid: doc.id } as User;
+        }
+      }
+    }
+
+    return null;
   } catch (error) {
-    console.error("Error fetching user by MIS ID:", error);
+    console.error("Error fetching user by MIS ID/slug:", error);
     return null;
   }
 }
@@ -51,23 +153,37 @@ export async function sendLoginOtp(email: string, isPasswordVerified: boolean = 
     const otpData: LoginOtp = { email, otp, expiresAt, isPasswordVerified }
     await adminDb.collection("loginOtps").doc(email).set(otpData)
 
+    const emailText = `Code Requested: ${otp}\n\nYour verification code is: ${otp}\n\nPlease use this code to complete your login for the PU Goa Research Projects Portal. This code will expire in 10 minutes.\n\nIf you did not request this code, you can safely ignore this email.`;
+
     const emailHtml = `
+      <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "EmailMessage",
+        "description": "Your login verification code is ${otp}"
+      }
+      </script>
       <div ${EMAIL_STYLES.background}>
         ${EMAIL_STYLES.logo}
-        <p style="color:#ffffff; text-align:center; font-size:18px;">Your Verification Code</p>
-        <p style="color:#e0e0e0; text-align:center;">Please use the following code to complete your login. This code will expire in 10 minutes.</p>
-        <div style="text-align:center; margin: 20px 0;">
-            <p style="background-color:#2c3e50; color:#ffffff; display:inline-block; padding: 10px 20px; font-size:24px; letter-spacing: 5px; border-radius: 5px;">
-                ${otp}
-            </p>
+        <div style="text-align:center; padding: 15px 0 10px 0;">
+          <p style="margin: 0; color: #b0bec5; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 1.5px;">Code Requested</p>
+          <h2 style="color:#ffffff; font-size:22px; font-weight:bold; margin: 8px 0 16px 0;">Your Verification Code</h2>
+          <p style="color:#e0e0e0; font-size: 14px; margin: 0 0 20px 0;">Please use the following code to complete your login. This code will expire in 10 minutes.</p>
+          <div style="margin: 25px 0;">
+            <span style="background-color:#1e293b; color:#ffffff; display:inline-block; padding: 12px 28px; font-size:28px; font-weight: 700; letter-spacing: 8px; border-radius: 8px; font-family: 'Courier New', Courier, monospace; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+              ${otp}
+            </span>
+          </div>
+          <p style="color:#94a3b8; font-size: 12px; margin-top: 15px;">If you did not request this verification code, you can safely ignore this email.</p>
         </div>
         ${EMAIL_STYLES.footer}
       </div>
-    `
+    `;
 
     await sendEmailUtility({
       to: email,
-      subject: "Your Login Verification Code for PU Research Projects Portal",
+      subject: `${otp} is your verification code for PU Goa Research Portal`,
+      text: emailText,
       html: emailHtml,
       from: "default",
     })
@@ -350,5 +466,61 @@ export async function clearSession() {
      return { success: true };
   } catch (error) {
     return { success: false };
+  }
+}
+
+
+/**
+ * Generates a custom token for a user matching a specific MIS ID.
+ * Only callable by authenticated Super-admins.
+ */
+export async function impersonateUserByMisId(callerUid: string, targetMisId: string): Promise<{
+  success: boolean;
+  error?: string;
+  customToken?: string;
+}> {
+  try {
+    const callerSnap = await adminDb.collection('users').doc(callerUid).get();
+    if (!callerSnap.exists || callerSnap.data()?.role !== 'Super-admin') {
+      return { success: false, error: 'Unauthorized. Impersonation is restricted to Super-admins.' };
+    }
+
+    const targetSnap = await adminDb.collection('users').where('misId', '==', targetMisId).limit(1).get();
+    if (targetSnap.empty) {
+      return { success: false, error: `No user found with MIS ID "${targetMisId}".` };
+    }
+
+    const targetUserDoc = targetSnap.docs[0];
+    const targetUid = targetUserDoc.id;
+
+    const customToken = await adminAuth.createCustomToken(targetUid);
+    
+    return { success: true, customToken };
+  } catch (error: any) {
+    console.error("Impersonation error:", error);
+    return { success: false, error: error.message || "Failed to impersonate user." };
+  }
+}
+
+/**
+ * Generates a custom token to return to the Super-admin account.
+ * Crucially, verifies that the target UID has the role 'Super-admin' in the database.
+ */
+export async function revertImpersonation(adminUid: string): Promise<{
+  success: boolean;
+  error?: string;
+  customToken?: string;
+}> {
+  try {
+    const adminSnap = await adminDb.collection('users').doc(adminUid).get();
+    if (!adminSnap.exists || adminSnap.data()?.role !== 'Super-admin') {
+      return { success: false, error: 'Unauthorized. Target account must be a Super-admin.' };
+    }
+
+    const customToken = await adminAuth.createCustomToken(adminUid);
+    return { success: true, customToken };
+  } catch (error: any) {
+    console.error("Revert impersonation error:", error);
+    return { success: false, error: error.message || "Failed to switch back to admin." };
   }
 }

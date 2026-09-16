@@ -33,6 +33,7 @@ import {
   linkEmrInterestsToNewUser,
   linkEmrCoPiInterestsToNewUser,
   verifyLoginOtp,
+  sendLoginOtp,
   logFrontendAction,
   registerUserInDatabase,
   setSession,
@@ -282,6 +283,23 @@ export default function LoginPage() {
       router.push("/profile-setup")
     }
   }
+
+  const handleResendOtp = async () => {
+    if (!pendingUser?.email) return;
+    const res = await sendLoginOtp(pendingUser.email, true);
+    if (!res.success) {
+      toast({
+        variant: "destructive",
+        title: "Error sending code",
+        description: res.error || "Failed to resend code. Please try again."
+      });
+    } else {
+      toast({
+        title: "Code resent",
+        description: "A new verification code has been sent to your email."
+      });
+    }
+  };
 
   const handleSuccessfulOtp = async (otp: string) => {
     if (!pendingUser) return;
@@ -550,6 +568,7 @@ export default function LoginPage() {
           email={pendingUser.email}
           onVerify={handleSuccessfulOtp}
           isVerifying={isSubmitting}
+          onResend={handleResendOtp}
         />
       )}
     </>

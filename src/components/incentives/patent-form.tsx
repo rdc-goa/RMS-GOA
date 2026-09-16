@@ -55,11 +55,11 @@ const sdgGoalsList = [
 
 const patentSchema = z
   .object({
-    patentLocale: z.enum(['National', 'International'], { required_error: 'Locale is required.' }),
+    patentLocale: z.enum(['National', 'International'], { required_error: "Please specify whether your patent is 'National' or 'International'." }),
     patentCountry: z.string().optional(),
-    patentTitle: z.string().min(3, 'Patent title is required.'),
-    patentApplicationNumber: z.string().min(3, 'Application number is required.'),
-    patentDomain: z.string().min(3, 'Domain of IPR is required.'),
+    patentTitle: z.string().min(3, "Please enter the complete, official title of your patent (at least 3 characters long)."),
+    patentApplicationNumber: z.string().min(3, "Please enter the official registration/application number issued by the patent office."),
+    patentDomain: z.string().min(3, "Please specify the technical field or domain of your patent (e.g., 'Biotechnology', 'Mechanical Engineering')."),
     patentInventors: z.array(z.object({ 
       name: z.string(), 
       email: z.string().optional().nullable(),
@@ -67,7 +67,7 @@ const patentSchema = z
       uid: z.string().optional().nullable(),
       isExternal: z.boolean().optional(),
       organization: z.string().optional(),
-    })).min(1, 'At least one inventor is required.'),
+    })).min(1, "Please list at least one inventor involved in this patent application."),
     patentCoApplicants: z.array(z.object({ 
       name: z.string(), 
       email: z.string().optional().nullable(),
@@ -76,39 +76,42 @@ const patentSchema = z
       isExternal: z.boolean().optional(),
       organization: z.string().optional(),
     })).optional(),
-    isCollaboration: z.enum(['Yes', 'No', 'NA'], { required_error: 'This field is required.' }),
+    isCollaboration: z.enum(['Yes', 'No', 'NA'], { required_error: "Please specify whether this patent was filed in collaboration with another institution." }),
     collaborationDetails: z.string().optional(),
-    isIprSdg: z.enum(['Yes', 'No', 'NA'], { required_error: 'This field is required.' }),
+    isIprSdg: z.enum(['Yes', 'No', 'NA'], { required_error: "Please specify whether your patent contributes to any Sustainable Development Goals (SDGs)." }),
     sdgGoals: z.array(z.string()).optional(),
-    isIprDisciplinary: z.enum(['Yes', 'No', 'NA'], { required_error: 'This field is required.' }),
+    isIprDisciplinary: z.enum(['Yes', 'No', 'NA'], { required_error: "Please specify whether this IPR has inter/multi/trans-disciplinary aspects." }),
     disciplinaryType: z.enum(['Interdisciplinary', 'Multidisciplinary', 'Transdisciplinary']).optional(),
-    filingDate: z.date({ required_error: 'Filing date is required.' }),
+    filingDate: z.date({ required_error: "Please select the official date on which your patent application was filed." }),
     publicationDate: z.date().optional(),
     grantDate: z.date().optional(),
-    currentStatus: z.enum(['Filed', 'Published', 'Granted'], { required_error: 'Please select the current status.' }),
+    currentStatus: z.enum(['Filed', 'Published', 'Granted'], { required_error: "Please select the current status of your patent ('Filed', 'Published', or 'Granted')." }),
     patentForm1: z
       .any()
-      .refine((files) => files?.length > 0, 'Proof (Form 1) is required.')
-      .refine((files) => !files?.[0] || files?.[0]?.size <= MAX_FILE_SIZE, 'File must be less than 10 MB.'),
-    patentFiledFromIprCell: z.boolean({ required_error: 'This field is required.' }),
+      .refine((files) => files?.length > 0, "Please upload proof of status to verify the filing.")
+      .refine((files) => !files?.[0] || files?.[0]?.size <= MAX_FILE_SIZE, "The uploaded proof of status file exceeds the 10 MB limit."),
+    patentFiledFromIprCell: z.boolean({ required_error: "Please confirm whether this patent was filed through the university's official IPR Cell." }),
+    patentRoutedViaSsip: z.boolean({ required_error: "Please specify whether the application was routed via SSIP." }),
     patentPermissionTaken: z.boolean().optional(),
     patentApprovalProof: z
       .any()
       .optional()
-      .refine((files) => !files?.[0] || files?.[0]?.size <= MAX_FILE_SIZE, 'File must be less than 10 MB.'),
+      .refine((files) => !files?.[0] || files?.[0]?.size <= MAX_FILE_SIZE, "The uploaded approval proof file exceeds the 10 MB limit."),
     patentGovtReceipt: z
       .any()
-      .refine((files) => files?.length > 0, 'Proof (Govt. Receipt) is required.')
-      .refine((files) => !files?.[0] || files?.[0]?.size <= MAX_FILE_SIZE, 'File must be less than 10 MB.'),
-    patentSelfDeclaration: z.boolean().refine(val => val === true, { message: 'You must agree to the self-declaration.' }),
-    patentFiledInPuName: z.boolean({ required_error: 'This field is required.' }),
+      .refine((files) => files?.length > 0, "Please upload the official government payment receipt to verify filing completion.")
+      .refine((files) => !files?.[0] || files?.[0]?.size <= MAX_FILE_SIZE, "The uploaded government receipt file exceeds the 10 MB limit."),
+    patentSelfDeclaration: z.boolean().refine(val => val === true, { message: "You must check the self-declaration box to acknowledge that the details are authentic and no other claim has been made." }),
+    patentFiledInPuName: z.boolean({ required_error: "Please specify if this patent is officially filed under Parul University's name." }),
     isPuSoleApplicant: z.boolean().optional(),
-    patentSpecificationType: z.enum(['Full', 'Provisional'], { required_error: 'Specification type is required.' }),
+    patentSpecificationType: z.enum(['Full', 'Provisional'], { required_error: "Please select whether your patent specification is 'Full' or 'Provisional'." }),
+    patentTotalStudents: z.coerce.number().nonnegative("The count of university students involved cannot be a negative value.").optional(),
+    patentStudentNames: z.string().optional(),
   })
-  .refine(data => !(data.patentLocale === 'International') || (!!data.patentCountry && data.patentCountry.length > 0), { message: 'Country is required for international patents.', path: ['country'] })
-  .refine(data => !(data.isCollaboration === 'Yes') || (!!data.collaborationDetails && data.collaborationDetails.length > 0), { message: 'Collaboration details are required.', path: ['collaborationDetails'] })
-  .refine(data => !(data.isIprSdg === 'Yes') || (!!data.sdgGoals && data.sdgGoals.length > 0), { message: 'Please select at least one SDG.', path: ['sdgGoals'] })
-  .refine(data => !(data.isIprDisciplinary === 'Yes') || !!data.disciplinaryType, { message: 'Please select the disciplinary type.', path: ['disciplinaryType'] })
+  .refine(data => !(data.patentLocale === 'International') || (!!data.patentCountry && data.patentCountry.length > 0), { message: "Please select or type the country where your international patent was filed.", path: ['patentCountry'] })
+  .refine(data => !(data.isCollaboration === 'Yes') || (!!data.collaborationDetails && data.collaborationDetails.length > 0), { message: "You indicated a collaborative filing. Please provide details of the collaborating partners or institutions.", path: ['collaborationDetails'] })
+  .refine(data => !(data.isIprSdg === 'Yes') || (!!data.sdgGoals && data.sdgGoals.length > 0), { message: "You indicated SDG relevance. Please select at least one applicable SDG goal from the list.", path: ['sdgGoals'] })
+  .refine(data => !(data.isIprDisciplinary === 'Yes') || !!data.disciplinaryType, { message: "Please select whether your patent is Interdisciplinary, Multidisciplinary, or Transdisciplinary.", path: ['disciplinaryType'] })
   .refine(data => {
       const today = new Date();
       today.setHours(23, 59, 59, 999);
@@ -116,8 +119,8 @@ const patentSchema = z
       if (data.publicationDate && data.publicationDate > today) return false;
       if (data.grantDate && data.grantDate > today) return false;
       return true;
-  }, { message: "Dates cannot be in the future.", path: ["filingDate"] })
-  .refine(data => !(data.currentStatus === 'Published' || data.currentStatus === 'Granted') || !!data.publicationDate, { message: 'Publication date is required for this status.', path: ['publicationDate'] });
+  }, { message: "The filing or publication dates cannot be in the future. Please select a valid past or present date.", path: ["filingDate"] })
+  .refine(data => !(data.currentStatus === 'Published' || data.currentStatus === 'Granted') || !!data.publicationDate, { message: "A publication date is required for patents that are already published or granted.", path: ['publicationDate'] });
 
   type PatentFormValues = z.infer<typeof patentSchema>;
 
@@ -253,6 +256,18 @@ const patentSchema = z
                 </div>
               </div>
 
+              {data.patentTotalStudents !== undefined && data.patentTotalStudents > 0 && (
+                <div>
+                  <p className="text-[10px] font-black text-muted-foreground uppercase tracking-widest mb-2">Student Members (PU)</p>
+                  <div className="bg-muted/20 p-3 rounded-xl border space-y-1">
+                    <p className="text-xs font-bold text-foreground">Total PU Students: {data.patentTotalStudents}</p>
+                    {data.patentStudentNames && (
+                      <p className="text-xs text-muted-foreground">Names: {data.patentStudentNames}</p>
+                    )}
+                  </div>
+                </div>
+              )}
+
               {data.sdgGoals && data.sdgGoals.length > 0 && (
                 <div>
                     <p className="text-[10px] font-black text-muted-foreground uppercase tracking-widest mb-2">SDG Impact</p>
@@ -266,7 +281,11 @@ const patentSchema = z
                 <p className="text-[10px] font-black text-muted-foreground uppercase tracking-widest mb-2">Compliance & Verification</p>
                 <div className="grid grid-cols-1 gap-2">
                     <div className="flex items-center justify-between p-2 bg-muted/10 rounded-xl border border-dashed">
-                        <span className="text-[10px] font-medium text-muted-foreground">Proof of Form 1:</span>
+                        <span className="text-[10px] font-medium text-muted-foreground">Routed via SSIP:</span>
+                        <Badge variant="outline" className="text-[9px] font-black text-primary">{data.patentRoutedViaSsip ? 'YES' : 'NO'}</Badge>
+                    </div>
+                    <div className="flex items-center justify-between p-2 bg-muted/10 rounded-xl border border-dashed">
+                        <span className="text-[10px] font-medium text-muted-foreground">Proof of Status:</span>
                         <Badge variant="outline" className="text-[9px] font-black text-primary"><FileText className="h-3 w-3 mr-1" /> ATTACHED</Badge>
                     </div>
                     <div className="flex items-center justify-between p-2 bg-muted/10 rounded-xl border border-dashed">
@@ -296,16 +315,26 @@ const patentSchema = z
   const [currentStep, setCurrentStep] = useState(1);
   const [addType, setAddType] = useState<'inventor' | 'applicant'>('inventor');
   const [showLogic, setShowLogic] = useState(false);
+  const [rejectionComments, setRejectionComments] = useState<string | null>(null);
 
   const getPatentLogicBreakdown = (data: Partial<PatentFormValues>) => {
     const steps: {label: string, value: string}[] = [];
     const status = data.currentStatus || 'Filed';
     let baseAmount = 0;
     if (status === 'Published') baseAmount = 3000;
-    else if (status === 'Granted') baseAmount = 15000;
+    else if (status === 'Granted') baseAmount = 18000;
     
     steps.push({ label: '1. Patent Lifecycle Stage', value: `${status} (₹${baseAmount.toLocaleString('en-IN')} Base)` });
     
+    if (data.patentRoutedViaSsip) {
+      steps.push({ label: '2. SSIP Routing', value: 'Routed via SSIP (Flat ₹3,000, 80% factor bypassed)' });
+      const inventorCount = Math.max(1, data.patentInventors?.length || 1);
+      steps.push({ label: '3. Total Inventors Split', value: `÷ ${inventorCount} Inventor(s)` });
+      const finalAmount = Math.round(3000 / inventorCount);
+      steps.push({ label: '4. Estimated Individual Share', value: `₹${finalAmount.toLocaleString('en-IN')}` });
+      return steps;
+    }
+
     if (baseAmount === 0 || !data.patentFiledInPuName) {
          steps.push({ label: '2. PU Applicancy Check', value: 'Not Eligible (0%)' });
          steps.push({ label: '3. Final Estimation', value: '₹0' });
@@ -336,8 +365,31 @@ const patentSchema = z
     resolver: zodResolver(patentSchema),
     defaultValues: {
       patentLocale: 'National',
+      patentCountry: '',
+      patentTitle: '',
+      patentApplicationNumber: '',
+      patentDomain: '',
+      collaborationDetails: '',
       patentInventors: [],
       patentCoApplicants: [],
+      isCollaboration: undefined,
+      isIprSdg: undefined,
+      sdgGoals: [],
+      isIprDisciplinary: undefined,
+      disciplinaryType: undefined,
+      filingDate: undefined,
+      publicationDate: undefined,
+      grantDate: undefined,
+      currentStatus: undefined,
+      patentFiledFromIprCell: undefined,
+      patentRoutedViaSsip: undefined,
+      patentPermissionTaken: undefined,
+      patentSelfDeclaration: false,
+      patentFiledInPuName: undefined,
+      isPuSoleApplicant: undefined,
+      patentSpecificationType: undefined,
+      patentTotalStudents: 0,
+      patentStudentNames: '',
     },
   });
 
@@ -352,6 +404,70 @@ const patentSchema = z
   });
 
   const formValues = form.watch();
+
+  const clearLocalBackup = useCallback(() => {
+    if (user) {
+      localStorage.removeItem(`local_draft_patent_form_${user.uid}`);
+    }
+  }, [user]);
+
+  // Auto-save form values to localStorage
+  useEffect(() => {
+    if (!user || isLoadingDraft) return;
+    const key = `local_draft_patent_form_${user.uid}`;
+    
+    const valuesToSave = {
+      ...formValues,
+      filingDate: formValues.filingDate ? (formValues.filingDate instanceof Date ? formValues.filingDate.toISOString() : formValues.filingDate) : undefined,
+      publicationDate: formValues.publicationDate ? (formValues.publicationDate instanceof Date ? formValues.publicationDate.toISOString() : formValues.publicationDate) : undefined,
+      grantDate: formValues.grantDate ? (formValues.grantDate instanceof Date ? formValues.grantDate.toISOString() : formValues.grantDate) : undefined,
+      patentForm1: undefined,
+      patentApprovalProof: undefined,
+      patentGovtReceipt: undefined,
+    };
+    
+    localStorage.setItem(key, JSON.stringify(valuesToSave));
+  }, [formValues, user, isLoadingDraft]);
+
+  // Prompt to restore local backup on load
+  useEffect(() => {
+    if (!user || isLoadingDraft) return;
+    const key = `local_draft_patent_form_${user.uid}`;
+    const backupStr = localStorage.getItem(key);
+    if (backupStr) {
+      try {
+        const backup = JSON.parse(backupStr);
+        if (backup.patentTitle && backup.patentTitle.length > 3 && backup.patentTitle !== form.getValues('patentTitle')) {
+          toast({
+            title: "Unsaved Changes Found",
+            description: "We found unsaved changes from your previous session. Do you want to restore them?",
+            duration: 15000,
+            action: (
+              <Button 
+                variant="default"
+                size="sm" 
+                className="bg-primary text-primary-foreground font-bold hover:bg-primary/95"
+                onClick={() => {
+                  const restored = {
+                    ...backup,
+                    filingDate: backup.filingDate ? new Date(backup.filingDate) : undefined,
+                    publicationDate: backup.publicationDate ? new Date(backup.publicationDate) : undefined,
+                    grantDate: backup.grantDate ? new Date(backup.grantDate) : undefined,
+                  };
+                  form.reset(restored);
+                  toast({ title: "Restored", description: "Your details have been successfully recovered." });
+                }}
+              >
+                Restore
+              </Button>
+            ),
+          });
+        }
+      } catch (e) {
+        console.error("Failed to parse local backup:", e);
+      }
+    }
+  }, [user, isLoadingDraft, form, toast]);
 
   const calculate = useCallback(async () => {
     const mapClaimStatus = (status?: PatentFormValues['currentStatus']): IncentiveClaim['currentStatus'] | undefined => {
@@ -419,6 +535,13 @@ const patentSchema = z
                   };
                   form.reset({
                     ...draftData,
+                    patentCountry: draftData.patentCountry || '',
+                    patentTitle: draftData.patentTitle || '',
+                    patentApplicationNumber: draftData.patentApplicationNumber || '',
+                    patentDomain: draftData.patentDomain || '',
+                    collaborationDetails: draftData.collaborationDetails || '',
+                    patentTotalStudents: draftData.patentTotalStudents || 0,
+                    patentStudentNames: draftData.patentStudentNames || '',
                     filingDate: draftData.filingDate ? parseISO(draftData.filingDate) : undefined,
                     publicationDate: draftData.publicationDate ? parseISO(draftData.publicationDate) : undefined,
                     grantDate: draftData.grantDate ? parseISO(draftData.grantDate) : undefined,
@@ -427,6 +550,11 @@ const patentSchema = z
                     patentApprovalProof: undefined,
                     patentGovtReceipt: undefined,
                   });
+                  // Check if there are rejection comments in approvals
+                  const lastApproval = draftData.approvals?.filter((a: any) => a != null).reverse().find((a: any) => a.status === 'Not Approved');
+                  if (lastApproval?.comments) {
+                    setRejectionComments(lastApproval.comments);
+                  }
                 } else {
                     toast({ variant: 'destructive', title: result.error || 'Draft Not Found' });
                 }
@@ -455,11 +583,79 @@ const patentSchema = z
     if (isValid) {
       setCurrentStep(2);
     } else {
-        toast({
-            variant: 'destructive',
-            title: 'Validation Error',
-            description: 'Please correct the errors before proceeding.',
-        });
+      console.error("FORM VALIDATION ERRORS:", JSON.stringify(form.formState.errors, null, 2))
+      const errorKeys = Object.keys(form.formState.errors);
+      
+      const getReadableFieldName = (key: string) => {
+        const mapping: Record<string, string> = {
+          patentLocale: "National/International Locale",
+          patentCountry: "Country",
+          patentTitle: "Title of IPR",
+          patentApplicationNumber: "Application Number",
+          patentDomain: "Domain of IPR",
+          isCollaboration: "Is Collaboration",
+          collaborationDetails: "Collaboration Details",
+          isIprSdg: "Sustainable Development Goals (SDG)",
+          sdgGoals: "SDG Goals Selection",
+          isIprDisciplinary: "Disciplinary Type status",
+          disciplinaryType: "Disciplinary Type",
+          filingDate: "Filing Date",
+          publicationDate: "Publication Date",
+          grantDate: "Grant Date",
+          currentStatus: "Current Status",
+          patentForm1: "Proof of Status File",
+          patentFiledFromIprCell: "Filed from Ipr Cell Check",
+          patentRoutedViaSsip: "Routed via SSIP Check",
+          patentPermissionTaken: "Permission Taken Check",
+          patentApprovalProof: "Approval Proof File",
+          patentGovtReceipt: "Govt. Receipt File",
+          patentSelfDeclaration: "Self Declaration Check",
+          patentFiledInPuName: "Filed in PU Name Check",
+          isPuSoleApplicant: "PU Sole Applicant Check",
+          patentSpecificationType: "Specification Type",
+          patentInventors: "Inventors List",
+          patentCoApplicants: "Co-Applicants List"
+        };
+        return mapping[key] || key;
+      };
+
+      const getErrorMessage = (err: any): string => {
+        if (!err) return "Invalid value";
+        if (err.message) return err.message;
+        if (Array.isArray(err)) {
+          for (const subErr of err) {
+            if (subErr) {
+              const messages: string[] = [];
+              for (const [subKey, subVal] of Object.entries(subErr)) {
+                if (subVal && typeof subVal === 'object' && 'message' in subVal) {
+                  messages.push((subVal as any).message);
+                }
+              }
+              if (messages.length > 0) return messages.join(", ");
+            }
+          }
+        }
+        return "Invalid value";
+      };
+
+      const errorMessages = Object.entries(form.formState.errors)
+        .map(([key, err]: [string, any]) => {
+          const fieldName = getReadableFieldName(key);
+          const msg = getErrorMessage(err);
+          return `${fieldName}: ${msg}`;
+        })
+        .slice(0, 3)
+        .join("\n");
+
+      const toastDescription = errorMessages 
+        ? `Please correct the following fields:\n${errorMessages}${errorKeys.length > 3 ? `\n...and ${errorKeys.length - 3} more field(s).` : ''}`
+        : "Please review the highlighted fields in the form and correct the validation errors before proceeding.";
+
+      toast({
+        variant: 'destructive',
+        title: 'Validation Error',
+        description: toastDescription,
+      });
     }
   };
 
@@ -545,11 +741,13 @@ const patentSchema = z
 
         if (status === 'Draft') {
           toast({ title: 'Draft Saved!', description: "You can continue editing from the 'Incentive Claim' page." });
+          clearLocalBackup();
           if(!searchParams.get('claimId')) {
             router.push(`/dashboard/incentive-claim/patent?claimId=${newClaimId}`);
           }
         } else {
           toast({ title: 'Success', description: 'Your incentive claim for patent has been submitted.' });
+          clearLocalBackup();
           router.push('/dashboard/incentive-claim');
         }
 
@@ -617,13 +815,23 @@ const patentSchema = z
                 </Alert>
             )}
             
+            {rejectionComments && (
+              <Alert variant="destructive" className="bg-destructive/10 border-destructive/20 text-destructive rounded-xl ring-1 ring-destructive/10">
+                <AlertCircle className="h-5 w-5" />
+                <AlertTitle className="font-bold">Prior Rejection Comments</AlertTitle>
+                <AlertDescription className="mt-1">
+                  This claim was previously not approved with reviewer comments: <strong>"{rejectionComments}"</strong>. Please address these comments before resubmitting.
+                </AlertDescription>
+              </Alert>
+            )}
+            
             <Alert className="bg-primary/5 border-primary/20 py-4 rounded-2xl ring-1 ring-primary/5">
                 <Info className="h-5 w-5 text-primary" />
                 <AlertTitle className="text-primary font-bold">Important Notes on Patent Incentives</AlertTitle>
                 <AlertDescription>
                     <ul className="list-disc list-inside space-y-1 mt-2 text-xs text-muted-foreground/80 font-medium">
                         <li>No incentives offered for Industrial Designs, Trademarks or Copyrights.</li>
-                        <li>Support provided by IPR Cell if 'Parul University Goa' is the sole/Joint applicant.</li>
+                        <li>Support provided by IPR Cell if 'Parul University' is the sole/Joint applicant.</li>
                         <li>Support limited to Indian applications unless prior permission obtained.</li>
                         <li>IPR arising from PU research must be filed through RDC, PU.</li>
                     </ul>
@@ -640,7 +848,7 @@ const patentSchema = z
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                         <FormField name="patentLocale" control={form.control} render={({ field }) => ( 
                             <FormItem>
-                                <FormLabel className="text-base font-semibold">National / International</FormLabel>
+                                <FormLabel className="text-base font-semibold">National / International <span className="text-destructive font-black">*</span></FormLabel>
                                 <Select onValueChange={field.onChange} value={field.value}>
                                     <FormControl>
                                         <SelectTrigger className="h-12 shadow-sm focus-visible:ring-primary"><SelectValue/></SelectTrigger>
@@ -656,8 +864,8 @@ const patentSchema = z
                         {patentLocale === 'International' && (
                             <FormField name="patentCountry" control={form.control} render={({ field }) => ( 
                                 <FormItem>
-                                    <FormLabel className="text-base font-semibold">Country Name</FormLabel>
-                                    <FormControl><Input {...field} className="h-12 shadow-sm" /></FormControl>
+                                    <FormLabel className="text-base font-semibold">Country Name <span className="text-destructive font-black">*</span></FormLabel>
+                                    <FormControl><Input {...field} value={field.value ?? ""} className="h-12 shadow-sm" /></FormControl>
                                     <FormMessage />
                                 </FormItem> 
                             )} />
@@ -666,8 +874,8 @@ const patentSchema = z
 
                     <FormField name="patentTitle" control={form.control} render={({ field }) => ( 
                         <FormItem>
-                            <FormLabel className="text-base font-semibold">Title of IPR</FormLabel>
-                            <FormControl><Textarea {...field} className="min-h-[100px] text-lg shadow-sm focus-visible:ring-primary" placeholder="Enter full title of the patent/IPR" /></FormControl>
+                            <FormLabel className="text-base font-semibold">Title of IPR <span className="text-destructive font-black">*</span></FormLabel>
+                            <FormControl><Textarea {...field} value={field.value ?? ""} className="min-h-[100px] text-lg shadow-sm focus-visible:ring-primary" placeholder="Enter full title of the patent/IPR" /></FormControl>
                             <FormMessage />
                         </FormItem> 
                     )} />
@@ -675,15 +883,15 @@ const patentSchema = z
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                         <FormField name="patentApplicationNumber" control={form.control} render={({ field }) => ( 
                             <FormItem>
-                                <FormLabel className="text-base font-semibold">Application Number</FormLabel>
-                                <FormControl><Input {...field} className="h-12 shadow-sm font-mono" placeholder="e.g. 2023110XXXXX" /></FormControl>
+                                <FormLabel className="text-base font-semibold">Application Number <span className="text-destructive font-black">*</span></FormLabel>
+                                <FormControl><Input {...field} value={field.value ?? ""} className="h-12 shadow-sm font-mono" placeholder="e.g. 2023110XXXXX" /></FormControl>
                                 <FormMessage />
                             </FormItem> 
                         )} />
                         <FormField name="patentDomain" control={form.control} render={({ field }) => ( 
                             <FormItem>
-                                <FormLabel className="text-base font-semibold">Domain of IPR</FormLabel>
-                                <FormControl><Input {...field} className="h-12 shadow-sm" placeholder="e.g. Mechanical, Biotech, CSE" /></FormControl>
+                                <FormLabel className="text-base font-semibold">Domain of IPR <span className="text-destructive font-black">*</span></FormLabel>
+                                <FormControl><Input {...field} value={field.value ?? ""} className="h-12 shadow-sm" placeholder="e.g. Mechanical, Biotech, CSE" /></FormControl>
                                 <FormMessage />
                             </FormItem> 
                         )} />
@@ -790,13 +998,51 @@ const patentSchema = z
                 <section className="space-y-6">
                     <div className="flex items-center gap-2 text-primary font-bold text-lg mb-4">
                         <div className="h-8 w-1.5 bg-primary rounded-full"></div>
+                        Student Details
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <FormField
+                            control={form.control}
+                            name="patentTotalStudents"
+                            render={({ field }) => (
+                                <FormItem>
+                                    <FormLabel className="text-base font-semibold">No. of Student Members (PU)</FormLabel>
+                                    <FormControl>
+                                        <Input type="number" {...field} min="0" className="h-12 shadow-sm rounded-xl" />
+                                    </FormControl>
+                                    <FormMessage />
+                                </FormItem>
+                            )}
+                        />
+                        <FormField
+                            control={form.control}
+                            name="patentStudentNames"
+                            render={({ field }) => (
+                                <FormItem>
+                                    <FormLabel className="text-base font-semibold">Name of Student Members from PU</FormLabel>
+                                    <FormControl>
+                                        <Textarea placeholder="Enter name of student members, separated by comma..." {...field} value={field.value ?? ""} className="min-h-[48px] shadow-sm rounded-xl" />
+                                    </FormControl>
+                                    <FormMessage />
+                                </FormItem>
+                            )}
+                        />
+                    </div>
+                </section>
+
+                <Separator className="my-8" />
+
+                <section className="space-y-6">
+                    <div className="flex items-center gap-2 text-primary font-bold text-lg mb-4">
+                        <div className="h-8 w-1.5 bg-primary rounded-full"></div>
                         Collaboration & SDGs
                     </div>
                  
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                         <FormField name="isCollaboration" control={form.control} render={({ field }) => ( 
                             <FormItem>
-                                <FormLabel className="text-base font-semibold">Is this a Collaboration?</FormLabel>
+                                <FormLabel className="text-base font-semibold">Is this a Collaboration? <span className="text-destructive font-black">*</span></FormLabel>
                                 <Select onValueChange={field.onChange} value={field.value}>
                                     <FormControl><SelectTrigger className="h-12 shadow-sm"><SelectValue placeholder="Select..."/></SelectTrigger></FormControl>
                                     <SelectContent>
@@ -811,8 +1057,8 @@ const patentSchema = z
                         {isCollaboration === 'Yes' && (
                             <FormField name="collaborationDetails" control={form.control} render={({ field }) => ( 
                                 <FormItem>
-                                    <FormLabel className="text-base font-semibold text-primary/80">Collaboration Details</FormLabel>
-                                    <FormControl><Textarea {...field} className="h-12 min-h-[48px] shadow-sm" placeholder="List partnering institutes/orgs" /></FormControl>
+                                    <FormLabel className="text-base font-semibold text-primary/80">Collaboration Details <span className="text-destructive font-black">*</span></FormLabel>
+                                    <FormControl><Textarea {...field} value={field.value ?? ""} className="h-12 min-h-[48px] shadow-sm" placeholder="List partnering institutes/orgs" /></FormControl>
                                     <FormMessage />
                                 </FormItem> 
                             )} />
@@ -822,7 +1068,7 @@ const patentSchema = z
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                         <FormField name="isIprSdg" control={form.control} render={({ field }) => ( 
                             <FormItem>
-                                <FormLabel className="text-base font-semibold">Related to Sustainable Development Goals?</FormLabel>
+                                <FormLabel className="text-base font-semibold">Related to Sustainable Development Goals? <span className="text-destructive font-black">*</span></FormLabel>
                                 <Select onValueChange={field.onChange} value={field.value}>
                                     <FormControl><SelectTrigger className="h-12 shadow-sm"><SelectValue placeholder="Select..."/></SelectTrigger></FormControl>
                                     <SelectContent>
@@ -837,7 +1083,7 @@ const patentSchema = z
                         {isIprSdg === 'Yes' && (
                             <FormField control={form.control} name="sdgGoals" render={({ field }) => (
                                 <FormItem>
-                                    <FormLabel className="text-base font-semibold text-primary/80">Select SDG Goal(s)</FormLabel>
+                                    <FormLabel className="text-base font-semibold text-primary/80">Select SDG Goal(s) <span className="text-destructive font-black">*</span></FormLabel>
                                     <DropdownMenu>
                                         <DropdownMenuTrigger asChild>
                                             <Button variant="outline" className="w-full justify-between h-12 font-medium shadow-sm border-primary/20 bg-primary/5">
@@ -865,7 +1111,7 @@ const patentSchema = z
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                         <FormField name="isIprDisciplinary" control={form.control} render={({ field }) => ( 
                             <FormItem>
-                                <FormLabel className="text-base font-semibold">Disciplinary Category</FormLabel>
+                                <FormLabel className="text-base font-semibold">Disciplinary Category <span className="text-destructive font-black">*</span></FormLabel>
                                 <Select onValueChange={field.onChange} value={field.value}>
                                     <FormControl><SelectTrigger className="h-12 shadow-sm"><SelectValue placeholder="Select..."/></SelectTrigger></FormControl>
                                     <SelectContent>
@@ -880,7 +1126,7 @@ const patentSchema = z
                         {isIprDisciplinary === 'Yes' && (
                             <FormField name="disciplinaryType" control={form.control} render={({ field }) => ( 
                                 <FormItem>
-                                    <FormLabel className="text-base font-semibold text-primary/80">Select Type</FormLabel>
+                                    <FormLabel className="text-base font-semibold text-primary/80">Select Type <span className="text-destructive font-black">*</span></FormLabel>
                                     <Select onValueChange={field.onChange} value={field.value}>
                                         <FormControl><SelectTrigger className="h-12 shadow-sm"><SelectValue/></SelectTrigger></FormControl>
                                         <SelectContent>
@@ -907,7 +1153,7 @@ const patentSchema = z
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-x-12 gap-y-8">
                         <FormField name="patentSpecificationType" control={form.control} render={({ field }) => ( 
                             <FormItem className="space-y-3 p-4 bg-muted/30 rounded-2xl border">
-                                <FormLabel className="text-base font-bold">Specification Type</FormLabel>
+                                <FormLabel className="text-base font-bold">Specification Type <span className="text-destructive font-black">*</span></FormLabel>
                                 <FormControl>
                                     <RadioGroup onValueChange={field.onChange} value={field.value} className="flex gap-4">
                                         <Label 
@@ -932,7 +1178,7 @@ const patentSchema = z
 
                         <FormField name="patentFiledInPuName" control={form.control} render={({ field }) => ( 
                             <FormItem className="space-y-3 p-4 bg-muted/30 rounded-2xl border">
-                                <FormLabel className="text-base font-bold">Filed in PU Name?</FormLabel>
+                                <FormLabel className="text-base font-bold">Filed in PU Name? <span className="text-destructive font-black">*</span></FormLabel>
                                 <FormControl>
                                     <RadioGroup onValueChange={(val) => field.onChange(val === 'true')} value={String(field.value)} className="flex gap-4">
                                         <Label 
@@ -984,9 +1230,9 @@ const patentSchema = z
 
                         <FormField name="patentFiledFromIprCell" control={form.control} render={({ field }) => ( 
                             <FormItem className="space-y-3 p-4 bg-muted/30 rounded-2xl border">
-                                <FormLabel className="text-base font-bold">Filed via PU IPR Cell?</FormLabel>
+                                <FormLabel className="text-base font-bold">Filed via PU IPR Cell? <span className="text-destructive font-black">*</span></FormLabel>
                                 <FormControl>
-                                    <RadioGroup onValueChange={(val) => field.onChange(val === 'true')} value={String(field.value)} className="flex gap-4">
+                                    <RadioGroup onValueChange={(val) => field.onChange(val === 'true')} value={field.value !== undefined ? String(field.value) : ''} className="flex gap-4">
                                         <Label 
                                             htmlFor="ipr-cell-yes" 
                                             className="flex items-center space-x-3 bg-background px-4 py-2 rounded-xl border hover:bg-muted transition-colors cursor-pointer flex-1 [&:has([data-state=checked])]:border-primary [&:has([data-state=checked])]:bg-primary/5">
@@ -997,6 +1243,29 @@ const patentSchema = z
                                             htmlFor="ipr-cell-no" 
                                             className="flex items-center space-x-3 bg-background px-4 py-2 rounded-xl border hover:bg-muted transition-colors cursor-pointer flex-1 [&:has([data-state=checked])]:border-primary [&:has([data-state=checked])]:bg-primary/5">
                                             <RadioGroupItem value="false" id="ipr-cell-no" />
+                                            <span className="font-semibold cursor-pointer flex-1">No</span>
+                                        </Label>
+                                    </RadioGroup>
+                                </FormControl>
+                                <FormMessage />
+                            </FormItem> 
+                        )} />
+
+                        <FormField name="patentRoutedViaSsip" control={form.control} render={({ field }) => ( 
+                            <FormItem className="space-y-3 p-4 bg-muted/30 rounded-2xl border">
+                                <FormLabel className="text-base font-bold">Is the application routed via SSIP? <span className="text-destructive font-black">*</span></FormLabel>
+                                <FormControl>
+                                    <RadioGroup onValueChange={(val) => field.onChange(val === 'true')} value={field.value !== undefined ? String(field.value) : ''} className="flex gap-4">
+                                        <Label 
+                                            htmlFor="ssip-yes" 
+                                            className="flex items-center space-x-3 bg-background px-4 py-2 rounded-xl border hover:bg-muted transition-colors cursor-pointer flex-1 [&:has([data-state=checked])]:border-primary [&:has([data-state=checked])]:bg-primary/5">
+                                            <RadioGroupItem value="true" id="ssip-yes" />
+                                            <span className="font-semibold cursor-pointer flex-1">Yes</span>
+                                        </Label>
+                                        <Label 
+                                            htmlFor="ssip-no" 
+                                            className="flex items-center space-x-3 bg-background px-4 py-2 rounded-xl border hover:bg-muted transition-colors cursor-pointer flex-1 [&:has([data-state=checked])]:border-primary [&:has([data-state=checked])]:bg-primary/5">
+                                            <RadioGroupItem value="false" id="ssip-no" />
                                             <span className="font-semibold cursor-pointer flex-1">No</span>
                                         </Label>
                                     </RadioGroup>
@@ -1036,7 +1305,7 @@ const patentSchema = z
                     <div className="bg-primary/5 p-6 rounded-2xl border border-primary/20 space-y-6">
                         <FormField name="currentStatus" control={form.control} render={({ field }) => ( 
                             <FormItem>
-                                <FormLabel className="text-base font-bold text-primary">Current Lifecycle Status</FormLabel>
+                                <FormLabel className="text-base font-bold text-primary">Current Lifecycle Status <span className="text-destructive font-black">*</span></FormLabel>
                                 <Select onValueChange={field.onChange} value={field.value}>
                                     <FormControl><SelectTrigger className="h-12 shadow-sm font-bold bg-background"><SelectValue placeholder="Select status"/></SelectTrigger></FormControl>
                                     <SelectContent>
@@ -1052,7 +1321,7 @@ const patentSchema = z
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                             <FormField name="filingDate" control={form.control} render={({ field }) => ( 
                                 <FormItem className="flex flex-col">
-                                    <FormLabel className="text-sm font-semibold mb-2">Date of Filing</FormLabel>
+                                    <FormLabel className="text-sm font-semibold mb-2">Date of Filing <span className="text-destructive font-black">*</span></FormLabel>
                                     <Popover>
                                         <PopoverTrigger asChild>
                                             <FormControl>
@@ -1078,7 +1347,7 @@ const patentSchema = z
                             {(currentStatus === 'Published' || currentStatus === 'Granted') && (
                                 <FormField name="publicationDate" control={form.control} render={({ field }) => ( 
                                     <FormItem className="flex flex-col">
-                                        <FormLabel className="text-sm font-semibold mb-2">Date of Publication</FormLabel>
+                                        <FormLabel className="text-sm font-semibold mb-2">Date of Publication <span className="text-destructive font-black">*</span></FormLabel>
                                         <Popover>
                                             <PopoverTrigger asChild>
                                                 <FormControl>
@@ -1099,7 +1368,7 @@ const patentSchema = z
                             {currentStatus === 'Granted' && (
                                 <FormField name="grantDate" control={form.control} render={({ field }) => ( 
                                     <FormItem className="flex flex-col">
-                                        <FormLabel className="text-sm font-semibold mb-2 text-green-700 font-bold">Date of Grant</FormLabel>
+                                        <FormLabel className="text-sm font-semibold mb-2 text-green-700 font-bold">Date of Grant <span className="text-destructive font-black">*</span></FormLabel>
                                         <Popover>
                                             <PopoverTrigger asChild>
                                                 <FormControl>
@@ -1128,18 +1397,36 @@ const patentSchema = z
                     </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        <FormField name="patentForm1" control={form.control} render={({ field: { value, onChange, ...fieldProps } }) => ( <FormItem><FormLabel className="font-semibold text-xs uppercase tracking-widest text-muted-foreground">Attach Proof (Form 1) (PDF)</FormLabel><FormControl><Input {...fieldProps} type="file" onChange={(e) => onChange(e.target.files)} accept="application/pdf" className="h-12 border-dashed bg-muted/10" /></FormControl><FormMessage /></FormItem> )} />
-                        <FormField name="patentGovtReceipt" control={form.control} render={({ field: { value, onChange, ...fieldProps } }) => ( <FormItem><FormLabel className="font-semibold text-xs uppercase tracking-widest text-muted-foreground">Attach Proof (Govt. Receipt) (PDF)</FormLabel><FormControl><Input {...fieldProps} type="file" onChange={(e) => onChange(e.target.files)} accept="application/pdf" className="h-12 border-dashed bg-muted/10"/></FormControl><FormMessage /></FormItem> )} />
+                        <FormField name="patentForm1" control={form.control} render={({ field: { value, onChange, ...fieldProps } }) => ( 
+                            <FormItem>
+                                <FormLabel className="font-semibold text-xs uppercase tracking-widest text-muted-foreground flex flex-wrap items-center justify-between gap-2">
+                                    <span>Upload Proof of Status (PDF/Image) <span className="text-destructive font-black">*</span></span>
+                                    <a 
+                                        href="https://iprsearch.ipindia.gov.in/PublicSearch/PublicationSearch/ApplicationStatus" 
+                                        target="_blank" 
+                                        rel="noopener noreferrer" 
+                                        className="text-[10px] text-primary lowercase tracking-normal font-bold underline normal-case flex items-center gap-1"
+                                    >
+                                        Verify Application Status
+                                    </a>
+                                </FormLabel>
+                                <FormControl>
+                                    <Input {...fieldProps} type="file" onChange={(e) => onChange(e.target.files)} accept="application/pdf,image/png,image/jpeg,image/jpg" className="h-12 border-dashed bg-muted/10" />
+                                </FormControl>
+                                <FormMessage />
+                            </FormItem> 
+                        )} />
+                        <FormField name="patentGovtReceipt" control={form.control} render={({ field: { value, onChange, ...fieldProps } }) => ( <FormItem><FormLabel className="font-semibold text-xs uppercase tracking-widest text-muted-foreground">Attach Proof (Govt. Receipt) (PDF) <span className="text-destructive font-black">*</span></FormLabel><FormControl><Input {...fieldProps} type="file" onChange={(e) => onChange(e.target.files)} accept="application/pdf" className="h-12 border-dashed bg-muted/10"/></FormControl><FormMessage /></FormItem> )} />
                     </div>
                     {patentFiledFromIprCell === false && (
-                        <FormField name="patentApprovalProof" control={form.control} render={({ field: { value, onChange, ...fieldProps } }) => ( <FormItem><FormLabel className="font-semibold text-xs uppercase tracking-widest text-muted-foreground">Attach Proof of Approval (PDF)</FormLabel><FormControl><Input {...fieldProps} type="file" onChange={(e) => onChange(e.target.files)} accept="application/pdf" className="h-12 border-dashed bg-muted/10"/></FormControl><FormMessage /></FormItem> )} />
+                        <FormField name="patentApprovalProof" control={form.control} render={({ field: { value, onChange, ...fieldProps } }) => ( <FormItem><FormLabel className="font-semibold text-xs uppercase tracking-widest text-muted-foreground">Attach Proof of Approval (PDF) <span className="text-destructive font-black">*</span></FormLabel><FormControl><Input {...fieldProps} type="file" onChange={(e) => onChange(e.target.files)} accept="application/pdf" className="h-12 border-dashed bg-muted/10"/></FormControl><FormMessage /></FormItem> )} />
                     )}
 
                     <FormField control={form.control} name="patentSelfDeclaration" render={({ field }) => ( 
                         <FormItem className="flex flex-row items-center space-x-3 space-y-0 rounded-2xl border-2 border-primary/20 p-6 bg-primary/5 shadow-sm">
                             <FormControl><Checkbox checked={field.value} onCheckedChange={field.onChange} className="h-6 w-6 rounded-md" /></FormControl>
                             <div className="space-y-1">
-                                <FormLabel className="font-bold text-primary">Self Declaration Acknowledgement</FormLabel>
+                                <FormLabel className="font-bold text-primary">Self Declaration Acknowledgement <span className="text-destructive font-black">*</span></FormLabel>
                                 <p className="text-sm text-primary/80 font-medium">I hereby confirm that I have not applied/claimed for any incentive for the same IP application earlier and all details are accurate.</p>
                                 <FormMessage />
                             </div>

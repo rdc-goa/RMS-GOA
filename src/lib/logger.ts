@@ -1,5 +1,5 @@
 
-import { adminDb } from './admin';
+import { adminDb, adminRtdb } from './admin';
 import { User } from '@/types';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -58,6 +58,7 @@ function redact(data: any, depth = 0): any {
 function stripUndefined(obj: any, depth = 0): any {
   if (depth > 10) return '[Depth Limit Reached]';
   if (obj === null || typeof obj !== 'object') return obj;
+  if (obj instanceof Date) return obj;
   if (Array.isArray(obj)) return obj.map(v => stripUndefined(v, depth + 1)).filter(v => v !== undefined);
   return Object.fromEntries(
     Object.entries(obj)
@@ -95,13 +96,43 @@ export async function logEvent(
     status
   });
 
+  let logId: string | null = null;
   try {
-    // We use adminDb directly for server-side logging
-    await adminDb.collection('system_logs').add(logEntry);
-  } catch (error) {
-    console.error(`CRITICAL: Failed to write log to Firestore: ${category} - ${message}`, error);
-    // Fallback to console for emergency observability
-    console.log('LOG_FALLBACK:', JSON.stringify(logEntry));
+    const newLogRef = adminRtdb.ref('system_logs').push();
+    logId = newLogRef.key;
+    if (!logId) throw new Error("Failed to generate RTDB key");
+
+    const rtdbPayload = {
+      ...logEntry,
+      timestamp: logEntry.timestamp instanceof Date ? logEntry.timestamp.toISOString() : logEntry.timestamp
+    };
+
+    await newLogRef.set(rtdbPayload);
+  } catch (rtdbError) {
+    console.error(`CRITICAL: Failed to write log to RTDB: ${category} - ${message}`, rtdbError);
+    console.log('LOG_FALLBACK_RTDB:', JSON.stringify(logEntry));
+  }
+
+  if (logId) {
+    let firestoreSuccess = false;
+    const maxRetries = 3;
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        await adminDb.collection('system_logs').doc(logId).set(logEntry);
+        firestoreSuccess = true;
+        break;
+      } catch (firestoreError) {
+        console.error(`Attempt ${attempt} to write log to Firestore failed for ID ${logId}:`, firestoreError);
+        if (attempt < maxRetries) {
+          await new Promise(resolve => setTimeout(resolve, 500 * attempt));
+        }
+      }
+    }
+
+    if (!firestoreSuccess) {
+      console.error(`CRITICAL: Firestore write failed after ${maxRetries} attempts for ID ${logId}`);
+      console.log('LOG_FALLBACK_FIRESTORE:', JSON.stringify(logEntry));
+    }
   }
 }
 

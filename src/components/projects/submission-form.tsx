@@ -36,6 +36,8 @@ import { Separator } from '../ui/separator';
 
 interface SubmissionFormProps {
   project?: Project;
+  selectedCall?: { id: string; title: string } | null;
+  onClearSelectedCall?: () => void;
 }
 
 const steps = [
@@ -66,7 +68,7 @@ const sdgGoalsList = [
 ];
 
 
-export function SubmissionForm({ project }: SubmissionFormProps) {
+export function SubmissionForm({ project, selectedCall, onClearSelectedCall }: SubmissionFormProps) {
   const [currentStep, setCurrentStep] = useState(1);
   const [user, setUser] = useState<User | null>(null);
   const [isSaving, setIsSaving] = useState(false);
@@ -87,6 +89,8 @@ export function SubmissionForm({ project }: SubmissionFormProps) {
     abstract: z.string().min(20, 'Abstract must be at least 20 characters.'),
     projectType: z.string().min(1, 'Please select a category.'),
     sdgGoals: z.array(z.string()).optional(),
+  associatedCallId: z.string().optional(),
+  associatedCallTitle: z.string().optional(),
     // Step 2
     studentInfo: z.string().optional(),
     // Step 3
@@ -141,6 +145,8 @@ export function SubmissionForm({ project }: SubmissionFormProps) {
         expectedOutcomes: project.timelineAndOutcomes,
         guidelinesAgreement: project.status !== 'Draft',
         sdgGoals: project.sdgGoals || [],
+          associatedCallId: (project as any).associatedCallId || '',
+          associatedCallTitle: (project as any).associatedCallTitle || '',
       });
 
       if (project.coPiDetails) {

@@ -422,3 +422,67 @@ export async function updatePhaseStatus(
     return { success: false, error: error.message };
   }
 }
+
+export async function updatePhaseDisbursementDate(
+  projectId: string,
+  phaseId: string,
+  disbursementDate: string,
+): Promise<{ success: boolean; error?: string; updatedProject?: Project }> {
+  try {
+    const session = await checkAuth();
+    if (!session.authenticated) {
+      return { success: false, error: session.error || "Session expired. Please log out of the portal and log back in." };
+    }
+
+    const projectRef = adminDb.collection("projects").doc(projectId);
+    const projectSnap = await projectRef.get();
+    if (!projectSnap.exists) return { success: false, error: "Project not found." };
+
+    const project = projectSnap.data() as Project;
+    if (!project.isBulkUploaded) {
+      return { success: false, error: "This operation is only allowed for historic projects." };
+    }
+
+    // Verify user is either admin, super-admin, PI, or Co-PI of the project
+    const sessionUid = session.uid;
+    const sessionEmail = session.user?.email;
+    const sessionRole = session.role;
+
+    const isPI = (sessionUid && sessionUid === project.pi_uid) || (sessionEmail && sessionEmail.toLowerCase() === project.pi_email?.toLowerCase()) ? true : false;
+    const isCoPi = (sessionUid && project.coPiUids?.includes(sessionUid)) || false;
+    const isAdmin = sessionRole === "admin" || sessionRole === "Super-admin";
+
+    if (!isAdmin && !isPI && !isCoPi) {
+      return { success: false, error: "Unauthorized. Only PI, Co-PI or admins can update this date." };
+    }
+
+    if (!project.grant) return { success: false, error: "No grant details." };
+
+    const phaseIndex = project.grant.phases.findIndex((p) => p.id === phaseId);
+    if (phaseIndex === -1) return { success: false, error: "Phase not found." };
+
+    const updatedPhases = project.grant.phases.map((phase) => {
+      if (phase.id === phaseId) {
+        return {
+          ...phase,
+          disbursementDate,
+          isDisbursementDateSavedByUser: true,
+        };
+      }
+      return phase;
+    });
+
+    const updateData: any = { 'grant.phases': updatedPhases };
+    if (phaseIndex === 0) {
+      updateData.seedMoneyReceivedDate = disbursementDate;
+    }
+
+    await projectRef.update(updateData);
+    await logActivity("INFO", "Phase disbursement date updated", { projectId, phaseId, disbursementDate });
+
+    const updatedProjectSnap = await projectRef.get();
+    return { success: true, updatedProject: { id: updatedProjectSnap.id, ...updatedProjectSnap.data() } as Project };
+  } catch (error: any) {
+    return { success: false, error: error.message };
+  }
+}

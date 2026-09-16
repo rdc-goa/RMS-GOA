@@ -27,6 +27,34 @@ export type NotificationSettings = {
   }
 }
 
+export type ScopusPublication = {
+  eid: string
+  title: string
+  journalName?: string
+  coverDate?: string
+  publicationYear?: string
+  doi?: string
+  scopusUrl?: string
+  citationCount?: number
+  authors?: string
+  aggregationType?: string
+  subtypeDescription?: string
+  volume?: string
+  issue?: string
+  pageRange?: string
+  issn?: string
+  fetchedAt?: string
+  openAccess?: boolean
+  openAccessStatus?: string
+  publisher?: string
+  fundingSponsor?: string
+  isPuNameInPublication?: boolean
+
+  quartile?: 'Q1' | 'Q2' | 'Q3' | 'Q4' | string
+  citeScore?: number
+  keywords?: string[]
+}
+
 export type User = {
   uid: string
   name: string
@@ -50,11 +78,28 @@ export type User = {
   profileComplete?: boolean
   photoURL?: string
   allowedModules?: string[]
+  authorityFaculties?: string[]
+  authorityInstitutes?: string[]
+  authorityDepartments?: string[]
   bankDetails?: UserBankDetails
   hasCompletedTutorial?: boolean
   sidebarOrder?: string[]
   researchDomain?: string
   notificationSettings?: NotificationSettings;
+  slug?: string;
+  disabled?: boolean;
+  absentCount?: number;
+  manualArpsEnabled?: boolean;
+  arpsScores?: Record<string, any>;
+  scopusPublications?: ScopusPublication[];
+  scopusLastFetchedAt?: string;
+  scopusHIndex?: number;
+  scopusAffiliations?: { name: string; city?: string; country?: string; current?: boolean }[];
+  scopusNameVariants?: string[];
+  scopusTopCoAuthors?: { name: string; count: number }[];
+  scopusSubjectAreas?: { name: string; count: number }[];
+  scopusCoAuthorCount?: number;
+  scopusCareerStartYear?: string;
 }
 
 export type Author = {
@@ -65,6 +110,7 @@ export type Author = {
   isExternal: boolean
   status: 'approved' | 'pending' | 'Applied';
   organization?: string;
+  position?: string;
 }
 
 export type ResearchPaper = {
@@ -116,6 +162,7 @@ export type GrantPhase = {
   disbursementDate?: string
   transactions?: Transaction[]
   utilizationSubmissionDate?: string
+  isDisbursementDateSavedByUser?: boolean
 }
 
 export type GrantDetails = {
@@ -169,6 +216,7 @@ export type Project = {
   seedMoneyReceivedDate?: string // ISO String - Date when seed money was first received/disbursed
   proposalUrl?: string
   ethicsUrl?: string
+  sanctionLetterUrl?: string
   grant?: GrantDetails
   completionReportUrl?: string
   utilizationCertificateUrl?: string
@@ -179,10 +227,23 @@ export type Project = {
     date: string
     time: string
     venue: string
+    mode?: string
+    type?: string
     assignedEvaluators?: string[]
     absentEvaluators?: string[];
   }
   wasAbsent?: boolean;
+  pastMeetings?: {
+    date: string;
+    time: string;
+    venue: string;
+    mode?: string;
+    type?: string;
+    assignedEvaluators?: string[];
+    absentEvaluators?: string[];
+    wasAbsent?: boolean;
+    status?: string;
+  }[];
   revisedProposalUrl?: string
   revisionSubmissionDate?: string
   revisionComments?: string
@@ -194,6 +255,9 @@ export type Project = {
   phases?: { name: string; amount: number }[]
   sdgGoals?: string[]
   campus?: string
+  nonTechnicalComments?: string
+  associatedCallId?: string
+  associatedCallTitle?: string
 }
 
 export type Notification = {
@@ -201,6 +265,7 @@ export type Notification = {
   uid: string // The user this notification is for
   projectId?: string // The ID of the project, or a profile link
   title: string
+  description?: string // Detailed message about the notification
   createdAt: string // ISO String
   isRead: boolean
   type?: 'coAuthorRequest' | 'default';
@@ -211,13 +276,22 @@ export type Notification = {
 export type ApprovalStage = {
   approverUid: string;
   approverName: string;
-  status: 'Approved' | 'Rejected';
+  status: 'Approved' | 'Rejected' | 'Not Approved' | 'On Hold';
   timestamp: string; // ISO string
   comments: string;
   approvedAmount: number;
+  approvedTravelFare?: number;
+  approvedAccommodationExpense?: number;
+  approvedMiscellaneousExpense?: number;
+  approvedRegistrationFee?: number;
   stage: number; // 1, 2, 3 or 4
   verifiedFields?: { [key: string]: boolean };
   suggestions?: { [key: string]: string };
+  additionalDocuments?: string[];
+  rdcRecord?: boolean;
+  needsSpecialIntervention?: boolean;
+  specialInterventionSuggestedAmount?: number;
+  specialInterventionRemarks?: string;
 };
 
 export type PatentInventor = {
@@ -227,6 +301,8 @@ export type PatentInventor = {
   uid?: string | null;
   isExternal?: boolean;
   organization?: string;
+  status?: 'pending' | 'Applied' | 'approved' | 'Not Approved' | 'Rejected';
+  role?: string;
 }
 
 export type IncentiveClaim = {
@@ -235,20 +311,29 @@ export type IncentiveClaim = {
   userName: string
   userEmail: string
   claimId?: string; // Standardized, sequential ID like RDC/IC/PAPER/0001
-  status: "Pending" | "Accepted" | "Rejected" | "Draft" | "Pending Stage 1 Approval" | "Pending Stage 2 Approval" | "Pending Stage 3 Approval" | "Pending Stage 4 Approval" | "Pending Stage 5 Approval" | "Submitted to Accounts" | "Payment Completed";
+  status: "Pending" | "Accepted" | "Approved" | "Rejected" | "Not Approved" | "Draft" | "Pending Stage 1 Approval" | "Pending Stage 2 Approval" | "Pending Stage 3 Approval" | "Pending Stage 4 Approval" | "Pending Stage 5 Approval" | "Submitted to Accounts" | "Payment Completed" | "On Hold";
   submissionDate: string // ISO String
   faculty: string
   bankDetails?: UserBankDetails
   originalClaimId?: string // Link to the primary author's claim
   misId?: string
   orcidId?: string
+  externalId?: string;
+  paperProofLink?: string;
   calculatedIncentive?: number
-  finalApprovedAmount?: number;
+  finalApprovedAmount?: number | null;
   approvals?: ApprovalStage[];
   autoFetchedFields?: (keyof IncentiveClaim)[];
+  needsSpecialIntervention?: boolean;
+  specialInterventionSuggestedAmount?: number;
+  specialInterventionRemarks?: string;
   paperId?: string; // Link to the entry in the 'papers' collection
   paymentSheetRef?: string;
   paymentSheetRemarks?: string;
+  paymentSheetDate?: string;
+  lastSyncedAt?: string;
+  source?: string;
+  iqacClaimType?: string;
   aiVerification?: {
     isAuthentic: boolean;
     affiliationMentioned: boolean;
@@ -273,11 +358,13 @@ export type IncentiveClaim = {
   publicationType?: string;
   indexType?: "wos" | "scopus" | "both" | "sci" | "other" | "esci";
   doi?: string;
-  scopusLink?: string;
+  scopusLink?: string
+  apcScopusLink?: string;
   wosLink?: string;
   journalClassification?: "Q1" | "Q2" | "Q3" | "Q4" | "Nature/Science/Lancet" | "Top 1% Journals";
   wosType?: "SCIE" | "SSCI" | "A&HCI";
   journalName?: string;
+  asjcCategory?: string;
   journalWebsite?: string;
   paperTitle?: string;
   relevantLink?: string;
@@ -290,10 +377,17 @@ export type IncentiveClaim = {
   publicationProofUrls?: string[];
   isPuNameInPublication?: boolean;
   wasApcPaidByUniversity?: boolean;
+  openAccessOrSubscription?: 'Open Access' | 'Subscription-Based';
+  openAccessType?: 'Received Full Fee Waiver' | 'Received Partial Fee Waiver' | 'Publisher is currently offering Free Open Access Publication' | 'Paid Full Publication Fee';
+  alreadyClaimedApcReimbursement?: boolean;
   totalCorrespondingAuthors?: number;
   totalPuStudentAuthors?: number;
   puStudentNames?: string;
   authorType?: string;
+  paperIncentivePaid?: number;
+  paperClaimId?: string;
+  numberOfAffiliations?: number;
+  previousOfflinePresentationsCount?: number;
 
 
   // Patent Fields
@@ -307,6 +401,7 @@ export type IncentiveClaim = {
   patentFiledInPuName?: boolean
   isPuSoleApplicant?: boolean;
   patentFiledFromIprCell?: boolean
+  patentRoutedViaSsip?: boolean
   patentPermissionTaken?: boolean
   patentApprovalProofUrl?: string
   patentForm1Url?: string
@@ -336,8 +431,8 @@ export type IncentiveClaim = {
   conferenceVenue?:
   | "India"
   | "Indian Subcontinent"
-  | "South Korea, Japan, Australia and Middle East"
-  | "Europe"
+  | "South Korea, Japan and Middle East"
+  | "Europe and Australia"
   | "African/South American/North American"
   | 'Other'
   presentationType?: "Oral" | "Poster" | "Other"
@@ -369,6 +464,7 @@ export type IncentiveClaim = {
   conferenceSelfDeclaration?: boolean
   totalAuthors?: string;
   conferenceProofUrl?: string;
+  presencePhotographsUrls?: string[];
 
   // Workshop/Training/FDP fields
   workshopName?: string;
@@ -379,6 +475,14 @@ export type IncentiveClaim = {
   workshopCertificateUrl?: string;
   workshopSelfDeclaration?: boolean;
   travelDetails?: string;
+  accommodationExpense?: number;
+  accommodationProofUrl?: string;
+  miscellaneousExpense?: number;
+  miscellaneousProofUrl?: string;
+  approvedTravelFare?: number;
+  approvedAccommodationExpense?: number;
+  approvedMiscellaneousExpense?: number;
+  approvedRegistrationFee?: number;
 
   // Book/Book Chapter Fields
   bookApplicationType?: "Book Chapter" | "Book"
@@ -400,10 +504,12 @@ export type IncentiveClaim = {
   publicationMode?: "Print Only" | "Electronic Only" | "Print & Electronic"
   isbnPrint?: string
   isbnElectronic?: string
+  isbn?: string
   publisherWebsite?: string
   bookProofUrl?: string
+  bookAiReportProofUrl?: string
   scopusProofUrl?: string
-  publicationOrderInYear?: "First" | "Second" | "Third"
+  publicationOrderInYear?: "First" | "Second" | "Third" | "Fourth" | "Fifth" | "Sixth" | "Seventh" | "Eighth" | "Ninth" | "Tenth" | "";
   bookSelfDeclaration?: boolean
   bookType?: "Textbook" | "Reference Book"
 
@@ -450,13 +556,12 @@ export type IncentiveClaim = {
   apcIndexingStatus?: string[]
   apcOtherIndexingStatus?: string
   apcSciImpactFactor?: number
-  apcPublicationProofUrl?: string
-  apcInvoiceProofUrl?: string
-  apcReceiptProofUrl?: string
-  apcPaymentProofUrl?: string
-  apcAcceptanceMailProofUrl?: string
-  apcScopusLink?: string
-  apcPuNameInPublication?: boolean
+  apcPublicationProofUrl?: string;
+  apcInvoiceProofUrl?: string;
+  apcReceiptProofUrl?: string;
+  apcPaymentProofUrl?: string;
+  apcAcceptanceMailProofUrl?: string;
+  apcPuNameInPublication?: boolean;
   apcAmountClaimed?: number
   apcTotalAmount?: number
   apcSelfDeclaration?: boolean
@@ -484,7 +589,7 @@ export type FundingCall = {
   driveLink?: string
   createdAt: string // ISO String
   createdBy: string // UID of the admin who created it
-  status: "Open" | "Closed" | "Meeting Scheduled"
+  status: "Open" | "Closed" | "Meeting Scheduled" | "Draft"
   meetingDetails?: {
     date: string // yyyy-MM-dd
     time?: string // HH:mm
@@ -492,8 +597,11 @@ export type FundingCall = {
     pptDeadline?: string // ISO String
     assignedEvaluators?: string[],
     absentEvaluators?: string[],
+    mode?: string;
   }
   isAnnounced?: boolean
+  announcedAt?: string // ISO String
+  attachments?: { name: string; url: string }[]
 }
 
 export type EmrInterest = {
@@ -540,6 +648,7 @@ export type EmrInterest = {
     pptDeadline: string; // ISO string
   }
   assignedEvaluators?: string[];
+  absentEvaluators?: string[];
   evaluatedBy?: string[];
   endorsementFormUrl?: string
   signedEndorsementUrl?: string
@@ -551,6 +660,16 @@ export type EmrInterest = {
   isBulkUploaded?: boolean
   agency?: string
   durationAmount?: string
+  amount?: number
+  sanctionAmount?: number
+  duration?: number
+  institute?: string
+  meetingDetails?: {
+    date?: string
+    time?: string
+    venue?: string
+    mode?: string
+  }
   isOpenToPi?: boolean
   proofUrl?: string
   sanctionDate?: string // ISO String
@@ -599,11 +718,33 @@ export type ApiIntegrations = {
   sci?: boolean;
 };
 
+export type DepartmentMatrixItem = {
+  id: string
+  name: string
+  authorityEmail?: string
+}
+
+export type InstituteMatrixItem = {
+  id: string
+  name: string
+  authorityEmail?: string
+  departments: DepartmentMatrixItem[]
+}
+
+export type FacultyMatrixItem = {
+  id: string
+  name: string
+  authorityEmail?: string
+  institutes: InstituteMatrixItem[]
+}
+
 export type SystemSettings = {
   is2faEnabled: boolean
   allowedDomains?: string[]
   croAssignments?: CroAssignment[]
   incentiveApprovers?: ApproverSetting[];
+  principalEmails?: Record<string, string>;
+  patentStage2Approver?: ApproverSetting;
   incentiveApprovalWorkflows?: Record<string, number[]>;
   iqacEmail?: string;
   enabledIncentiveTypes?: Record<string, boolean>;
@@ -614,14 +755,14 @@ export type SystemSettings = {
   templateUrls?: TemplateUrls;
   apiIntegrations?: ApiIntegrations;
   driveParentFolderId?: string;
-  principalEmails?: Record<string, string>;
+  facultyMatrix?: FacultyMatrixItem[];
 }
 
 export type LoginOtp = {
   email: string
   otp: string
   expiresAt: number // Store as timestamp
-  isPasswordVerified?: boolean
+  isPasswordVerified?: boolean;
 }
 
 export type FoundUser = {
@@ -684,17 +825,20 @@ export type ArpsSubmission = {
   submissionId?: string; // e.g., RDC/ARPS/2025-26/PUB/0001
   status: "Draft" | "Submitted" | "Under Review" | "Approved" | "Rejected" | "Resubmission Required" | "Locked" | "Finalized";
   submissionDate: string; // ISO string
-  academicYear: string; // e.g., "2025-2026"
-  submissionType: "publication" | "patent" | "consultancy" | "emr" | "student" | "activity";
+  academicYear: string; // e.g., "2025-26"
+  submissionType: "publication" | "patent" | "consultancy" | "emr" | "EMR" | "student" | "activity" | "other";
   remarks?: string; // Review remarks
   comments?: string;
+  details?: string; // Paragraph / Description for others
   history?: ArpsSubmissionHistory[];
   proofUrls?: string[];
   verifiedFields?: Record<string, boolean>;
+  fetchedFrom?: "scopus" | "wos";
 
   // A. Publication fields
   paperTitle?: string;
   doi?: string;
+  scopusLink?: string;
   journalName?: string;
   journalClassification?: "Q1" | "Q2" | "Q3" | "Q4";
   indexType?: "scopus" | "wos" | "both";
@@ -711,6 +855,7 @@ export type ArpsSubmission = {
   publisherName?: string;
   publisherWebsite?: string;
   isbn?: string;
+  bookTitleForChapter?: string;
 
   // B. Patent fields
   patentTitle?: string;
@@ -758,4 +903,85 @@ export type ArpsSubmission = {
   eventDurationDays?: number;
   location?: "In PU" | "Outside PU" | "Outside India";
   rolePerformed?: string;
+  // F1. Professional Society Board Membership-specific fields
+  membershipType?: "Lifetime" | "Yearly";
+  societyType?: "National" | "International";
+  revisionDiffs?: Record<string, { oldValue: any; newValue: any }>;
+};
+
+export type SpecialCfp = {
+  id: string;
+  callIdentifier?: string; // Sequential identifier like RDC/CFP/2026/0001
+  title: string;
+  description: string;
+  department: string; // Announcing department
+  applyDeadline: string; // ISO date string
+  status: "Open" | "Closed";
+  createdAt: string; // ISO date string
+  createdBy: string; // Admin User ID
+  announcedBy: string; // Admin/Faculty Name
+  files?: { name: string; url: string }[]; // Optional attachment PDFs
+};
+
+export type CfpSubmission = {
+  id: string;
+  submissionId?: string; // Sequential ID like RDC/CFP/SUB/0001
+  cfpId: string; // Reference to the Call announcement
+  cfpTitle: string; // Title of the associated call
+
+  // Principal Investigator Details
+  piName: string;
+  piEmail: string;
+  piPhone: string;
+  piOrganization: string; // "Parul University" or external institution name
+  piFaculty?: string;     // If Parul University
+  piDepartment?: string;  // If Parul University
+  piCvUrl: string;        // PDF link
+  piCvFileName?: string;
+
+  // Project Details
+  title: string;
+  abstract: string;
+  projectType: string;    // "Unidisciplinary" | "Multi-Disciplinary" | "Inter-Disciplinary"
+  sdgGoals?: string[];
+
+  // Team Info
+  coPiDetails?: CoPiDetails[];
+  studentInfo?: string;
+
+  // File Uploads
+  proposalUrl: string;
+  ethicsUrl?: string;
+  proposalUrls?: string[];
+  proposalFileNames?: string[];
+
+  // Timeline & Outcomes
+  expectedOutcomes: string;
+  guidelinesAgreement: boolean;
+
+  // Metadata
+  status: "Draft" | "Submitted" | "Under Review" | "Recommended" | "Revision Needed" | "Revision Submitted" | "Sanctioned" | "Not Recommended";
+  submissionDate: string; // ISO string
+  pi_uid?: string;        // Null for unregistered external users
+
+  // Meetings, Evaluations, Revisions, Durations & Grants
+  meetingDetails?: {
+    date: string;
+    time: string;
+    venue: string;
+    mode: "Online" | "Offline";
+    assignedEvaluators?: string[];
+    absentEvaluators?: string[];
+  };
+  wasAbsent?: boolean;
+  evaluatedBy?: string[];
+  remarks?: string;
+  rejectionComments?: string;
+  revisionComments?: string;
+  revisedProposalUrl?: string;
+  revisionSubmissionDate?: string;
+  projectStartDate?: string;
+  projectEndDate?: string;
+  grant?: GrantDetails;
+  allowEditAfterDeadline?: boolean;
 };

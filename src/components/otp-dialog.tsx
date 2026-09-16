@@ -1,7 +1,5 @@
-
-"use client";
-
-import { useState } from 'react';
+﻿"use client";
+import { useState, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
@@ -35,6 +33,7 @@ interface OtpDialogProps {
   email: string;
   onVerify: (otp: string) => Promise<void>;
   isVerifying: boolean;
+  onResend: () => Promise<void>;
 }
 
 const otpSchema = z.object({
@@ -43,7 +42,10 @@ const otpSchema = z.object({
   }),
 });
 
-export function OtpDialog({ isOpen, onOpenChange, email, onVerify, isVerifying }: OtpDialogProps) {
+export function OtpDialog({ isOpen, onOpenChange, email, onVerify, isVerifying, onResend }: OtpDialogProps) {
+  const [cooldown, setCooldown] = useState(30);
+  const [validTime, setValidTime] = useState(60);
+  const [isResending, setIsResending] = useState(false);
 
   const form = useForm<z.infer<typeof otpSchema>>({
     resolver: zodResolver(otpSchema),
@@ -51,6 +53,33 @@ export function OtpDialog({ isOpen, onOpenChange, email, onVerify, isVerifying }
       otp: "",
     },
   });
+
+  useEffect(() => {
+    if (!isOpen) return;
+
+    setCooldown(30);
+    setValidTime(60);
+
+    const interval = setInterval(() => {
+      setCooldown((prev) => (prev > 0 ? prev - 1 : 0));
+      setValidTime((prev) => (prev > 0 ? prev - 1 : 0));
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [isOpen]);
+
+  const handleResend = async () => {
+    if (cooldown > 0 || isResending) return;
+    setIsResending(true);
+    try {
+      await onResend();
+      setCooldown(30);
+      setValidTime(60);
+      form.reset({ otp: "" });
+    } finally {
+      setIsResending(false);
+    }
+  };
 
   const onSubmit = async (data: z.infer<typeof otpSchema>) => {
     await onVerify(data.otp);
@@ -71,8 +100,8 @@ export function OtpDialog({ isOpen, onOpenChange, email, onVerify, isVerifying }
               control={form.control}
               name="otp"
               render={({ field }) => (
-                <FormItem>
-                  <FormLabel>One-Time Password</FormLabel>
+                <FormItem className="flex flex-col items-center">
+                  <FormLabel className="mb-2">One-Time Password</FormLabel>
                   <FormControl>
                     <InputOTP maxLength={6} {...field}>
                       <InputOTPGroup>
@@ -89,7 +118,34 @@ export function OtpDialog({ isOpen, onOpenChange, email, onVerify, isVerifying }
                 </FormItem>
               )}
             />
-            <Button type="submit" disabled={isVerifying} className="w-full">
+            
+            <div className="text-sm text-center space-y-2 mt-2 w-full">
+              {validTime > 0 ? (
+                <p className="text-muted-foreground">
+                  Code expires in <span className="font-semibold text-foreground">{validTime}s</span>
+                </p>
+              ) : (
+                <p className="text-destructive font-semibold">
+                  Code has expired. Please request a new one.
+                </p>
+              )}
+              
+              <div className="flex items-center justify-center gap-1.5">
+                <span className="text-muted-foreground">Didn't receive the code?</span>
+                <Button
+                  type="button"
+                  variant="link"
+                  className="p-0 h-auto font-semibold text-primary hover:text-primary/95"
+                  disabled={cooldown > 0 || isResending}
+                  onClick={handleResend}
+                >
+                  {isResending && <Loader2 className="h-3 w-3 animate-spin mr-1 inline" />}
+                  {cooldown > 0 ? `Resend in ${cooldown}s` : "Resend OTP"}
+                </Button>
+              </div>
+            </div>
+
+            <Button type="submit" disabled={isVerifying || validTime === 0} className="w-full">
               {isVerifying ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -103,3 +159,4 @@ export function OtpDialog({ isOpen, onOpenChange, email, onVerify, isVerifying }
     </Dialog>
   );
 }
+

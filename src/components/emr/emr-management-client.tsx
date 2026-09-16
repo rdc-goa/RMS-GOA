@@ -3,21 +3,21 @@
 'use client';
 
 import { useState, useMemo, useEffect, useCallback } from 'react';
-import type { FundingCall, User, EmrInterest } from '@/types';
+import type { FundingCall, User, EmrInterest, EmrEvaluation } from '@/types';
 import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import Link from 'next/link';
-import { Download, Trash2, CalendarClock, Eye, MoreHorizontal, MessageSquare, Loader2, FileUp, FileText as ViewIcon, Edit, Upload, UserCheck, UserPlus, Search, Send, CalendarDays, ChevronRight, Plus, CheckCircle, XCircle } from 'lucide-react';
+import { Download, Trash2, CalendarClock, Eye, MoreHorizontal, MessageSquare, Loader2, FileUp, FileText as ViewIcon, Edit, Upload, UserCheck, UserPlus, Search, Send, CalendarDays, ChevronRight, Plus, CheckCircle, XCircle, UserX, ThumbsUp, ThumbsDown, History } from 'lucide-react';
 import ExcelJS from 'exceljs';
 import { Textarea } from '../ui/textarea';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage, FormDescription } from '../ui/form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { useForm } from 'react-hook-form';
-import { deleteEmrInterest, updateEmrInterestDetails, updateEmrStatus, signAndUploadEndorsement, markEmrAttendance, registerEmrInterest, sendPptReminderEmails, uploadFileToServer } from '@/app/emr-actions';
+import { deleteEmrInterest, updateEmrInterestDetails, updateEmrStatus, signAndUploadEndorsement, markEmrAttendance, registerEmrInterest, sendPptReminderEmails, uploadFileToServer, rescheduleEmrApplicant, rescheduleEmrApplicantWithDetails, getEmrInterestEvaluations } from '@/app/emr-actions';
 import {
     AlertDialog,
     AlertDialogAction,
@@ -49,6 +49,8 @@ import {
     DropdownMenuLabel,
 } from '@/components/ui/dropdown-menu';
 import { ScheduleMeetingDialog } from './schedule-meeting-dialog';
+import { RescheduleMeetingDialog } from './reschedule-meeting-dialog';
+
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
 import { Switch } from '../ui/switch';
@@ -61,6 +63,7 @@ import { format, parseISO } from 'date-fns';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
 import { cn } from '@/lib/utils';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
 import { reportSystemError } from '@/lib/error-reporting';
 import { db } from '@/lib/config';
 import { collection, query, where, getDocs, limit, startAfter, QueryDocumentSnapshot, DocumentData, orderBy } from 'firebase/firestore';
@@ -252,7 +255,7 @@ function AttendanceDialog({ call, interests, allUsers, isOpen, onOpenChange, onU
             <DialogContent className="sm:max-w-md">
                 <DialogHeader>
                     <DialogTitle>Mark Meeting Attendance</DialogTitle>
-                    <DialogDescription>Select any applicants or evaluators who were absent from the meeting.</DialogDescription>
+                    <DialogDescription>Mark the attendance status for the Applicants and Evaluators.</DialogDescription>
                 </DialogHeader>
                 <Form {...form}>
                     <form id="attendance-form" onSubmit={form.handleSubmit(handleSubmit)} className="space-y-6 py-4 max-h-[60vh] overflow-y-auto pr-4">
@@ -264,21 +267,34 @@ function AttendanceDialog({ call, interests, allUsers, isOpen, onOpenChange, onU
                                         key={interest.id}
                                         control={form.control}
                                         name="absentApplicantIds"
-                                        render={({ field }) => (
-                                            <FormItem className="flex items-center space-x-3 space-y-0 p-2 border rounded-md">
-                                                <FormControl>
-                                                    <Checkbox
-                                                        checked={field.value?.includes(interest.id)}
-                                                        onCheckedChange={(checked) => {
-                                                            return checked
-                                                                ? field.onChange([...field.value, interest.id])
-                                                                : field.onChange(field.value?.filter(id => id !== interest.id));
-                                                        }}
-                                                    />
-                                                </FormControl>
-                                                <Label className="font-normal">{interest.userName}</Label>
-                                            </FormItem>
-                                        )}
+                                        render={({ field }) => {
+                                            const isAbsent = field.value?.includes(interest.id);
+                                            return (
+                                                <FormItem className="flex items-center justify-between p-2 border rounded-md">
+                                                    <FormLabel className="font-normal">{interest.userName}</FormLabel>
+                                                    <FormControl>
+                                                        <Select
+                                                            value={isAbsent ? "absent" : "present"}
+                                                            onValueChange={(val) => {
+                                                                if (val === "absent") {
+                                                                    field.onChange([...(field.value || []), interest.id]);
+                                                                } else {
+                                                                    field.onChange(field.value?.filter(id => id !== interest.id) || []);
+                                                                }
+                                                            }}
+                                                        >
+                                                            <SelectTrigger className="w-[120px]">
+                                                                <SelectValue />
+                                                            </SelectTrigger>
+                                                            <SelectContent>
+                                                                <SelectItem value="present">Present</SelectItem>
+                                                                <SelectItem value="absent">Absent</SelectItem>
+                                                            </SelectContent>
+                                                        </Select>
+                                                    </FormControl>
+                                                </FormItem>
+                                            );
+                                        }}
                                     />
                                 ))}
                             </div>
@@ -291,21 +307,34 @@ function AttendanceDialog({ call, interests, allUsers, isOpen, onOpenChange, onU
                                         key={evaluator.uid}
                                         control={form.control}
                                         name="absentEvaluatorUids"
-                                        render={({ field }) => (
-                                            <FormItem className="flex items-center space-x-3 space-y-0 p-2 border rounded-md">
-                                                <FormControl>
-                                                    <Checkbox
-                                                        checked={field.value?.includes(evaluator.uid)}
-                                                        onCheckedChange={(checked) => {
-                                                            return checked
-                                                                ? field.onChange([...(field.value || []), evaluator.uid])
-                                                                : field.onChange(field.value?.filter(id => id !== evaluator.uid));
-                                                        }}
-                                                    />
-                                                </FormControl>
-                                                <FormLabel className="font-normal">{evaluator.name}</FormLabel>
-                                            </FormItem>
-                                        )}
+                                        render={({ field }) => {
+                                            const isAbsent = field.value?.includes(evaluator.uid);
+                                            return (
+                                                <FormItem className="flex items-center justify-between p-2 border rounded-md">
+                                                    <FormLabel className="font-normal">{evaluator.name}</FormLabel>
+                                                    <FormControl>
+                                                        <Select
+                                                            value={isAbsent ? "absent" : "present"}
+                                                            onValueChange={(val) => {
+                                                                if (val === "absent") {
+                                                                    field.onChange([...(field.value || []), evaluator.uid]);
+                                                                } else {
+                                                                    field.onChange(field.value?.filter(id => id !== evaluator.uid) || []);
+                                                                }
+                                                            }}
+                                                        >
+                                                            <SelectTrigger className="w-[120px]">
+                                                                <SelectValue />
+                                                            </SelectTrigger>
+                                                            <SelectContent>
+                                                                <SelectItem value="present">Present</SelectItem>
+                                                                <SelectItem value="absent">Absent</SelectItem>
+                                                            </SelectContent>
+                                                        </Select>
+                                                    </FormControl>
+                                                </FormItem>
+                                            );
+                                        }}
                                     />
                                 ))}
                             </div>
@@ -551,6 +580,89 @@ function EditBulkEmrDialog({ interest, isOpen, onOpenChange, onUpdate }: { inter
     );
 }
 
+function ViewEvaluationsDialog({ interest, isOpen, onOpenChange }: { interest: EmrInterest | null; isOpen: boolean; onOpenChange: (open: boolean) => void; }) {
+    const [evaluations, setEvaluations] = useState<EmrEvaluation[]>([]);
+    const [loading, setLoading] = useState(false);
+    const { toast } = useToast();
+
+    useEffect(() => {
+        if (isOpen && interest) {
+            const fetchEvaluations = async () => {
+                setLoading(true);
+                try {
+                    const result = await getEmrInterestEvaluations(interest.id);
+                    if (result.success && result.evaluations) {
+                        setEvaluations(result.evaluations);
+                    } else {
+                        toast({ variant: 'destructive', title: 'Error', description: result.error || 'Failed to fetch evaluations.' });
+                    }
+                } catch (error) {
+                    console.error("Error loading evaluations:", error);
+                    toast({ variant: 'destructive', title: 'Error', description: 'Could not load evaluations.' });
+                } finally {
+                    setLoading(false);
+                }
+            };
+            fetchEvaluations();
+        }
+    }, [isOpen, interest, toast]);
+
+    return (
+        <Dialog open={isOpen} onOpenChange={onOpenChange}>
+            <DialogContent className="sm:max-w-xl">
+                <DialogHeader>
+                    <DialogTitle>Evaluations for {interest?.userName}</DialogTitle>
+                    <DialogDescription>
+                        View recommendations and comments submitted by evaluators.
+                    </DialogDescription>
+                </DialogHeader>
+                <div className="py-4 max-h-[60vh] overflow-y-auto pr-2 space-y-4">
+                    {loading ? (
+                        <div className="flex flex-col items-center justify-center py-8 space-y-2">
+                            <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                            <p className="text-sm text-muted-foreground">Loading evaluations...</p>
+                        </div>
+                    ) : evaluations.length > 0 ? (
+                        evaluations.map((evaluation) => (
+                            <div key={evaluation.evaluatorUid} className="p-4 border rounded-lg bg-card text-card-foreground shadow-sm">
+                                <div className="flex justify-between items-start">
+                                    <div>
+                                        <p className="font-semibold text-sm">{evaluation.evaluatorName}</p>
+                                        <p className="text-xs text-muted-foreground">
+                                            {evaluation.evaluationDate ? format(parseISO(evaluation.evaluationDate), 'PPP p') : 'N/A'}
+                                        </p>
+                                    </div>
+                                    <Badge variant={
+                                        evaluation.recommendation === 'Recommended' ? 'default' :
+                                        evaluation.recommendation === 'Not Recommended' ? 'destructive' : 'secondary'
+                                    } className="capitalize flex items-center gap-1 text-[11px] px-2 py-0.5">
+                                        {evaluation.recommendation === 'Recommended' && <ThumbsUp className="h-3 w-3" />}
+                                        {evaluation.recommendation === 'Not Recommended' && <ThumbsDown className="h-3 w-3" />}
+                                        {evaluation.recommendation === 'Revision is needed' && <History className="h-3 w-3" />}
+                                        {evaluation.recommendation}
+                                    </Badge>
+                                </div>
+                                <div className="text-sm mt-3 pt-3 border-t text-muted-foreground">
+                                    <span className="font-semibold text-foreground">Comments: </span>
+                                    {evaluation.comments || 'No comments provided.'}
+                                </div>
+                            </div>
+                        ))
+                    ) : (
+                        <div className="text-center py-8 text-muted-foreground">
+                            No evaluations submitted yet for this applicant.
+                        </div>
+                    )}
+                </div>
+                <DialogFooter>
+                    <DialogClose asChild>
+                        <Button variant="outline">Close</Button>
+                    </DialogClose>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
+    );
+}
 
 export function EmrManagementClient({ call, allUsers, currentUser, onActionComplete }: EmrManagementClientProps) {
     const { toast } = useToast();
@@ -566,6 +678,8 @@ export function EmrManagementClient({ call, allUsers, currentUser, onActionCompl
     const [interestToUpdate, setInterestToUpdate] = useState<EmrInterest | null>(null);
     const [statusToUpdate, setStatusToUpdate] = useState<EmrInterest['status'] | null>(null);
     const [isScheduleDialogOpen, setIsScheduleDialogOpen] = useState(false);
+    const [isRescheduleDialogOpen, setIsRescheduleDialogOpen] = useState(false);
+    const [interestForReschedule, setInterestForReschedule] = useState<EmrInterest | null>(null);
     const [isRegisterUserDialogOpen, setIsRegisterUserDialogOpen] = useState(false);
     const [isRemarksDialogOpen, setIsRemarksDialogOpen] = useState(false);
     const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
@@ -576,6 +690,14 @@ export function EmrManagementClient({ call, allUsers, currentUser, onActionCompl
     const [isAttendanceDialogOpen, setIsAttendanceDialogOpen] = useState(false);
     const [searchTerm, setSearchTerm] = useState('');
     const [isSendingReminders, setIsSendingReminders] = useState(false);
+    const [isViewEvaluationsDialogOpen, setIsViewEvaluationsDialogOpen] = useState(false);
+    const [interestForEvaluations, setInterestForEvaluations] = useState<EmrInterest | null>(null);
+
+    const handleOpenViewEvaluationsDialog = (interest: EmrInterest) => {
+        setInterestForEvaluations(interest);
+        setIsViewEvaluationsDialogOpen(true);
+    };
+
 
 
     const fetchInterests = useCallback(async (isLoadMore = false) => {
@@ -713,10 +835,12 @@ export function EmrManagementClient({ call, allUsers, currentUser, onActionCompl
                 'Interest ID': interest.interestId || 'N/A',
                 'PI Name': interest.userName,
                 'PI Email': interest.userEmail,
+                'PI Contact': interestedUser?.phoneNumber || 'N/A',
                 'PI Department': interestedUser?.department || interest.department,
                 'Co-PIs': interest.coPiNames?.join(', ') || 'None',
                 'Status': interest.status,
-                'Presentation URL': interest.pptUrl || 'Not Submitted'
+                'Presentation URL': interest.pptUrl || 'Not Submitted',
+                'Registered At': interest.registeredAt ? format(parseISO(interest.registeredAt), 'PPpp') : 'N/A'
             };
         });
 
@@ -893,6 +1017,7 @@ export function EmrManagementClient({ call, allUsers, currentUser, onActionCompl
                                     <TableHead className="hidden xl:table-cell">Co-PIs</TableHead>
                                     <TableHead className="hidden lg:table-cell">Evaluators</TableHead>
                                     <TableHead>Status</TableHead>
+                                    <TableHead className="hidden md:table-cell">Meeting Details</TableHead>
                                     <TableHead>Documents</TableHead>
                                     <TableHead className="text-right">Actions</TableHead>
                                 </TableRow>
@@ -900,14 +1025,21 @@ export function EmrManagementClient({ call, allUsers, currentUser, onActionCompl
                             <TableBody>
                                 {filteredInterests.length === 0 ? (
                                     <TableRow>
-                                        <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
+                                        <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
                                             {loadingInterests ? <Loader2 className="h-8 w-8 animate-spin mx-auto" /> : 'No registrations found.'}
                                         </TableCell>
                                     </TableRow>
                                 ) : (
                                     filteredInterests.map((interest) => (
                                         <TableRow key={interest.id}>
-                                            <TableCell className="font-medium hidden lg:table-cell">{interest.interestId || 'N/A'}</TableCell>
+                                            <TableCell className="font-medium hidden lg:table-cell">
+                                                <div className="flex flex-col gap-1">
+                                                    <span>{interest.interestId || 'N/A'}</span>
+                                                    <span className="text-[10px] text-muted-foreground font-normal">
+                                                        Reg. Time: {interest.registeredAt ? format(parseISO(interest.registeredAt), 'PPpp') : 'N/A'}
+                                                    </span>
+                                                </div>
+                                            </TableCell>
                                             <TableCell>
                                                 <div className="flex flex-col">
                                                     {(() => {
@@ -956,33 +1088,44 @@ export function EmrManagementClient({ call, allUsers, currentUser, onActionCompl
                                             <TableCell className="hidden lg:table-cell">
                                                 <div className="flex flex-col gap-1">
                                                     {interest.assignedEvaluators && interest.assignedEvaluators.length > 0 ? (
-                                                        interest.assignedEvaluators.map((uid, i) => {
-                                                            const evaluator = userMap.get(uid);
-                                                            const name = evaluator?.name || 'Unknown User';
-                                                            const hasEvaluated = interest.evaluatedBy?.includes(uid);
-                                                            const isAbsent = interest.absentEvaluators?.includes(uid);
-                                                            
-                                                            let variant: "default" | "outline" | "secondary" | "destructive" = "outline";
-                                                            let tooltip = "Pending Evaluation";
-                                                            
-                                                            if (hasEvaluated) {
-                                                                variant = "default";
-                                                                tooltip = "Evaluation Submitted";
-                                                            } else if (isAbsent) {
-                                                                variant = "destructive";
-                                                                tooltip = "Marked Absent";
-                                                            }
+                                                        <>
+                                                            {interest.assignedEvaluators.map((uid, i) => {
+                                                                const evaluator = userMap.get(uid);
+                                                                const name = evaluator?.name || 'Unknown User';
+                                                                const hasEvaluated = interest.evaluatedBy?.includes(uid);
+                                                                const isAbsent = interest.absentEvaluators?.includes(uid);
+                                                                
+                                                                let variant: "default" | "outline" | "secondary" | "destructive" = "outline";
+                                                                let tooltip = "Pending Evaluation";
+                                                                
+                                                                if (hasEvaluated) {
+                                                                    variant = "default";
+                                                                    tooltip = "Evaluation Submitted";
+                                                                } else if (isAbsent) {
+                                                                    variant = "destructive";
+                                                                    tooltip = "Marked Absent";
+                                                                }
 
-                                                            return (
-                                                                <div key={i} className="flex items-center" title={tooltip}>
-                                                                    <Badge variant={variant} className="w-fit text-[10px] truncate max-w-[120px]">
-                                                                        {name}
-                                                                    </Badge>
-                                                                    {hasEvaluated && <CheckCircle className="h-3 w-3 ml-1 text-green-600 flex-shrink-0" />}
-                                                                    {isAbsent && <XCircle className="h-3 w-3 ml-1 text-red-600 flex-shrink-0" />}
-                                                                </div>
-                                                            );
-                                                        })
+                                                                return (
+                                                                    <div key={i} className="flex items-center" title={tooltip}>
+                                                                        <Badge variant={variant} className="w-fit text-[10px] truncate max-w-[120px]">
+                                                                            {name}
+                                                                        </Badge>
+                                                                        {hasEvaluated && <CheckCircle className="h-3 w-3 ml-1 text-green-600 flex-shrink-0" />}
+                                                                        {isAbsent && <XCircle className="h-3 w-3 ml-1 text-red-600 flex-shrink-0" />}
+                                                                    </div>
+                                                                );
+                                                            })}
+                                                            <Button
+                                                                variant="ghost"
+                                                                size="sm"
+                                                                className="h-6 px-1.5 mt-1.5 text-primary hover:text-primary hover:bg-primary/10 text-[10px] flex items-center gap-1 w-fit"
+                                                                onClick={() => handleOpenViewEvaluationsDialog(interest)}
+                                                            >
+                                                                <Eye className="h-3 w-3" />
+                                                                View Evaluations
+                                                            </Button>
+                                                        </>
                                                     ) : (
                                                         <span className="text-xs text-muted-foreground">None</span>
                                                     )}
@@ -995,6 +1138,21 @@ export function EmrManagementClient({ call, allUsers, currentUser, onActionCompl
                                                 } className="text-[10px] px-1 h-5">
                                                     {interest.status}
                                                 </Badge>
+                                            </TableCell>
+                                            <TableCell className="hidden md:table-cell">
+                                                {interest.meetingSlot ? (
+                                                    <div className="flex flex-col text-xs space-y-0.5">
+                                                        <span className="font-semibold text-foreground">
+                                                            {format(parseISO(interest.meetingSlot.date), 'PP')}
+                                                        </span>
+                                                        <span className="text-muted-foreground">{interest.meetingSlot.time}</span>
+                                                        <span className="text-muted-foreground whitespace-normal break-words max-w-[180px]" title={call.meetingDetails?.venue || ''}>
+                                                            {call.meetingDetails?.venue || 'N/A'}
+                                                        </span>
+                                                    </div>
+                                                ) : (
+                                                    <span className="text-xs text-muted-foreground">Not Scheduled</span>
+                                                )}
                                             </TableCell>
                                             <TableCell>
                                                 <div className="flex flex-col gap-1.5 min-w-[80px]">
@@ -1043,12 +1201,22 @@ export function EmrManagementClient({ call, allUsers, currentUser, onActionCompl
                                                 </div>
                                             </TableCell>
                                             <TableCell className="text-right">
-                                                <DropdownMenu>
-                                                    <DropdownMenuTrigger asChild>
-                                                        <Button variant="ghost" className="h-8 w-8 p-0">
-                                                            <MoreHorizontal className="h-4 w-4" />
-                                                        </Button>
-                                                    </DropdownMenuTrigger>
+                                                <div className="flex items-center justify-end gap-1">
+                                                    <Button
+                                                        variant="ghost"
+                                                        size="sm"
+                                                        className="h-8 w-8 p-0 text-primary hover:text-primary hover:bg-primary/10"
+                                                        onClick={() => handleOpenViewEvaluationsDialog(interest)}
+                                                        title="View Evaluations"
+                                                    >
+                                                        <Eye className="h-4 w-4" />
+                                                    </Button>
+                                                    <DropdownMenu>
+                                                        <DropdownMenuTrigger asChild>
+                                                            <Button variant="ghost" className="h-8 w-8 p-0">
+                                                                <MoreHorizontal className="h-4 w-4" />
+                                                            </Button>
+                                                        </DropdownMenuTrigger>
                                                     <DropdownMenuContent align="end">
                                                         <DropdownMenuLabel>Manage Registration</DropdownMenuLabel>
                                                         <DropdownMenuItem onClick={() => handleOpenBulkEditDialog(interest)}>
@@ -1056,45 +1224,53 @@ export function EmrManagementClient({ call, allUsers, currentUser, onActionCompl
                                                             Edit Details
                                                         </DropdownMenuItem>
 
-                                                        <DropdownMenuSeparator />
-
-                                                        <DropdownMenuSub>
-                                                            <DropdownMenuSubTrigger>
-                                                                <MessageSquare className="mr-2 h-4 w-4" />
-                                                                Update Status
-                                                            </DropdownMenuSubTrigger>
-                                                            <DropdownMenuSubContent>
-                                                                <DropdownMenuItem onClick={() => handleOpenRemarksDialog(interest, 'Registered')}>
-                                                                    Interest Registered
-                                                                </DropdownMenuItem>
-                                                                <DropdownMenuItem onClick={() => handleOpenRemarksDialog(interest, 'Evaluation Done')}>
-                                                                    Evaluated
-                                                                </DropdownMenuItem>
-                                                                <DropdownMenuItem onClick={() => handleOpenRemarksDialog(interest, 'Endorsement Submitted')}>
-                                                                    Endorsement Pending
-                                                                </DropdownMenuItem>
-                                                                <DropdownMenuItem onClick={() => handleOpenSignDialog(interest)}>
-                                                                    Sign Endorsement
-                                                                </DropdownMenuItem>
-                                                                <DropdownMenuItem onClick={() => handleOpenRemarksDialog(interest, 'PPT Submitted')}>
-                                                                    Proposal Submitted
-                                                                </DropdownMenuItem>
-                                                                <DropdownMenuItem onClick={() => handleOpenRemarksDialog(interest, 'Sanctioned')}>
-                                                                    Sanctioned
-                                                                </DropdownMenuItem>
-                                                                <DropdownMenuItem onClick={() => handleOpenRemarksDialog(interest, 'Recommended')}>
-                                                                    Recommended
-                                                                </DropdownMenuItem>
-                                                                <DropdownMenuItem onClick={() => handleOpenRemarksDialog(interest, 'Revision Submitted')}>
-                                                                    Revision Submitted
-                                                                </DropdownMenuItem>
-                                                                <DropdownMenuItem onClick={() => handleOpenRemarksDialog(interest, 'Not Recommended')}>
-                                                                    Rejected
-                                                                </DropdownMenuItem>
-                                                            </DropdownMenuSubContent>
-                                                        </DropdownMenuSub>
+                                                        <DropdownMenuItem onClick={() => handleOpenViewEvaluationsDialog(interest)}>
+                                                            <Eye className="mr-2 h-4 w-4" />
+                                                            View Evaluations
+                                                        </DropdownMenuItem>
 
                                                         <DropdownMenuSeparator />
+
+                                                        {currentUser?.role === 'Super-admin' && (
+                                                            <>
+                                                                <DropdownMenuSub>
+                                                                    <DropdownMenuSubTrigger>
+                                                                        <MessageSquare className="mr-2 h-4 w-4" />
+                                                                        Update Status
+                                                                    </DropdownMenuSubTrigger>
+                                                                    <DropdownMenuSubContent>
+                                                                        <DropdownMenuItem onClick={() => handleOpenRemarksDialog(interest, 'Registered')}>
+                                                                            Interest Registered
+                                                                        </DropdownMenuItem>
+                                                                        <DropdownMenuItem onClick={() => handleOpenRemarksDialog(interest, 'Evaluation Done')}>
+                                                                            Evaluated
+                                                                        </DropdownMenuItem>
+                                                                        <DropdownMenuItem onClick={() => handleOpenRemarksDialog(interest, 'Endorsement Submitted')}>
+                                                                            Endorsement Pending
+                                                                        </DropdownMenuItem>
+                                                                        <DropdownMenuItem onClick={() => handleOpenSignDialog(interest)}>
+                                                                            Sign Endorsement
+                                                                        </DropdownMenuItem>
+                                                                        <DropdownMenuItem onClick={() => handleOpenRemarksDialog(interest, 'PPT Submitted')}>
+                                                                            Proposal Submitted
+                                                                        </DropdownMenuItem>
+                                                                        <DropdownMenuItem onClick={() => handleOpenRemarksDialog(interest, 'Sanctioned')}>
+                                                                            Sanctioned
+                                                                        </DropdownMenuItem>
+                                                                        <DropdownMenuItem onClick={() => handleOpenRemarksDialog(interest, 'Recommended')}>
+                                                                            Recommended
+                                                                        </DropdownMenuItem>
+                                                                        <DropdownMenuItem onClick={() => handleOpenRemarksDialog(interest, 'Revision Submitted')}>
+                                                                            Revision Submitted
+                                                                        </DropdownMenuItem>
+                                                                        <DropdownMenuItem onClick={() => handleOpenRemarksDialog(interest, 'Not Recommended')}>
+                                                                            Rejected
+                                                                        </DropdownMenuItem>
+                                                                    </DropdownMenuSubContent>
+                                                                </DropdownMenuSub>
+                                                                <DropdownMenuSeparator />
+                                                            </>
+                                                        )}
 
                                                         <DropdownMenuItem onClick={() => handleOpenPptUpload(interest)}>
                                                             <Upload className="mr-2 h-4 w-4" />
@@ -1105,6 +1281,39 @@ export function EmrManagementClient({ call, allUsers, currentUser, onActionCompl
                                                             <FileUp className="mr-2 h-4 w-4" />
                                                             Upload Proposal
                                                         </DropdownMenuItem>
+
+                                                        {interest.meetingSlot && (
+                                                            <>
+                                                                <DropdownMenuSeparator />
+                                                                 <DropdownMenuItem
+                                                                    onClick={() => {
+                                                                        setInterestForReschedule(interest);
+                                                                        setIsRescheduleDialogOpen(true);
+                                                                    }}
+                                                                >
+                                                                    <CalendarClock className="mr-2 h-4 w-4" />
+                                                                    Reschedule Meeting
+                                                                </DropdownMenuItem>
+                                                                <DropdownMenuItem
+                                                                    className="text-destructive focus:text-destructive"
+                                                                    onClick={async () => {
+                                                                        if (confirm(`Are you sure you want to mark ${interest.userName} as absent from the meeting?`)) {
+                                                                            const result = await markEmrAttendance(call.id, [interest.id], []);
+                                                                            if (result.success) {
+                                                                                toast({ title: 'Success', description: `${interest.userName} has been marked absent.` });
+                                                                                onActionComplete();
+                                                                                fetchInterests();
+                                                                            } else {
+                                                                                toast({ variant: 'destructive', title: 'Error', description: result.error });
+                                                                            }
+                                                                        }
+                                                                    }}
+                                                                >
+                                                                    <UserX className="mr-2 h-4 w-4" />
+                                                                    Mark Absent
+                                                                </DropdownMenuItem>
+                                                            </>
+                                                        )}
 
                                                         <DropdownMenuSeparator />
 
@@ -1117,6 +1326,7 @@ export function EmrManagementClient({ call, allUsers, currentUser, onActionCompl
                                                         </DropdownMenuItem>
                                                     </DropdownMenuContent>
                                                 </DropdownMenu>
+                                                </div>
                                             </TableCell>
                                         </TableRow>
                                     ))
@@ -1146,6 +1356,21 @@ export function EmrManagementClient({ call, allUsers, currentUser, onActionCompl
                         onActionComplete();
                     }}
                 />
+
+                {interestForReschedule && (
+                    <RescheduleMeetingDialog
+                        isOpen={isRescheduleDialogOpen}
+                        onOpenChange={setIsRescheduleDialogOpen}
+                        call={call}
+                        interest={interestForReschedule}
+                        allUsers={allUsers}
+                        currentUser={currentUser}
+                        onActionComplete={() => {
+                            fetchInterests();
+                            onActionComplete();
+                        }}
+                    />
+                )}
 
                 <RegisterUserDialog
                     call={call}
@@ -1302,6 +1527,12 @@ export function EmrManagementClient({ call, allUsers, currentUser, onActionCompl
                         </AlertDialogFooter>
                     </AlertDialogContent>
                 </AlertDialog>
+
+                <ViewEvaluationsDialog
+                    interest={interestForEvaluations}
+                    isOpen={isViewEvaluationsDialogOpen}
+                    onOpenChange={setIsViewEvaluationsDialogOpen}
+                />
             </Card>
         </>
     );

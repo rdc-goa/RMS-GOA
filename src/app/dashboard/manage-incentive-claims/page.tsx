@@ -347,7 +347,7 @@ export default function ManageIncentiveClaimsPage() {
 
     const result = await markPaymentsCompleted(payableClaimIds);
     if (result.success) {
-      toast({ title: 'Success', description: `${result.processedCount || 0} claim(s) marked as payment completed.${(result.skippedCount || 0) > 0 ? ` ${result.skippedCount} claim(s) skipped.` : ''}` });
+      toast({ title: 'Success', description: `${result.processedCount || 0} claim(s) marked as payment completed.${((result as any).skippedCount || 0) > 0 ? ` ${(result as any).skippedCount} claim(s) skipped.` : ''}` });
       setSelectedClaims([]);
       fetchClaimsAndUsers();
     } else {
@@ -364,7 +364,7 @@ export default function ManageIncentiveClaimsPage() {
 
     const result = await submitToAccounts(payableClaimIds);
     if (result.success) {
-      toast({ title: 'Success', description: `${result.processedCount || 0} claim(s) submitted to accounts.${(result.skippedCount || 0) > 0 ? ` ${result.skippedCount} claim(s) skipped.` : ''}` });
+      toast({ title: 'Success', description: `${result.processedCount || 0} claim(s) submitted to accounts.${((result as any).skippedCount || 0) > 0 ? ` ${(result as any).skippedCount} claim(s) skipped.` : ''}` });
       setSelectedClaims([]);
       fetchClaimsAndUsers();
     } else {
@@ -1083,7 +1083,7 @@ function GeneratePaymentSheetDialog({ isOpen, onOpenChange, claims, allUsers, cu
         a.click();
         a.remove();
         window.URL.revokeObjectURL(url);
-        toast({ title: "Export Successful", description: `Payment sheet has been generated.${(result.skippedCount || 0) > 0 ? ` ${result.skippedCount} claim(s) were skipped as non-disbursement eligible.` : ''}` });
+        toast({ title: "Export Successful", description: `Payment sheet has been generated.${((result as any).skippedCount || 0) > 0 ? ` ${(result as any).skippedCount} claim(s) were skipped as non-disbursement eligible.` : ''}` });
         onOpenChange(false);
       } else {
         throw new Error(result.error || "Failed to generate sheet.");

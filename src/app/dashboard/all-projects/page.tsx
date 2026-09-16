@@ -1,21 +1,20 @@
 
-
 'use client';
 
 import { useState, useEffect, useMemo, useCallback, Suspense } from 'react';
 import { useRouter, usePathname, useSearchParams } from 'next/navigation';
 import ExcelJS from 'exceljs';
-import { format, isAfter, isBefore, startOfToday, parseISO, differenceInMonths, addDays } from 'date-fns';
+import { format, isAfter, isBefore, startOfToday, parseISO, differenceInMonths, addDays, startOfMonth, endOfMonth, subMonths } from 'date-fns';
 import type { DateRange } from 'react-day-picker';
 import { PageHeader } from '@/components/page-header';
 import { ProjectList } from '@/components/projects/project-list';
 import { db } from '@/lib/config';
 import { collection, getDocs, query, where, orderBy, or } from 'firebase/firestore';
-import type { Project, User, EmrInterest, FundingCall, CoPiDetails } from '@/types';
+import type { Project, User, EmrInterest, FundingCall, SpecialCfp, CfpSubmission, CoPiDetails } from '@/types';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Download, Calendar as CalendarIcon, Eye, Upload, Loader2, Edit, Search, ChevronDown, Plus, X } from 'lucide-react';
+import { Download, Calendar as CalendarIcon, Eye, Upload, Loader2, Edit, Search, ChevronDown, Plus, X, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -41,42 +40,99 @@ import { reportSystemError } from '@/lib/error-reporting';
 import { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 
 
-const STATUSES: Project['status'][] = ['Submitted', 'Under Review', 'Revision Submitted', 'Recommended', 'Not Recommended', 'In Progress', 'Completed', 'Pending Completion Approval', 'Sanctioned'];
+function parseAnyDate(rawDate: any): Date | null {
+    if (!rawDate) return null;
+    if (rawDate instanceof Date) return isNaN(rawDate.getTime()) ? null : rawDate;
+    if (typeof rawDate === 'object' && 'seconds' in rawDate) {
+        return new Date(rawDate.seconds * 1000);
+    }
+    if (typeof rawDate === 'number') {
+        const d = new Date(rawDate);
+        return isNaN(d.getTime()) ? null : d;
+    }
+    if (typeof rawDate === 'string') {
+        const trimmed = rawDate.trim();
+        if (!trimmed) return null;
+
+        try {
+            const isoParsed = parseISO(trimmed);
+            if (!isNaN(isoParsed.getTime())) return isoParsed;
+        } catch (e) {}
+
+        const parsed = new Date(trimmed);
+        return isNaN(parsed.getTime()) ? null : parsed;
+    }
+    return null;
+}
+
+const STATUSES: Project['status'][] = ['Submitted', 'Under Review', 'Revision Needed', 'Revision Submitted', 'Recommended', 'Not Recommended', 'In Progress', 'Completed', 'Pending Completion Approval', 'Sanctioned'];
 const CAMPUSES = ['Goa'];
 
 const IMR_EXPORT_COLUMNS = [
     { id: 'title', label: 'Title of the Project' },
     { id: 'type', label: 'Domain of the Project' },
+    { id: 'associatedCallTitle', label: 'Associated Call Title' },
+    { id: 'callPostedMonth', label: 'Call Posted Month' },
+    { id: 'callPostedByAdmin', label: 'Call Posted By Admin' },
+    { id: 'callApplicantsCount', label: 'Total Applications Received for Call' },
     { id: 'sdgRelated', label: 'Is project related to Sustainable Development Goals?' },
     { id: 'sdgGoals', label: 'Select Sustainable Development Goal, if applicable' },
     { id: 'interdisciplinary', label: 'Is project related to Interdisciplinary / Multidisciplinary / Transdisciplinary?' },
     { id: 'interdisciplinaryType', label: 'Select Interdisciplinary / Multidisciplinary / Transdisciplinary, if applicable' },
     { id: 'pi', label: 'Name of the Principal Investigator working in the project receiving seed money' },
+    { id: 'piEmail', label: 'Email of Principal Investigator' },
+    { id: 'piContact', label: 'Contact of Principal Investigator' },
     { id: 'misId', label: 'MIS ID of Principal Investigator' },
     { id: 'institute', label: 'Institute of Principal Investigator' },
     { id: 'faculty', label: 'Faculty of Principal Investigator' },
     { id: 'teamMembers', label: 'Name(s) of the teacher(s) / Student(s) working in the project receiving seed money other than Principal Investigator' },
     { id: 'submissionDate', label: 'Date of Application for Seed Money to RDC' },
     { id: 'sanctionDate', label: 'Date of Receiving approval of seed money grant from RDC' },
+    { id: 'sanctionNumber', label: 'Sanction Order Number' },
     { id: 'projectDuration', label: 'Duration of the project in Months' },
     { id: 'seedMoney', label: 'The amount of seed money (INR in lakhs)' },
     { id: 'seedMoneyMonth', label: 'Month of Receiving Seed Money Grant' },
     { id: 'seedMoneyYear', label: 'Year of Receiving Seed Money Grant' },
+    { id: 'currentPhase', label: 'Current Phase of the Project' },
+    { id: 'phaseBreakdown', label: 'Phase-wise Sanctioned Amount Breakdown' },
+    { id: 'phase1Amount', label: 'Phase 1 Sanctioned Amount (INR)' },
+    { id: 'phase2Amount', label: 'Phase 2 Sanctioned Amount (INR)' },
+    { id: 'phase3Amount', label: 'Phase 3 Sanctioned Amount (INR)' },
+    { id: 'phase4Amount', label: 'Phase 4 Sanctioned Amount (INR)' },
+    { id: 'phase5Amount', label: 'Phase 5 Sanctioned Amount (INR)' },
+    { id: 'presentationCount', label: 'Number of Presentations Done' },
+    { id: 'presentationDetails', label: 'Presentation Details / History' },
+    { id: 'meetingsDoneForSpecifiedCalls', label: 'Number of Meetings Done for Specified Calls' },
     { id: 'remarks', label: 'Remarks' },
 ];
 
 const EMR_EXPORT_COLUMNS = [
-    { id: 'callTitle', label: 'Project Title' },
+    { id: 'callTitle', label: 'Project Title / Call Title' },
     { id: 'agency', label: 'Funding Agency' },
-    { id: 'piName', label: 'PI Name' },
-    { id: 'piEmail', label: 'PI Email' },
-    { id: 'piInstitute', label: 'PI Institute' },
-    { id: 'piDepartment', label: 'PI Department' },
+    { id: 'associatedCallTitle', label: 'Associated Call Title' },
+    { id: 'callPostedMonth', label: 'Call Posted Month' },
+    { id: 'callPostedByAdmin', label: 'Call Posted By Admin' },
+    { id: 'callApplicantsCount', label: 'Total Applications Received for Call' },
+    { id: 'piName', label: 'Name of Principal Investigator' },
+    { id: 'piEmail', label: 'Email of Principal Investigator' },
+    { id: 'piContact', label: 'Contact of Principal Investigator' },
+    { id: 'misId', label: 'MIS ID of Principal Investigator' },
+    { id: 'piInstitute', label: 'Institute of Principal Investigator' },
+    { id: 'piDepartment', label: 'Faculty / Department of Principal Investigator' },
     { id: 'campus', label: 'Campus' },
-    { id: 'coPiNames', label: 'Co-PI Names' },
-    { id: 'status', label: 'Status' },
+    { id: 'coPiNames', label: 'Co-PI Names / Team Members' },
+    { id: 'registrationDate', label: 'Date of Application / Registration' },
     { id: 'sanctionDate', label: 'Sanction Date' },
-    { id: 'durationAmount', label: 'Duration & Amount' },
+    { id: 'projectDuration', label: 'Duration of Project (Months)' },
+    { id: 'grantAmount', label: 'Sanctioned Amount (INR in lakhs)' },
+    { id: 'durationAmount', label: 'Duration & Amount Summary' },
+    { id: 'sdgRelated', label: 'Is project related to Sustainable Development Goals?' },
+    { id: 'sdgGoals', label: 'Sustainable Development Goals, if applicable' },
+    { id: 'interdisciplinary', label: 'Is project Interdisciplinary / Multidisciplinary?' },
+    { id: 'presentationCount', label: 'Number of Presentations Done' },
+    { id: 'presentationDetails', label: 'Presentation Details / History' },
+    { id: 'meetingsDoneForSpecifiedCalls', label: 'Number of Meetings Done for Specified Calls' },
+    { id: 'status', label: 'Status / Remarks' },
 ];
 
 const addEmrSchema = z.object({
@@ -464,6 +520,32 @@ function AllProjectsContent() {
     const [selectedExportColumns, setSelectedExportColumns] = useState<string[]>(IMR_EXPORT_COLUMNS.map(c => c.id));
     const [projectToEdit, setProjectToEdit] = useState<EmrInterest | null>(null);
 
+    const [emrSortConfig, setEmrSortConfig] = useState<{
+        key: 'callTitle' | 'userName' | 'agency' | 'sanctionDate' | 'amount';
+        direction: 'asc' | 'desc';
+    } | null>(null);
+
+    const handleEmrSort = (key: 'callTitle' | 'userName' | 'agency' | 'sanctionDate' | 'amount') => {
+        setEmrSortConfig(prev => {
+            if (!prev || prev.key !== key) {
+                return { key, direction: 'asc' };
+            }
+            if (prev.direction === 'asc') {
+                return { key, direction: 'desc' };
+            }
+            return null; // Reset sort
+        });
+    };
+
+    const getSortIcon = (key: 'callTitle' | 'userName' | 'agency' | 'sanctionDate' | 'amount') => {
+        if (!emrSortConfig || emrSortConfig.key !== key) {
+            return <ArrowUpDown className="h-4 w-4 ml-1 text-muted-foreground/50" />;
+        }
+        return emrSortConfig.direction === 'asc' 
+            ? <ArrowUp className="h-4 w-4 ml-1 text-primary" /> 
+            : <ArrowDown className="h-4 w-4 ml-1 text-primary" />;
+    };
+
     const updateUrlParams = useCallback((newValues: { q?: string; status?: string; faculty?: string, campus?: string, tab?: string }) => {
         const params = new URLSearchParams(searchParams.toString());
         Object.entries(newValues).forEach(([key, value]) => {
@@ -521,8 +603,34 @@ function AllProjectsContent() {
                 getDocs(emrQuery)
             ]);
 
-            setAllImrProjects(imrSnapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as Project)));
-            setAllEmrProjects(emrSnapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as EmrInterest)));
+            let imrProjects = imrSnapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as Project));
+            let emrProjects = emrSnapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as EmrInterest));
+
+            const isAuthority = 
+              (user.authorityFaculties && user.authorityFaculties.length > 0) ||
+              (user.authorityInstitutes && user.authorityInstitutes.length > 0) ||
+              (user.authorityDepartments && user.authorityDepartments.length > 0);
+
+            if (isAuthority && !isSuperAdmin && !isAdmin && !isIqac) {
+                imrProjects = imrProjects.filter(p => {
+                    const isOwn = p.pi_uid === user.uid || p.pi_email?.trim().toLowerCase() === user.email?.trim().toLowerCase();
+                    const inFaculty = p.faculty && user.authorityFaculties?.includes(p.faculty);
+                    const inInstitute = p.institute && user.authorityInstitutes?.includes(p.institute);
+                    const inDepartment = p.departmentName && user.authorityDepartments?.includes(p.departmentName);
+                    return isOwn || inFaculty || inInstitute || inDepartment;
+                });
+
+                emrProjects = emrProjects.filter(p => {
+                    const isOwn = p.userEmail?.trim().toLowerCase() === user.email?.trim().toLowerCase();
+                    const inFaculty = p.faculty && user.authorityFaculties?.includes(p.faculty);
+                    const inInstitute = p.institute && user.authorityInstitutes?.includes(p.institute);
+                    const inDepartment = p.department && user.authorityDepartments?.includes(p.department);
+                    return isOwn || inFaculty || inInstitute || inDepartment;
+                });
+            }
+
+            setAllImrProjects(imrProjects);
+            setAllEmrProjects(emrProjects);
 
         } catch (error) {
             console.error("Error fetching projects: ", error);
@@ -557,6 +665,7 @@ function AllProjectsContent() {
 
     useEffect(() => {
         setSelectedExportColumns(activeTab === 'imr' ? IMR_EXPORT_COLUMNS.map(c => c.id) : EMR_EXPORT_COLUMNS.map(c => c.id));
+        setExportDateRange(undefined);
         updateUrlParams({ tab: activeTab });
         setCurrentPageImr(1);
         setCurrentPageEmr(1);
@@ -583,12 +692,13 @@ function AllProjectsContent() {
         return allImrProjects.filter(project => {
             if (statusFilter.length > 0) {
                 const isMatch = statusFilter.some(sf => {
-                    if (sf === 'Recommended') return ['Recommended', 'Sanctioned', 'SANCTIONED'].includes(project.status);
-                    return project.status === sf;
+                    const currentStatus = (project.status || '').trim();
+                    if (sf === 'Recommended') return ['Recommended', 'Sanctioned', 'SANCTIONED'].some(s => s.toLowerCase() === currentStatus.toLowerCase());
+                    return currentStatus.toLowerCase() === sf.toLowerCase();
                 });
                 if (!isMatch) return false;
             }
-            if (campusFilter.length > 0 && !campusFilter.includes(project.campus)) return false;
+            if (campusFilter.length > 0 && (!project.campus || !campusFilter.includes(project.campus))) return false;
             if (facultyFilter.length > 0 && !facultyFilter.includes(project.faculty)) return false;
             if (dateRange?.from) {
                 const subDate = parseISO(project.submissionDate);
@@ -623,16 +733,17 @@ function AllProjectsContent() {
     );
 
     const filteredEmrProjects = useMemo(() => {
-        return allEmrProjects.filter(project => {
+        const filtered = allEmrProjects.filter(project => {
             if (campusFilter.length > 0 && project.campus && !campusFilter.includes(project.campus)) return false;
             if (facultyFilter.length > 0 && project.faculty && !facultyFilter.includes(project.faculty)) return false;
             if (dateRange?.from) {
-                const pDate = project.sanctionDate ? parseISO(project.sanctionDate) : (project.timestamp ? new Date(project.timestamp) : null);
-                if (!pDate || isBefore(pDate, dateRange.from)) return false;
-            }
-            if (dateRange?.to) {
-                const pDate = project.sanctionDate ? parseISO(project.sanctionDate) : (project.timestamp ? new Date(project.timestamp) : null);
-                if (!pDate || isAfter(pDate, dateRange.to)) return false;
+                const pDate = parseAnyDate(project.sanctionDate || project.registeredAt || project.proposalSubmissionDate);
+                if (pDate) {
+                    const targetStr = format(pDate, 'yyyy-MM-dd');
+                    const fromStr = format(dateRange.from, 'yyyy-MM-dd');
+                    const toStr = dateRange.to ? format(dateRange.to, 'yyyy-MM-dd') : fromStr;
+                    if (targetStr < fromStr || targetStr > toStr) return false;
+                }
             }
 
             if (!searchTerm) return true;
@@ -640,8 +751,58 @@ function AllProjectsContent() {
             const lowerCaseSearch = searchTerm.toLowerCase();
             const title = project.callTitle || '';
             return title.toLowerCase().includes(lowerCaseSearch) || project.userName.toLowerCase().includes(lowerCaseSearch) || (project.agency || '').toLowerCase().includes(lowerCaseSearch);
-        })
-    }, [allEmrProjects, searchTerm, facultyFilter, campusFilter, dateRange]);
+        });
+
+        if (!emrSortConfig) return filtered;
+
+        const parseAmount = (durationAmountStr: string | undefined) => {
+            if (!durationAmountStr) return 0;
+            const match = durationAmountStr.match(/₹([\d,]+)/);
+            if (match) {
+                return parseFloat(match[1].replace(/,/g, ''));
+            }
+            const numbers = durationAmountStr.replace(/,/g, '').match(/\d+/);
+            return numbers ? parseFloat(numbers[0]) : 0;
+        };
+
+        return [...filtered].sort((a, b) => {
+            let valA: any = '';
+            let valB: any = '';
+
+            switch (emrSortConfig.key) {
+                case 'callTitle':
+                    valA = a.callTitle || '';
+                    valB = b.callTitle || '';
+                    break;
+                case 'userName':
+                    valA = a.userName || '';
+                    valB = b.userName || '';
+                    break;
+                case 'agency':
+                    valA = a.agency || '';
+                    valB = b.agency || '';
+                    break;
+                case 'sanctionDate':
+                    valA = a.sanctionDate ? new Date(a.sanctionDate).getTime() : 0;
+                    valB = b.sanctionDate ? new Date(b.sanctionDate).getTime() : 0;
+                    break;
+                case 'amount':
+                    valA = parseAmount(a.durationAmount);
+                    valB = parseAmount(b.durationAmount);
+                    break;
+                default:
+                    return 0;
+            }
+
+            if (valA < valB) {
+                return emrSortConfig.direction === 'asc' ? -1 : 1;
+            }
+            if (valA > valB) {
+                return emrSortConfig.direction === 'asc' ? 1 : -1;
+            }
+            return 0;
+        });
+    }, [allEmrProjects, searchTerm, facultyFilter, campusFilter, dateRange, emrSortConfig]);
 
     const totalPagesEmr = Math.ceil(filteredEmrProjects.length / itemsPerPage);
 
@@ -674,31 +835,139 @@ function AllProjectsContent() {
     const exportImrProjects = async () => {
         let projectsToExport = [...filteredImrProjects];
         if (exportDateRange?.from) {
-            projectsToExport = projectsToExport.filter(p => isAfter(parseISO(p.submissionDate), exportDateRange.from!) && (!exportDateRange.to || isBefore(parseISO(p.submissionDate), exportDateRange.to!)));
+            const fromStr = format(exportDateRange.from, 'yyyy-MM-dd');
+            const toStr = exportDateRange.to ? format(exportDateRange.to, 'yyyy-MM-dd') : null;
+            projectsToExport = projectsToExport.filter(p => {
+                const dateStr = p.submissionDate || p.sanctionDate || p.seedMoneyReceivedDate;
+                const pDate = parseAnyDate(dateStr);
+                if (!pDate) return true;
+                const targetStr = format(pDate, 'yyyy-MM-dd');
+                return toStr ? (targetStr >= fromStr && targetStr <= toStr) : (targetStr >= fromStr);
+            });
         }
         if (projectsToExport.length === 0) {
-            toast({ variant: 'destructive', title: "No Data", description: "No IMR projects to export with selected filters." }); return;
+            toast({ title: "No Data Found", description: "No IMR projects match the selected date range or filters." }); return;
         }
+
+        // Fetch calls and applications data to enrich export with Admin Calls & Applicant Counts
+        let fundingCallsList: FundingCall[] = [];
+        let specialCfpsList: SpecialCfp[] = [];
+        let emrInterestsList: EmrInterest[] = [];
+        let cfpSubmissionsList: CfpSubmission[] = [];
+
+        try {
+            const [fundingSnap, specialSnap, interestSnap, cfpSubSnap] = await Promise.all([
+                getDocs(collection(db, 'fundingCalls')),
+                getDocs(collection(db, 'specialCfps')),
+                getDocs(collection(db, 'emrInterests')),
+                getDocs(collection(db, 'cfpSubmissions'))
+            ]);
+            fundingCallsList = fundingSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as FundingCall));
+            specialCfpsList = specialSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as SpecialCfp));
+            emrInterestsList = interestSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as EmrInterest));
+            cfpSubmissionsList = cfpSubSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as CfpSubmission));
+        } catch (e) {
+            console.error("Error fetching call data for export:", e);
+        }
+
         const usersMap = new Map(users.map(u => [u.uid, u]));
+
+        // Helper map to find calls and calculate applications count
+        const callDetailsMap = new Map<string, {
+            title: string;
+            postedDate: string;
+            postedMonth: string;
+            postedBy: string;
+            applicantsCount: number;
+            applicantNames: string[];
+            category: string;
+            departmentOrAgency: string;
+            deadline: string;
+            status: string;
+            identifier: string;
+            rawDate: Date | null;
+        }>();
+
+        // Process Funding Calls
+        fundingCallsList.forEach(call => {
+            const interests = emrInterestsList.filter(i => i.callId === call.id || (i.callTitle && i.callTitle.toLowerCase() === call.title.toLowerCase()));
+            const linkedImr = allImrProjects.filter(p => p.associatedCallId === call.id || (p.associatedCallTitle && p.associatedCallTitle.toLowerCase() === call.title.toLowerCase()));
+            
+            const applicantNamesSet = new Set<string>();
+            interests.forEach(i => applicantNamesSet.add(i.userName || i.userEmail));
+            linkedImr.forEach(p => applicantNamesSet.add(p.pi));
+            
+            const postedDateObj = parseAnyDate(call.createdAt || (call as any).postedDate);
+            const postedDateFormatted = postedDateObj ? format(postedDateObj, 'dd-MMM-yyyy') : 'NA';
+            const postedMonthFormatted = postedDateObj ? format(postedDateObj, 'MMMM yyyy') : 'NA';
+
+            const creatorUser = usersMap.get(call.createdBy);
+            const postedByName = creatorUser ? `${creatorUser.name} (${creatorUser.email})` : (call.createdBy || 'Admin');
+
+            const info = {
+                title: call.title,
+                postedDate: postedDateFormatted,
+                postedMonth: postedMonthFormatted,
+                postedBy: postedByName,
+                applicantsCount: applicantNamesSet.size || (interests.length + linkedImr.length),
+                applicantNames: Array.from(applicantNamesSet),
+                category: `Funding Call (${call.callType || 'General'})`,
+                departmentOrAgency: call.agency || 'RDC',
+                deadline: call.applyDeadline ? format(parseISO(call.applyDeadline), 'dd-MMM-yyyy') : 'NA',
+                status: call.status || 'Open',
+                identifier: call.callIdentifier || call.id,
+                rawDate: postedDateObj
+            };
+
+            callDetailsMap.set(call.id, info);
+            callDetailsMap.set(call.title.toLowerCase(), info);
+        });
+
+        // Process Special CFPs
+        specialCfpsList.forEach(call => {
+            const subs = cfpSubmissionsList.filter(s => s.cfpId === call.id || (s.cfpTitle && s.cfpTitle.toLowerCase() === call.title.toLowerCase()));
+            const applicantNamesSet = new Set<string>();
+            subs.forEach(s => applicantNamesSet.add(s.piName));
+
+            const postedDateObj = parseAnyDate(call.createdAt);
+            const postedDateFormatted = postedDateObj ? format(postedDateObj, 'dd-MMM-yyyy') : 'NA';
+            const postedMonthFormatted = postedDateObj ? format(postedDateObj, 'MMMM yyyy') : 'NA';
+
+            const creatorUser = usersMap.get(call.createdBy);
+            const postedByName = call.announcedBy || (creatorUser ? `${creatorUser.name} (${creatorUser.email})` : 'Admin');
+
+            const info = {
+                title: call.title,
+                postedDate: postedDateFormatted,
+                postedMonth: postedMonthFormatted,
+                postedBy: postedByName,
+                applicantsCount: subs.length,
+                applicantNames: Array.from(applicantNamesSet),
+                category: 'Special Call For Proposals (CFP)',
+                departmentOrAgency: call.department || 'RDC',
+                deadline: call.applyDeadline ? format(parseISO(call.applyDeadline), 'dd-MMM-yyyy') : 'NA',
+                status: call.status || 'Open',
+                identifier: call.callIdentifier || call.id,
+                rawDate: postedDateObj
+            };
+
+            callDetailsMap.set(call.id, info);
+            callDetailsMap.set(call.title.toLowerCase(), info);
+        });
+
         const dataToExport = projectsToExport.map(p => {
             const userDetails = usersMap.get(p.pi_uid);
             const coPiNames = (p.coPiDetails || []).map(c => c.name).join(', ');
-
-            // Extract team members (Co-PIs and other team info)
             const teamMembers = coPiNames || (p.teamInfo ? p.teamInfo.split(',').filter(t => t.trim()).join(', ') : 'NA');
 
-            // Determine SDG related status
             const sdgRelated = (p.sdgGoals && p.sdgGoals.length > 0) ? 'Yes' : 'NA';
             const sdgGoalsDisplay = (p.sdgGoals && p.sdgGoals.length > 0) ? p.sdgGoals.join(', ') : 'NA';
 
-            // Interdisciplinary fields - mapped from project type (Unidisciplinary, Multi-Disciplinary, Inter-Disciplinary)
             const interdisciplinary = (p.type === 'Multi-Disciplinary' || p.type === 'Inter-Disciplinary') ? 'Yes' : (p.type === 'Unidisciplinary' ? 'No' : 'NA');
             const interdisciplinaryType = (p.type === 'Multi-Disciplinary' || p.type === 'Inter-Disciplinary') ? p.type : 'NA';
 
-            // Seed money fields
-            const seedMoney = p.grant?.totalAmount ? (p.grant.totalAmount / 100000).toFixed(2) : 'NA'; // Convert to lakhs
+            const seedMoney = p.grant?.totalAmount ? (p.grant.totalAmount / 100000).toFixed(2) : 'NA';
 
-            // Get seed money received date from explicit field or first phase disbursement date
             let seedMoneyReceivedDate = null;
             if (p.seedMoneyReceivedDate) {
                 seedMoneyReceivedDate = parseISO(p.seedMoneyReceivedDate);
@@ -709,7 +978,6 @@ function AllProjectsContent() {
             const seedMoneyMonth = seedMoneyReceivedDate ? format(seedMoneyReceivedDate, 'MMMM') : 'NA';
             const seedMoneyYear = seedMoneyReceivedDate ? format(seedMoneyReceivedDate, 'yyyy') : 'NA';
 
-            // Sanction date - use explicit sanctionDate field or first phase disbursement
             let sanctionDateFormatted = 'NA';
             if (p.sanctionDate) {
                 sanctionDateFormatted = format(parseISO(p.sanctionDate), 'dd-MMM-yyyy');
@@ -717,7 +985,6 @@ function AllProjectsContent() {
                 sanctionDateFormatted = format(seedMoneyReceivedDate, 'dd-MMM-yyyy');
             }
 
-            // Submission date - format submission date properly
             let submissionDateFormatted = 'NA';
             if (p.submissionDate) {
                 try {
@@ -727,22 +994,102 @@ function AllProjectsContent() {
                 }
             }
 
-            // Remarks - show current project status
             const remarks = p.status || 'NA';
 
-            // Calculate project duration in months if dates are available
             let durationInMonths = p.projectDuration || 'NA';
             if (p.projectStartDate && p.projectEndDate) {
                 try {
                     const startDate = parseISO(p.projectStartDate);
                     const endDate = parseISO(p.projectEndDate);
-                    // Add 1 day to end date to make the calculation inclusive (e.g., 10th to 9th is a full month)
                     const months = differenceInMonths(addDays(endDate, 1), startDate);
                     durationInMonths = months.toString();
                 } catch (e) {
                     console.error("Error calculating duration:", e);
                 }
             }
+
+            let currentPhase = 'NA';
+            if (p.grant?.phases && p.grant.phases.length > 0) {
+                const activeGrantPhase = [...p.grant.phases].reverse().find(ph => ph.status === 'Disbursed' || ph.status === 'Utilization Submitted' || ph.status === 'Pending Disbursement') || p.grant.phases[p.grant.phases.length - 1];
+                currentPhase = activeGrantPhase.name ? `${activeGrantPhase.name}${activeGrantPhase.status ? ` (${activeGrantPhase.status})` : ''}` : 'NA';
+            } else if (p.phases && p.phases.length > 0) {
+                currentPhase = p.phases[0].name || 'Phase 1';
+            } else if (['Sanctioned', 'In Progress', 'Completed'].includes(p.status)) {
+                currentPhase = 'Phase 1';
+            } else {
+                currentPhase = 'Not Sanctioned';
+            }
+
+            const phasesList = p.grant?.phases || p.phases || [];
+            let phaseBreakdown = 'NA';
+            let phase1Amount = 'NA';
+            let phase2Amount = 'NA';
+            let phase3Amount = 'NA';
+            let phase4Amount = 'NA';
+            let phase5Amount = 'NA';
+
+            if (phasesList.length > 0) {
+                phaseBreakdown = phasesList.map((ph: any, idx: number) => {
+                    const phaseName = ph.name || `Phase ${idx + 1}`;
+                    const phaseAmt = Number(ph.amount || 0);
+                    return `${phaseName}: ₹${phaseAmt.toLocaleString('en-IN')}`;
+                }).join(', ');
+
+                phasesList.forEach((ph: any, idx: number) => {
+                    const phaseAmt = Number(ph.amount || 0);
+                    const val = `₹${phaseAmt.toLocaleString('en-IN')}`;
+                    if (idx === 0) phase1Amount = val;
+                    if (idx === 1) phase2Amount = val;
+                    if (idx === 2) phase3Amount = val;
+                    if (idx === 3) phase4Amount = val;
+                    if (idx === 4) phase5Amount = val;
+                });
+            } else if (p.grant?.totalAmount) {
+                phaseBreakdown = `Phase 1: ₹${Number(p.grant.totalAmount).toLocaleString('en-IN')}`;
+                phase1Amount = `₹${Number(p.grant.totalAmount).toLocaleString('en-IN')}`;
+            }
+
+            let presentationCount = 0;
+            const presentationList: string[] = [];
+
+            if (p.pastMeetings && Array.isArray(p.pastMeetings) && p.pastMeetings.length > 0) {
+                p.pastMeetings.forEach((m: any, idx: number) => {
+                    presentationCount++;
+                    let dateStr = 'Date N/A';
+                    if (m.date) {
+                        try { dateStr = format(parseISO(m.date), 'dd-MMM-yyyy'); } catch (e) { dateStr = m.date; }
+                    }
+                    const modeStr = m.mode ? ` (${m.mode})` : '';
+                    const statusStr = m.status ? ` [${m.status}]` : '';
+                    presentationList.push(`Presentation ${idx + 1}: ${dateStr}${modeStr}${statusStr}`);
+                });
+            }
+
+            if (p.meetingDetails?.date) {
+                let meetingDateStr = p.meetingDetails.date;
+                try { meetingDateStr = format(parseISO(p.meetingDetails.date), 'dd-MMM-yyyy'); } catch (e) {}
+                const isAlreadyInPast = p.pastMeetings?.some((m: any) => m.date === p.meetingDetails?.date);
+                if (!isAlreadyInPast) {
+                    presentationCount++;
+                    const modeStr = p.meetingDetails.mode ? ` (${p.meetingDetails.mode})` : '';
+                    presentationList.push(`Presentation ${presentationCount}: ${meetingDateStr}${modeStr}`);
+                }
+            } else if (presentationCount === 0 && (p.hasHadMidTermReview || (p.evaluatedBy && p.evaluatedBy.length > 0) || ['Recommended', 'Not Recommended', 'Sanctioned', 'In Progress', 'Completed', 'Revision Needed', 'Revision Submitted'].includes(p.status))) {
+                presentationCount = 1;
+                presentationList.push(`Presentation 1: Completed`);
+            }
+
+            const presentationCountDisplay = presentationCount.toString();
+            const presentationDetailsDisplay = presentationList.length > 0 ? presentationList.join('; ') : 'No Presentations Done';
+
+            // Extract Associated Call details
+            const matchedCall = (p.associatedCallId ? callDetailsMap.get(p.associatedCallId) : null) || 
+                                (p.associatedCallTitle ? callDetailsMap.get(p.associatedCallTitle.toLowerCase()) : null);
+
+            const associatedCallTitleDisplay = matchedCall?.title || p.associatedCallTitle || 'General Submission';
+            const callPostedMonthDisplay = matchedCall?.postedMonth || 'NA';
+            const callPostedByAdminDisplay = matchedCall?.postedBy || 'NA';
+            const callApplicantsCountDisplay = matchedCall ? matchedCall.applicantsCount.toString() : 'NA';
 
             const row: { [key: string]: any } = {};
             selectedExportColumns.forEach(colId => {
@@ -751,21 +1098,38 @@ function AllProjectsContent() {
                     const dataMap: { [key: string]: any } = {
                         title: p.title,
                         type: p.type,
+                        associatedCallTitle: associatedCallTitleDisplay,
+                        callPostedMonth: callPostedMonthDisplay,
+                        callPostedByAdmin: callPostedByAdminDisplay,
+                        callApplicantsCount: callApplicantsCountDisplay,
                         sdgRelated: sdgRelated,
                         sdgGoals: sdgGoalsDisplay,
                         interdisciplinary: interdisciplinary,
                         interdisciplinaryType: interdisciplinaryType,
                         pi: p.pi,
+                        piEmail: p.pi_email || userDetails?.email || 'NA',
+                        piContact: p.pi_phoneNumber || userDetails?.phoneNumber || 'NA',
                         misId: userDetails?.misId || 'NA',
                         institute: p.institute,
                         faculty: p.faculty,
                         teamMembers: teamMembers,
                         submissionDate: submissionDateFormatted,
                         sanctionDate: sanctionDateFormatted,
+                        sanctionNumber: p.grant?.sanctionNumber || 'NA',
                         projectDuration: durationInMonths,
                         seedMoney: seedMoney,
                         seedMoneyMonth: seedMoneyMonth,
                         seedMoneyYear: seedMoneyYear,
+                        currentPhase: currentPhase,
+                        phaseBreakdown: phaseBreakdown,
+                        phase1Amount: phase1Amount,
+                        phase2Amount: phase2Amount,
+                        phase3Amount: phase3Amount,
+                        phase4Amount: phase4Amount,
+                        phase5Amount: phase5Amount,
+                        presentationCount: presentationCountDisplay,
+                        presentationDetails: presentationDetailsDisplay,
+                        meetingsDoneForSpecifiedCalls: presentationCountDisplay,
                         remarks: remarks,
                     };
                     row[column.label] = dataMap[colId];
@@ -775,65 +1139,326 @@ function AllProjectsContent() {
         });
 
         const workbook = new ExcelJS.Workbook();
-        const worksheet = workbook.addWorksheet("IMR_Projects");
 
+        // Sheet 1: IMR Projects
+        const worksheet1 = workbook.addWorksheet("IMR_Projects");
         if (dataToExport.length > 0) {
             const headers = Object.keys(dataToExport[0]);
-            worksheet.addRow(headers);
+            worksheet1.addRow(headers);
             dataToExport.forEach(item => {
-                worksheet.addRow(Object.values(item));
+                worksheet1.addRow(Object.values(item));
             });
         }
+
+        // Sheet 2: Admin Calls Summary
+        const worksheet2 = workbook.addWorksheet("Admin_Calls_Summary");
+        const headers2 = [
+            "Call Identifier",
+            "Call Title",
+            "Category / Call Type",
+            "Department / Agency",
+            "Date Posted",
+            "Month Posted",
+            "Posted By Admin",
+            "Application Deadline",
+            "Total Applications Applied",
+            "Applicant Names",
+            "Status"
+        ];
+        worksheet2.addRow(headers2);
+
+        // Deduplicate unique calls from callDetailsMap
+        const uniqueCalls = Array.from(new Set(callDetailsMap.values()));
+
+        let filteredCallsToExport = uniqueCalls;
+        if (exportDateRange?.from) {
+            const fromStr = format(exportDateRange.from, 'yyyy-MM-dd');
+            const toStr = exportDateRange.to ? format(exportDateRange.to, 'yyyy-MM-dd') : null;
+            filteredCallsToExport = uniqueCalls.filter(c => {
+                if (!c.rawDate) return true;
+                const targetStr = format(c.rawDate, 'yyyy-MM-dd');
+                return toStr ? (targetStr >= fromStr && targetStr <= toStr) : (targetStr >= fromStr);
+            });
+        }
+
+        filteredCallsToExport.forEach(c => {
+            worksheet2.addRow([
+                c.identifier,
+                c.title,
+                c.category,
+                c.departmentOrAgency,
+                c.postedDate,
+                c.postedMonth,
+                c.postedBy,
+                c.deadline,
+                c.applicantsCount,
+                c.applicantNames.join(', ') || 'None',
+                c.status
+            ]);
+        });
 
         const buffer = await workbook.xlsx.writeBuffer();
         const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
         const url = window.URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = `IMR_Projects_${new Date().toISOString().split('T')[0]}.xlsx`;
+        a.download = `IMR_Projects_and_Admin_Calls_${new Date().toISOString().split('T')[0]}.xlsx`;
         a.click();
         window.URL.revokeObjectURL(url);
 
-        toast({ title: "Export Started", description: `Downloading ${projectsToExport.length} IMR projects.` });
+        toast({ title: "Export Completed", description: `Exported ${projectsToExport.length} IMR projects and ${filteredCallsToExport.length} Admin calls.` });
     };
 
     const exportEmrProjects = async () => {
         let projectsToExport = [...filteredEmrProjects];
-        if (projectsToExport.length === 0) {
-            toast({ variant: 'destructive', title: "No Data", description: "No EMR projects to export." }); return;
+        if (exportDateRange?.from) {
+            const fromStr = format(exportDateRange.from, 'yyyy-MM-dd');
+            const toStr = exportDateRange.to ? format(exportDateRange.to, 'yyyy-MM-dd') : null;
+            projectsToExport = projectsToExport.filter(p => {
+                const rawDate = p.sanctionDate || p.registeredAt || p.proposalSubmissionDate || p.pptSubmissionDate || (p as any).createdAt;
+                const pDate = parseAnyDate(rawDate);
+                if (!pDate) return true;
+                const targetStr = format(pDate, 'yyyy-MM-dd');
+                return toStr ? (targetStr >= fromStr && targetStr <= toStr) : (targetStr >= fromStr);
+            });
         }
+        if (projectsToExport.length === 0) {
+            toast({ title: "No Data Found", description: "No EMR projects match the selected date range or filters." }); return;
+        }
+
+        // Fetch calls and applications data to enrich export with Admin Calls & Applicant Counts
+        let fundingCallsList: FundingCall[] = [];
+        let specialCfpsList: SpecialCfp[] = [];
+        let emrInterestsList: EmrInterest[] = [];
+        let cfpSubmissionsList: CfpSubmission[] = [];
+
+        try {
+            const [fundingSnap, specialSnap, interestSnap, cfpSubSnap] = await Promise.all([
+                getDocs(collection(db, 'fundingCalls')),
+                getDocs(collection(db, 'specialCfps')),
+                getDocs(collection(db, 'emrInterests')),
+                getDocs(collection(db, 'cfpSubmissions'))
+            ]);
+            fundingCallsList = fundingSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as FundingCall));
+            specialCfpsList = specialSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as SpecialCfp));
+            emrInterestsList = interestSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as EmrInterest));
+            cfpSubmissionsList = cfpSubSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as CfpSubmission));
+        } catch (e) {
+            console.error("Error fetching call data for EMR export:", e);
+        }
+
         const usersMap = new Map(users.map(u => [u.uid, u]));
-        const dataToExport = projectsToExport.map(p => {
+
+        // Helper map to find calls and calculate applications count
+        const callDetailsMap = new Map<string, {
+            title: string;
+            postedDate: string;
+            postedMonth: string;
+            postedBy: string;
+            applicantsCount: number;
+            applicantNames: string[];
+            category: string;
+            departmentOrAgency: string;
+            deadline: string;
+            status: string;
+            identifier: string;
+            rawDate: Date | null;
+        }>();
+
+        // Process Funding Calls
+        fundingCallsList.forEach(call => {
+            const interests = emrInterestsList.filter(i => i.callId === call.id || (i.callTitle && i.callTitle.toLowerCase() === call.title.toLowerCase()));
+            const linkedImr = allImrProjects.filter(p => p.associatedCallId === call.id || (p.associatedCallTitle && p.associatedCallTitle.toLowerCase() === call.title.toLowerCase()));
+            
+            const applicantNamesSet = new Set<string>();
+            interests.forEach(i => applicantNamesSet.add(i.userName || i.userEmail));
+            linkedImr.forEach(p => applicantNamesSet.add(p.pi));
+            
+            const postedDateObj = parseAnyDate(call.createdAt || (call as any).postedDate);
+            const postedDateFormatted = postedDateObj ? format(postedDateObj, 'dd-MMM-yyyy') : 'NA';
+            const postedMonthFormatted = postedDateObj ? format(postedDateObj, 'MMMM yyyy') : 'NA';
+
+            const creatorUser = usersMap.get(call.createdBy);
+            const postedByName = creatorUser ? `${creatorUser.name} (${creatorUser.email})` : (call.createdBy || 'Admin');
+
+            const info = {
+                title: call.title,
+                postedDate: postedDateFormatted,
+                postedMonth: postedMonthFormatted,
+                postedBy: postedByName,
+                applicantsCount: applicantNamesSet.size || (interests.length + linkedImr.length),
+                applicantNames: Array.from(applicantNamesSet),
+                category: `Funding Call (${call.callType || 'General'})`,
+                departmentOrAgency: call.agency || 'RDC',
+                deadline: call.applyDeadline ? format(parseISO(call.applyDeadline), 'dd-MMM-yyyy') : 'NA',
+                status: call.status || 'Open',
+                identifier: call.callIdentifier || call.id,
+                rawDate: postedDateObj
+            };
+
+            callDetailsMap.set(call.id, info);
+            callDetailsMap.set(call.title.toLowerCase(), info);
+        });
+
+        // Process Special CFPs
+        specialCfpsList.forEach(call => {
+            const subs = cfpSubmissionsList.filter(s => s.cfpId === call.id || (s.cfpTitle && s.cfpTitle.toLowerCase() === call.title.toLowerCase()));
+            const applicantNamesSet = new Set<string>();
+            subs.forEach(s => applicantNamesSet.add(s.piName));
+
+            const postedDateObj = parseAnyDate(call.createdAt);
+            const postedDateFormatted = postedDateObj ? format(postedDateObj, 'dd-MMM-yyyy') : 'NA';
+            const postedMonthFormatted = postedDateObj ? format(postedDateObj, 'MMMM yyyy') : 'NA';
+
+            const creatorUser = usersMap.get(call.createdBy);
+            const postedByName = call.announcedBy || (creatorUser ? `${creatorUser.name} (${creatorUser.email})` : 'Admin');
+
+            const info = {
+                title: call.title,
+                postedDate: postedDateFormatted,
+                postedMonth: postedMonthFormatted,
+                postedBy: postedByName,
+                applicantsCount: subs.length,
+                applicantNames: Array.from(applicantNamesSet),
+                category: 'Special Call For Proposals (CFP)',
+                departmentOrAgency: call.department || 'RDC',
+                deadline: call.applyDeadline ? format(parseISO(call.applyDeadline), 'dd-MMM-yyyy') : 'NA',
+                status: call.status || 'Open',
+                identifier: call.callIdentifier || call.id,
+                rawDate: postedDateObj
+            };
+
+            callDetailsMap.set(call.id, info);
+            callDetailsMap.set(call.title.toLowerCase(), info);
+        });
+
+        const dataToExport = projectsToExport.map((p: any) => {
             const userDetails = usersMap.get(p.userId);
+            const matchedCall = (p.callId ? callDetailsMap.get(p.callId) : null) || 
+                                (p.callTitle ? callDetailsMap.get(p.callTitle.toLowerCase()) : null);
+
+            const associatedCallTitleDisplay = matchedCall?.title || p.callTitle || 'General EMR';
+            const callPostedMonthDisplay = matchedCall?.postedMonth || (p.registeredAt ? format(parseAnyDate(p.registeredAt) || new Date(), 'MMMM yyyy') : 'NA');
+            const callPostedByAdminDisplay = matchedCall?.postedBy || 'Admin';
+            const callApplicantsCountDisplay = matchedCall ? matchedCall.applicantsCount.toString() : 'NA';
+
+            const regDateObj = parseAnyDate(p.registeredAt || p.proposalSubmissionDate || p.pptSubmissionDate);
+            const registrationDateFormatted = regDateObj ? format(regDateObj, 'dd-MMM-yyyy') : 'NA';
+
+            const sanctionDateObj = parseAnyDate(p.sanctionDate);
+            const sanctionDateFormatted = sanctionDateObj ? format(sanctionDateObj, 'dd-MMM-yyyy') : 'NA';
+
+            const grantAmountDisplay = p.amount ? (p.amount / 100000).toFixed(2) : (p.sanctionAmount ? (p.sanctionAmount / 100000).toFixed(2) : 'NA');
+            const durationAmountDisplay = p.durationAmount || (p.amount ? `₹${Number(p.amount).toLocaleString('en-IN')}` : 'NA');
+
+            const presentationCountDisplay = (p.pptUrl || p.proposalUrl) ? '1' : '0';
+            const presentationDetailsDisplay = p.meetingDetails?.date ? `Meeting: ${p.meetingDetails.date}` : (p.pptUrl ? 'PPT Uploaded' : 'No Presentations Done');
+
             const row: { [key: string]: any } = {};
             selectedExportColumns.forEach(colId => {
                 const column = EMR_EXPORT_COLUMNS.find(c => c.id === colId);
-                if (column) row[column.label] = { callTitle: p.callTitle, agency: p.agency, piName: p.userName, piEmail: p.userEmail, piInstitute: userDetails?.institute, piDepartment: userDetails?.department, campus: p.campus || userDetails?.campus || 'Goa', coPiNames: p.coPiNames?.join(', ') || 'N/A', status: p.status, sanctionDate: p.sanctionDate ? new Date(p.sanctionDate).toLocaleDateString() : 'N/A', durationAmount: p.durationAmount }[colId];
+                if (column) {
+                    const dataMap: { [key: string]: any } = {
+                        callTitle: p.callTitle || 'NA',
+                        agency: p.agency || 'NA',
+                        associatedCallTitle: associatedCallTitleDisplay,
+                        callPostedMonth: callPostedMonthDisplay,
+                        callPostedByAdmin: callPostedByAdminDisplay,
+                        callApplicantsCount: callApplicantsCountDisplay,
+                        piName: p.userName || 'NA',
+                        piEmail: p.userEmail || userDetails?.email || 'NA',
+                        piContact: userDetails?.phoneNumber || 'NA',
+                        misId: userDetails?.misId || 'NA',
+                        piInstitute: p.institute || userDetails?.institute || 'NA',
+                        piDepartment: p.department || userDetails?.department || 'NA',
+                        campus: p.campus || userDetails?.campus || 'Goa',
+                        coPiNames: p.coPiNames?.join(', ') || 'NA',
+                        registrationDate: registrationDateFormatted,
+                        sanctionDate: sanctionDateFormatted,
+                        projectDuration: p.duration ? `${p.duration} Months` : 'NA',
+                        grantAmount: grantAmountDisplay,
+                        durationAmount: durationAmountDisplay,
+                        sdgRelated: 'NA',
+                        sdgGoals: 'NA',
+                        interdisciplinary: 'NA',
+                        presentationCount: presentationCountDisplay,
+                        presentationDetails: presentationDetailsDisplay,
+                        meetingsDoneForSpecifiedCalls: presentationCountDisplay,
+                        status: p.status || 'NA',
+                    };
+                    row[column.label] = dataMap[colId];
+                }
             });
             return row;
         });
 
         const workbook = new ExcelJS.Workbook();
-        const worksheet = workbook.addWorksheet("EMR_Projects");
 
+        // Sheet 1: EMR Projects
+        const worksheet1 = workbook.addWorksheet("EMR_Projects");
         if (dataToExport.length > 0) {
             const headers = Object.keys(dataToExport[0]);
-            worksheet.addRow(headers);
+            worksheet1.addRow(headers);
             dataToExport.forEach(item => {
-                worksheet.addRow(Object.values(item));
+                worksheet1.addRow(Object.values(item));
             });
         }
+
+        // Sheet 2: Admin Calls Summary
+        const worksheet2 = workbook.addWorksheet("Admin_Calls_Summary");
+        const headers2 = [
+            "Call Identifier",
+            "Call Title",
+            "Category / Call Type",
+            "Department / Agency",
+            "Date Posted",
+            "Month Posted",
+            "Posted By Admin",
+            "Application Deadline",
+            "Total Applications Applied",
+            "Applicant Names",
+            "Status"
+        ];
+        worksheet2.addRow(headers2);
+
+        const uniqueCalls = Array.from(new Set(callDetailsMap.values()));
+        let filteredCallsToExport = uniqueCalls;
+        if (exportDateRange?.from) {
+            const fromStr = format(exportDateRange.from, 'yyyy-MM-dd');
+            const toStr = exportDateRange.to ? format(exportDateRange.to, 'yyyy-MM-dd') : null;
+            filteredCallsToExport = uniqueCalls.filter(c => {
+                if (!c.rawDate) return true;
+                const targetStr = format(c.rawDate, 'yyyy-MM-dd');
+                return toStr ? (targetStr >= fromStr && targetStr <= toStr) : (targetStr >= fromStr);
+            });
+        }
+
+        filteredCallsToExport.forEach(c => {
+            worksheet2.addRow([
+                c.identifier,
+                c.title,
+                c.category,
+                c.departmentOrAgency,
+                c.postedDate,
+                c.postedMonth,
+                c.postedBy,
+                c.deadline,
+                c.applicantsCount,
+                c.applicantNames.join(', ') || 'None',
+                c.status
+            ]);
+        });
 
         const buffer = await workbook.xlsx.writeBuffer();
         const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
         const url = window.URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = `EMR_Projects_${new Date().toISOString().split('T')[0]}.xlsx`;
+        a.download = `EMR_Projects_and_Admin_Calls_${new Date().toISOString().split('T')[0]}.xlsx`;
         a.click();
         window.URL.revokeObjectURL(url);
 
-        toast({ title: "Export Started", description: `Downloading ${projectsToExport.length} EMR projects.` });
+        toast({ title: "Export Completed", description: `Exported ${projectsToExport.length} EMR projects and ${filteredCallsToExport.length} Admin calls.` });
     };
 
     const handleColumnSelectionChange = (columnId: string, checked: boolean) => {
@@ -868,20 +1493,65 @@ function AllProjectsContent() {
                                         <DialogDescription>Select filters and columns for your Excel export.</DialogDescription>
                                     </DialogHeader>
                                     <div className="grid gap-6 py-4">
-                                        {activeTab === 'imr' && (
-                                            <div>
-                                                <Label>Filter by Submission Date</Label>
-                                                {isMobile ? (
-                                                    <div className="flex items-center gap-2 mt-2">
-                                                        <Input type="date" value={exportDateRange?.from ? format(exportDateRange.from, 'yyyy-MM-dd') : ''} onChange={(e) => setExportDateRange(prev => ({ ...prev, from: e.target.value ? parseISO(e.target.value) : undefined }))} />
-                                                        <span>-</span>
-                                                        <Input type="date" value={exportDateRange?.to ? format(exportDateRange.to, 'yyyy-MM-dd') : ''} onChange={(e) => setExportDateRange(prev => ({ ...prev, to: e.target.value ? parseISO(e.target.value) : undefined }))} />
-                                                    </div>
-                                                ) : (
-                                                    <Popover><PopoverTrigger asChild><Button id="date" variant={"outline"} className={cn("w-full justify-start text-left font-normal mt-2", !exportDateRange && "text-muted-foreground")}><CalendarIcon className="mr-2 h-4 w-4" />{exportDateRange?.from ? (exportDateRange.to ? (`${format(exportDateRange.from, "LLL dd, y")} - ${format(exportDateRange.to, "LLL dd, y")}`) : format(exportDateRange.from, "LLL dd, y")) : (<span>Pick a date range</span>)}</Button></PopoverTrigger><PopoverContent className="w-auto p-0" align="start"><Calendar captionLayout="dropdown-buttons" fromYear={2015} toYear={new Date().getFullYear()} initialFocus mode="range" defaultMonth={exportDateRange?.from} selected={exportDateRange} onSelect={setExportDateRange} /></PopoverContent></Popover>
+                                        <div>
+                                            <div className="flex items-center justify-between">
+                                                <Label>{activeTab === 'imr' ? 'Filter by Submission Date' : 'Filter by Sanction / Registration Date'}</Label>
+                                                {exportDateRange?.from && (
+                                                    <Button variant="ghost" size="sm" onClick={() => setExportDateRange(undefined)} className="h-6 text-xs px-2 text-muted-foreground hover:text-foreground">
+                                                        <X className="h-3 w-3 mr-1" /> Clear Date Filter
+                                                    </Button>
                                                 )}
                                             </div>
-                                        )}
+                                            {isMobile ? (
+                                                <div className="flex items-center gap-2 mt-2">
+                                                    <Input type="date" value={exportDateRange?.from ? format(exportDateRange.from, 'yyyy-MM-dd') : ''} onChange={(e) => {
+                                                        const date = e.target.value ? parseISO(e.target.value) : undefined;
+                                                        if (date) {
+                                                            setExportDateRange(prev => ({ from: date, to: prev?.to }));
+                                                        } else {
+                                                            setExportDateRange(undefined);
+                                                        }
+                                                    }} />
+                                                    <span>-</span>
+                                                    <Input type="date" value={exportDateRange?.to ? format(exportDateRange.to, 'yyyy-MM-dd') : ''} onChange={(e) => {
+                                                        const date = e.target.value ? parseISO(e.target.value) : undefined;
+                                                        setExportDateRange(prev => prev?.from ? { from: prev.from, to: date } : undefined);
+                                                    }} />
+                                                </div>
+                                            ) : (
+                                                <Popover><PopoverTrigger asChild><Button id="date" variant={"outline"} className={cn("w-full justify-start text-left font-normal mt-2", !exportDateRange && "text-muted-foreground")}><CalendarIcon className="mr-2 h-4 w-4" />{exportDateRange?.from ? (exportDateRange.to ? (`${format(exportDateRange.from, "LLL dd, y")} - ${format(exportDateRange.to, "LLL dd, y")}`) : format(exportDateRange.from, "LLL dd, y")) : (<span>Pick a date range</span>)}</Button></PopoverTrigger><PopoverContent className="w-auto p-0" align="start"><Calendar captionLayout="dropdown-buttons" fromYear={2015} toYear={new Date().getFullYear()} initialFocus mode="range" defaultMonth={exportDateRange?.from} selected={exportDateRange} onSelect={setExportDateRange} /></PopoverContent></Popover>
+                                            )}
+                                            <div className="mt-3">
+                                                <Label className="text-xs text-muted-foreground font-semibold">Quick Select Month (Calls / Submissions Posted in Month)</Label>
+                                                <Select
+                                                    onValueChange={(val) => {
+                                                        if (val === 'all') {
+                                                            setExportDateRange(undefined);
+                                                        } else {
+                                                            const [yearStr, monthStr] = val.split('-');
+                                                            const date = new Date(parseInt(yearStr), parseInt(monthStr) - 1, 1);
+                                                            setExportDateRange({
+                                                                from: startOfMonth(date),
+                                                                to: endOfMonth(date),
+                                                            });
+                                                        }
+                                                    }}
+                                                >
+                                                    <SelectTrigger className="w-full mt-1">
+                                                        <SelectValue placeholder="Filter by specific month..." />
+                                                    </SelectTrigger>
+                                                    <SelectContent>
+                                                        <SelectItem value="all">All Months (No Filter)</SelectItem>
+                                                        {Array.from({ length: 24 }).map((_, i) => {
+                                                            const d = subMonths(new Date(), i);
+                                                            const valKey = format(d, 'yyyy-MM');
+                                                            const label = format(d, 'MMMM yyyy');
+                                                            return <SelectItem key={valKey} value={valKey}>{label}</SelectItem>;
+                                                        })}
+                                                    </SelectContent>
+                                                </Select>
+                                            </div>
+                                        </div>
                                         <div>
                                             <Label>Select Columns to Export</Label>
                                             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 mt-2 p-4 border rounded-md max-h-60 overflow-y-auto">
@@ -1087,7 +1757,37 @@ function AllProjectsContent() {
                                     <Card>
                                         <CardContent className="pt-6">
                                             <Table>
-                                                <TableHeader><TableRow><TableHead>Project Title</TableHead><TableHead>PI</TableHead><TableHead>Co-PIs</TableHead><TableHead>Agency</TableHead><TableHead>Sanction Date</TableHead><TableHead>Amount</TableHead><TableHead>Actions</TableHead></TableRow></TableHeader>
+                                                <TableHeader>
+                                                    <TableRow>
+                                                        <TableHead className="cursor-pointer hover:bg-muted/50 transition-colors select-none" onClick={() => handleEmrSort('callTitle')}>
+                                                            <div className="flex items-center">
+                                                                Project Title {getSortIcon('callTitle')}
+                                                            </div>
+                                                        </TableHead>
+                                                        <TableHead className="cursor-pointer hover:bg-muted/50 transition-colors select-none" onClick={() => handleEmrSort('userName')}>
+                                                            <div className="flex items-center">
+                                                                PI {getSortIcon('userName')}
+                                                            </div>
+                                                        </TableHead>
+                                                        <TableHead>Co-PIs</TableHead>
+                                                        <TableHead className="cursor-pointer hover:bg-muted/50 transition-colors select-none" onClick={() => handleEmrSort('agency')}>
+                                                            <div className="flex items-center">
+                                                                Agency {getSortIcon('agency')}
+                                                            </div>
+                                                        </TableHead>
+                                                        <TableHead className="cursor-pointer hover:bg-muted/50 transition-colors select-none" onClick={() => handleEmrSort('sanctionDate')}>
+                                                            <div className="flex items-center">
+                                                                Sanction Date {getSortIcon('sanctionDate')}
+                                                            </div>
+                                                        </TableHead>
+                                                        <TableHead className="cursor-pointer hover:bg-muted/50 transition-colors select-none" onClick={() => handleEmrSort('amount')}>
+                                                            <div className="flex items-center">
+                                                                Amount {getSortIcon('amount')}
+                                                            </div>
+                                                        </TableHead>
+                                                        <TableHead>Actions</TableHead>
+                                                    </TableRow>
+                                                </TableHeader>
                                                 <TableBody>{paginatedEmrProjects.map(p => {
                                                     const pi = users.find(u => u.uid === p.userId);
                                                     const proofLink = p.finalProofUrl || p.proofUrl;

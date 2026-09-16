@@ -61,7 +61,7 @@ export function calculateIncentiveBreakdown(claim: IncentiveClaim): IncentiveBre
             // Normalize internal authors
             const internalAuthors = authors.map(a => ({
                 ...a,
-                isExternal: a.email.toLowerCase() === claim.userEmail?.toLowerCase() ? false : a.isExternal
+                isExternal: a.email?.toLowerCase() === claim.userEmail?.toLowerCase() ? false : a.isExternal
             })).filter(a => !a.isExternal);
             
             // Categorize authors
@@ -71,18 +71,58 @@ export function calculateIncentiveBreakdown(claim: IncentiveClaim): IncentiveBre
             
             const isMainAuthor = mainRoles.includes(claim.authorType || '');
 
+            const SPECIAL_POLICY_FACULTIES = [
+                "Faculty of Applied Sciences",
+                "Faculty of Medicine",
+                "Faculty of Homoeopathy",
+                "Faculty of Ayurved",
+                "Faculty of Nursing",
+                "Faculty of Pharmacy",
+                "Faculty of Physiotherapy",
+                "Faculty of Public Health",
+                "Faculty of Engineering & Technology"
+            ];
+
+            const isSpecialFaculty = SPECIAL_POLICY_FACULTIES.includes(claim.faculty || '');
+            const isScopus = claim.indexType === 'scopus' || claim.indexType === 'both';
+            const isWos = claim.indexType === 'wos' || claim.indexType === 'both';
+            const isWosValid = isWos && (claim.indexType as string) !== 'esci'; // ESCI is deleted/excluded
+
             // 1. Base incentive
             let baseAmount = 0;
-            if (publicationType === 'Scopus Indexed Conference Proceedings') {
-                baseAmount = 3000;
+            if (publicationType === 'Letter to the Editor/Editorial') {
+                baseAmount = 2500;
+            } else if (publicationType === 'Scopus Indexed Conference Proceedings') {
+                baseAmount = isScopus ? 2000 : 0;
             } else {
-                switch (journalClassification) {
-                    case 'Nature/Science/Lancet': baseAmount = 50000; break;
-                    case 'Top 1% Journals': baseAmount = 25000; break;
-                    case 'Q1': baseAmount = 15000; break;
-                    case 'Q2': baseAmount = 10000; break;
-                    case 'Q3': baseAmount = 6000; break;
-                    case 'Q4': baseAmount = 4000; break;
+                if (isSpecialFaculty) {
+                    // Category A: SCOPUS Q1-Q4 only
+                    if (isScopus && journalClassification) {
+                        switch (journalClassification) {
+                            case 'Nature/Science/Lancet': baseAmount = 60000; break;
+                            case 'Top 1% Journals': baseAmount = 30000; break;
+                            case 'Q1': baseAmount = 16000; break;
+                            case 'Q2': baseAmount = 10000; break;
+                            case 'Q3': baseAmount = 6000; break;
+                            case 'Q4': baseAmount = 4000; break;
+                        }
+                    }
+                } else {
+                    // Non-Category A: Scopus Q1-Q4 or Web of Science / ABDC / DOAJ
+                    if (isScopus && journalClassification && ['Nature/Science/Lancet', 'Top 1% Journals', 'Q1', 'Q2', 'Q3', 'Q4'].includes(journalClassification)) {
+                        switch (journalClassification) {
+                            case 'Nature/Science/Lancet': baseAmount = 60000; break;
+                            case 'Top 1% Journals': baseAmount = 30000; break;
+                            case 'Q1': baseAmount = 16000; break;
+                            case 'Q2': baseAmount = 10000; break;
+                            case 'Q3': baseAmount = 6000; break;
+                            case 'Q4': baseAmount = 4000; break;
+                        }
+                    } else if (isWosValid || claim.iqacClaimType?.toLowerCase().includes('abdc') || claim.iqacClaimType?.toLowerCase().includes('doaj')) {
+                        baseAmount = 2000;
+                    } else if (publicationType === 'UGC listed journals (Journals found qualified through UGC-CARE Protocol, Group-I)') {
+                        baseAmount = 1000;
+                    }
                 }
             }
 
@@ -103,20 +143,28 @@ export function calculateIncentiveBreakdown(claim: IncentiveClaim): IncentiveBre
             // 3. Apply university-level deductions
             let deductedAmount = adjustedAmount;
             const deductions = [];
+            
             if (wasApcPaidByUniversity) {
-                deductedAmount /= 2;
-                deductions.push('APC Paid (÷2)');
+                deductedAmount = 0;
+                deductions.push('APC Paid by University (Disqualified)');
             }
             if (isPuNameInPublication === false) {
-                deductedAmount /= 2;
-                deductions.push('No PU Name (÷2)');
+                deductedAmount = 0;
+                deductions.push('Incorrect/Missing PU Affiliation (Disqualified)');
             }
 
             // 4. Calculate share based on author composition
             let finalAmount = 0;
             let authorShare = 'N/A';
 
-            if (internalAuthors.length === 0) {
+            if (publicationType === 'Letter to the Editor/Editorial') {
+                const totalAuthorsCount = authors.length || 1;
+                finalAmount = deductedAmount / totalAuthorsCount;
+                authorShare = `Equally divided among all authors (÷ ${totalAuthorsCount})`;
+            } else if (publicationType === 'Scopus Indexed Conference Proceedings') {
+                finalAmount = deductedAmount / internalAuthors.length;
+                authorShare = `Equally divided among all internal authors (÷ ${internalAuthors.length})`;
+            } else if (internalAuthors.length === 0) {
                 finalAmount = 0;
                 authorShare = 'No internal authors';
             } else if (internalAuthors.length === 1) {
@@ -149,9 +197,17 @@ export function calculateIncentiveBreakdown(claim: IncentiveClaim): IncentiveBre
 
             // 5. Post-Calculation Policy Enforcement
             const position = parseInt(claim.authorPosition || '0', 10);
-            if (!isMainAuthor && position > 5) {
+            const isSinglePuCoAuthor = internalAuthors.length === 1 && coAuthors.length === 1;
+            const maxPosition = isSinglePuCoAuthor ? 8 : 5;
+            
+            if (publicationType !== 'Scopus Indexed Conference Proceedings' && publicationType !== 'Letter to the Editor/Editorial' && !isMainAuthor && position > maxPosition) {
                 finalAmount = 0;
-                authorShare = `Ineligible: Co-author at position ${position} (Max position is 5th)`;
+                authorShare = `Ineligible: Co-author at position ${position} (Max position is ${maxPosition}th)`;
+            }
+
+            if (claim.numberOfAffiliations && claim.numberOfAffiliations > 1) {
+                finalAmount = finalAmount / claim.numberOfAffiliations;
+                authorShare += ` (Divided by ${claim.numberOfAffiliations} affiliation(s))`;
             }
 
             return {

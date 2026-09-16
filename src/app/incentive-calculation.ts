@@ -23,6 +23,10 @@ const SPECIAL_POLICY_FACULTIES = [
 function getBaseIncentiveForPaper(claimData: Partial<IncentiveClaim>, faculty: string, designation?: string): number {
     const { journalClassification, indexType, wosType, publicationType } = claimData;
 
+    if (publicationType === 'Letter to the Editor/Editorial') {
+        return 2500;
+    }
+
     if (designation === 'Ph.D Scholar') {
         switch (journalClassification) {
             case 'Q1': return 6000;
@@ -32,35 +36,46 @@ function getBaseIncentiveForPaper(claimData: Partial<IncentiveClaim>, faculty: s
     }
 
     const isSpecialFaculty = SPECIAL_POLICY_FACULTIES.includes(faculty);
+    const isScopus = indexType === 'scopus' || indexType === 'both';
+    const isWos = indexType === 'wos' || indexType === 'both';
+    const isWosValid = isWos && (indexType as string) !== 'esci'; // ESCI is deleted
 
     if (publicationType === 'Scopus Indexed Conference Proceedings') {
-        return 3000;
-    }
-
-    // Common rules for Scopus (Q1-Q4) and high-tier WoS (Q1-Q2) for ALL faculties
-    if (journalClassification && ['Q1', 'Q2', 'Q3', 'Q4', 'Top 1% Journals', 'Nature/Science/Lancet'].includes(journalClassification)) {
-        switch (journalClassification) {
-            case 'Nature/Science/Lancet': return 50000;
-            case 'Top 1% Journals': return 25000;
-            case 'Q1': return 15000;
-            case 'Q2': return 10000;
-            case 'Q3': return 6000;
-            case 'Q4': return 4000;
-            default: return 0;
-        }
+        return isScopus ? 2000 : 0;
     }
 
     if (isSpecialFaculty) {
-        // For Category A, only the Quartile-based incentives apply, which are handled above.
-        // No other incentives like UGC are applicable for them.
+        // Category A: SCOPUS Q1-Q4 only
+        if (isScopus && journalClassification) {
+            switch (journalClassification) {
+                case 'Nature/Science/Lancet': return 60000;
+                case 'Top 1% Journals': return 30000;
+                case 'Q1': return 16000;
+                case 'Q2': return 10000;
+                case 'Q3': return 6000;
+                case 'Q4': return 4000;
+                default: return 0;
+            }
+        }
         return 0;
     } else {
-        // Rules for faculties NOT in Category A
-        if (wosType === 'SCIE' || wosType === 'SSCI' || wosType === 'A&HCI') {
-            // Assuming Q3/Q4 might be derived elsewhere, but based on text it's a flat rate
-            return 3000;
+        // Non-Category A: Scopus Q1-Q4 or Web of Science / ABDC / DOAJ
+        if (isScopus && journalClassification && ['Nature/Science/Lancet', 'Top 1% Journals', 'Q1', 'Q2', 'Q3', 'Q4'].includes(journalClassification)) {
+            switch (journalClassification) {
+                case 'Nature/Science/Lancet': return 60000;
+                case 'Top 1% Journals': return 30000;
+                case 'Q1': return 16000;
+                case 'Q2': return 10000;
+                case 'Q3': return 6000;
+                case 'Q4': return 4000;
+                default: return 0;
+            }
+        } else if (isWosValid || claimData.iqacClaimType?.toLowerCase().includes('abdc') || claimData.iqacClaimType?.toLowerCase().includes('doaj')) {
+            return 2000;
         }
-        if (publicationType === 'UGC listed journals (Journals found qualified through UGC-CARE Protocol, Group-I)') return 1000;
+        if (publicationType === 'UGC listed journals (Journals found qualified through UGC-CARE Protocol, Group-I)') {
+            return 1000;
+        }
 
         return 0;
     }
@@ -111,7 +126,7 @@ export async function calculateResearchPaperIncentive(
         const { authors = [], userEmail, publicationType, journalClassification, wasApcPaidByUniversity, isPuNameInPublication } = claimData;
 
         // Find the claimant in the author list
-        const claimant = authors.find(a => a.email.toLowerCase() === userEmail?.toLowerCase()) || authors[0] || {
+        const claimant = authors.find(a => a.email?.toLowerCase() === userEmail?.toLowerCase()) || authors[0] || {
             name: claimData.userName || 'Claimant',
             email: userEmail || '',
             role: 'First Author',
@@ -126,12 +141,12 @@ export async function calculateResearchPaperIncentive(
         let deductedAmount = adjustedAmount;
         const deductions = [];
         if (wasApcPaidByUniversity) {
-            deductedAmount /= 2;
-            deductions.push('APC Paid (÷2)');
+            deductedAmount = 0;
+            deductions.push('APC Paid by University (Disqualified)');
         }
         if (isPuNameInPublication === false) {
-            deductedAmount /= 2;
-            deductions.push('No PU Name (÷2)');
+            deductedAmount = 0;
+            deductions.push('Incorrect/Missing PU Affiliation (Disqualified)');
         }
 
         const totalAuthors = authors.length || 1;
@@ -139,32 +154,36 @@ export async function calculateResearchPaperIncentive(
         // Special case for Letter to Editor/Editorial - shared equally among all authors
         if (publicationType === 'Letter to the Editor/Editorial') {
             const amountPerAuthor = deductedAmount / totalAuthors;
-            return { success: true, amount: Math.round(amountPerAuthor) };
+            return {
+                success: true,
+                amount: Math.round(amountPerAuthor),
+                breakdown: {
+                    baseAmount: 2500,
+                    publicationTypeAdjustment: 'Fixed ₹2,500',
+                    adjustedAmount: 2500,
+                    deductions,
+                    deductedAmount: Math.round(deductedAmount),
+                    internalAuthorsCount: totalAuthors,
+                    mainAuthorsCount: totalAuthors,
+                    coAuthorsCount: 0,
+                    authorShare: `Equally divided among all authors (÷ ${totalAuthors})`,
+                    finalAmount: Math.round(amountPerAuthor)
+                }
+            };
         }
 
         // Identify internal authors. 
         // We always treat the claimant as internal, even if the primary author marked them as external.
         const internalAuthors = authors.map(a => ({
             ...a,
-            isExternal: a.email.toLowerCase() === userEmail?.toLowerCase() ? false : a.isExternal
+            isExternal: a.email?.toLowerCase() === userEmail?.toLowerCase() ? false : a.isExternal
         })).filter(a => !a.isExternal);
 
         if (internalAuthors.length === 0) {
             return { success: true, amount: 0 };
         }
 
-        // Rule for Scopus Conference Proceedings: Only Presenting authors are eligible
-        if (publicationType === 'Scopus Indexed Conference Proceedings') {
-            const presentingAuthors = internalAuthors.filter(a => a.role === 'Presenting Author' || a.role === 'First & Presenting Author');
-            const isClaimantPresenting = presentingAuthors.some(a => a.email.toLowerCase() === claimant.email.toLowerCase());
 
-            if (!isClaimantPresenting) {
-                return { success: true, amount: 0, error: 'Only Presenting Authors can claim for this publication type.' };
-            }
-
-            const amountPerPresentingAuthor = deductedAmount / (presentingAuthors.length || 1);
-            return { success: true, amount: Math.round(amountPerPresentingAuthor) };
-        }
 
         // Categorize internal authors for standard research papers
         const mainRoles = ['First Author', 'Corresponding Author', 'First & Corresponding Author', 'First & Presenting Author'];
@@ -172,7 +191,7 @@ export async function calculateResearchPaperIncentive(
         const coAuthors = internalAuthors.filter(a => a.role === 'Co-Author' || a.role === 'Presenting Author');
 
         // Check claimant's role based on the updated internalAuthors list to ensure consistency
-        const claimantInList = internalAuthors.find(a => a.email.toLowerCase() === userEmail?.toLowerCase());
+        const claimantInList = internalAuthors.find(a => a.email?.toLowerCase() === userEmail?.toLowerCase());
         const isMainAuthor = claimantInList ? mainRoles.includes(claimantInList.role) : mainRoles.includes(claimant.role);
         let finalAmount = 0;
         let authorShareText = '';
@@ -181,7 +200,13 @@ export async function calculateResearchPaperIncentive(
         let poolPercentage = 0;
         let sharingAuthorsCount = 0;
 
-        if (internalAuthors.length === 1) {
+        if (publicationType === 'Scopus Indexed Conference Proceedings') {
+            finalAmount = deductedAmount / internalAuthors.length;
+            authorShareText = `Equally divided among all internal authors (÷ ${internalAuthors.length})`;
+            poolAmount = deductedAmount;
+            poolPercentage = 100;
+            sharingAuthorsCount = internalAuthors.length;
+        } else if (internalAuthors.length === 1) {
             // Sole author (as First or Corresponding)
             if (mainAuthors.length === 1) {
                 finalAmount = deductedAmount;
@@ -192,10 +217,11 @@ export async function calculateResearchPaperIncentive(
             }
             // Sole author from PU among external authors (as Co-Author)
             else if (coAuthors.length === 1) {
-                finalAmount = deductedAmount * 0.8;
-                authorShareText = 'Sole co-author (80%)';
-                poolAmount = deductedAmount * 0.8;
-                poolPercentage = 80;
+                const multiplier = publicationType === 'Scopus Indexed Conference Proceedings' ? 1.0 : 0.8;
+                finalAmount = deductedAmount * multiplier;
+                authorShareText = `Sole co-author (${multiplier * 100}%)`;
+                poolAmount = deductedAmount * multiplier;
+                poolPercentage = multiplier * 100;
                 sharingAuthorsCount = 1;
             }
         }
@@ -216,11 +242,12 @@ export async function calculateResearchPaperIncentive(
         }
         // Multiple Co-Authors only (no internal Main Authors)
         else if (mainAuthors.length === 0 && coAuthors.length > 0) {
-            poolPercentage = 80;
+            const multiplier = publicationType === 'Scopus Indexed Conference Proceedings' ? 1.0 : 0.8;
+            poolPercentage = multiplier * 100;
             sharingAuthorsCount = coAuthors.length;
-            poolAmount = deductedAmount * 0.8;
+            poolAmount = deductedAmount * multiplier;
             finalAmount = poolAmount / coAuthors.length;
-            authorShareText = `Multiple co-authors (80% ÷ ${coAuthors.length})`;
+            authorShareText = `Multiple co-authors (${multiplier * 100}% ÷ ${coAuthors.length})`;
         }
         // Multiple main authors only
         else if (mainAuthors.length > 0) {
@@ -233,11 +260,18 @@ export async function calculateResearchPaperIncentive(
 
         // --- Post-Calculation Policy Enforcement ---
 
-        // Policy: Co-Authors beyond 5th author position are not eligible for monetary incentive.
+        // Policy: Co-Authors beyond 5th author position (or 8th if sole internal co-author) are not eligible for monetary incentive.
         const position = getClaimantAuthorPosition(claimData);
-        if (!isMainAuthor && position > 5) {
+        const isSinglePuCoAuthor = internalAuthors.length === 1 && coAuthors.length === 1;
+        const maxPosition = isSinglePuCoAuthor ? 8 : 5;
+        if (publicationType !== 'Scopus Indexed Conference Proceedings' && !isMainAuthor && position > maxPosition) {
             finalAmount = 0;
-            authorShareText = `Ineligible: Co-author at position ${position} (Max position is 5th)`;
+            authorShareText = `Ineligible: Co-author at position ${position} (Max position is ${maxPosition}th)`;
+        }
+
+        if (claimData.numberOfAffiliations && claimData.numberOfAffiliations > 1) {
+            finalAmount = finalAmount / claimData.numberOfAffiliations;
+            authorShareText += ` (Divided by ${claimData.numberOfAffiliations} affiliation(s))`;
         }
 
         const breakdown: ResearchIncentiveBreakdown = {
@@ -274,27 +308,23 @@ function getBaseIncentiveForBook(claimData: Partial<IncentiveClaim>, isChapter: 
     const pages = isChapter ? (claimData.bookChapterPages || 0) : (claimData.bookTotalPages || 0);
 
     if (isChapter) {
-        if (isScopus) return 6000;
-        if (pubType === 'National') { // Indian Publisher
-            if (pages > 20) return 2500;
-            if (pages >= 10) return 1500;
-            if (pages >= 5) return 500;
+        if (isScopus) return 5000;
+        if (pubType === 'National') {
+            return 0; // Deleted under R&D Policy revision August 2026
         } else if (pubType === 'International') {
             if (pages > 20) return 3000;
             if (pages >= 10) return 2000;
             if (pages >= 5) return 1000;
         }
     } else { // Full Book
-        if (isScopus) return 18000;
-        if (pubType === 'National') { // Indian Publisher
-            if (pages > 350) return 3000;
-            if (pages >= 200) return 2500;
-            if (pages >= 100) return 2000;
-            return 1000; // < 100 pages
+        if (isScopus) return 20000;
+        if (pubType === 'National') {
+            return 0; // Deleted under R&D Policy revision August 2026
         } else if (pubType === 'International') {
             if (pages > 350) return 6000;
-            if (pages >= 200) return 3500;
-            return 2000; // < 200 pages
+            if (pages >= 201) return 3500;
+            if (pages >= 100 && pages <= 200) return 2000;
+            return 0; // under 100 pages is 0
         }
     }
     return 0;
@@ -392,7 +422,18 @@ export async function calculateApcIncentive(
         // Split equally among all PU (internal) authors (as per SOP)
         const individualShare = admissibleAmount / (internalAuthorCount || 1);
 
-        return { success: true, amount: Math.round(individualShare) };
+        let finalAmount = individualShare;
+        const paperIncentivePaid = (claimData as any).paperIncentivePaid || 0;
+        if (paperIncentivePaid > 0) {
+            finalAmount = Math.max(0, individualShare - (paperIncentivePaid * 0.5));
+        }
+
+        return { 
+            success: true, 
+            amount: Math.round(finalAmount),
+            individualShare: Math.round(individualShare),
+            paperIncentiveDeduction: Math.round(paperIncentivePaid * 0.5)
+        } as any;
 
     } catch (error: any) {
         console.error("Error calculating APC incentive:", error);
@@ -411,7 +452,7 @@ export async function calculateConferenceIncentive(
             conferenceMode,
             registrationFee,
             travelFare,
-            onlinePresentationOrder,
+            accommodationExpense,
             organizerName,
             conferenceName,
         } = claimData;
@@ -419,6 +460,7 @@ export async function calculateConferenceIncentive(
         // ensure numeric values (defensive)
         const regFeeNum = Number(registrationFee || 0);
         const travelFareNum = Number(travelFare || 0);
+        const accommodationExpenseNum = Number(accommodationExpense || 0);
 
         const mode = (conferenceMode || "").toString().trim().toLowerCase();
         let maxReimbursement = 0;
@@ -432,59 +474,65 @@ export async function calculateConferenceIncentive(
             maxReimbursement = Math.round(regFeeNum * 0.75);
         } else if (mode === "online") {
             const regFee = regFeeNum;
-            switch (onlinePresentationOrder) {
-                case "First":
-                    maxReimbursement = Math.min(regFee * 0.75, 15000);
-                    break;
-                case "Second":
-                    maxReimbursement = Math.min(regFee * 0.6, 10000);
-                    break;
-                case "Third":
-                    maxReimbursement = Math.min(regFee * 0.5, 7000);
-                    break;
-                case "Additional":
-                    maxReimbursement = Math.min(regFee * 0.3, 2000);
-                    break;
-                default:
-                    maxReimbursement = Math.min(regFee * 0.3, 2000);
+            const prevOnlineCount = Number(claimData.previousOfflinePresentationsCount || 0); // we will check online limits
+            const prevOnlineReal = Number((claimData as any).previousOnlinePresentationsCount || 0);
+            const totalOnline = prevOnlineCount + prevOnlineReal;
+            if (totalOnline >= 1) {
+                maxReimbursement = 0;
+            } else {
+                maxReimbursement = Math.min(regFee * 0.75, 6000);
             }
         } else if (mode === "offline") {
-            if (conferenceType === "International") {
-                switch (conferenceVenue) {
-                    case "Indian Subcontinent":
-                        maxReimbursement = 30000;
-                        break;
-                    case "South Korea, Japan, Australia and Middle East":
-                        maxReimbursement = 45000;
-                        break;
-                    case "Europe":
-                        maxReimbursement = 60000;
-                        break;
-                    case "African/South American/North American":
-                        maxReimbursement = 75000;
-                        break;
-                    case "India":
-                        maxReimbursement =
-                            presentationType === "Oral" ? 20000 : 15000;
-                        break;
-                    case "Other":
-                        maxReimbursement = 75000;
-                        break;
-                    default:
-                        // if venue missing, keep maxReimbursement = 0 so we don't accidentally give a cap
-                        maxReimbursement = 0;
+            const prevOfflineCount = Number(claimData.previousOfflinePresentationsCount || 0);
+            if (prevOfflineCount >= 2) {
+                maxReimbursement = 0;
+            } else {
+                let regionalCap = 0;
+                if (conferenceType === "International") {
+                    switch (conferenceVenue as string) {
+                        case "Indian Subcontinent":
+                            regionalCap = 30000;
+                            break;
+                        case "South Korea, Japan, Australia and Middle East":
+                        case "South Korea, Japan and Middle East":
+                            regionalCap = 45000;
+                            break;
+                        case "Europe":
+                        case "Europe and Australia":
+                            regionalCap = 60000;
+                            break;
+                        case "African/South American/North American":
+                            regionalCap = 75000;
+                            break;
+                        case "India":
+                            regionalCap = presentationType === "Oral" ? 20000 : 15000;
+                            break;
+                        case "Other":
+                            regionalCap = 75000;
+                            break;
+                        default:
+                            regionalCap = 0;
+                    }
+                } else if (conferenceType === "National") {
+                    regionalCap = presentationType === "Oral" ? 12000 : 10000;
+                } else if (conferenceType === "Regional/State") {
+                    regionalCap = 7500;
                 }
-            } else if (conferenceType === "National") {
-                maxReimbursement =
-                    presentationType === "Oral" ? 12000 : 10000;
-            } else if (conferenceType === "Regional/State") {
-                maxReimbursement = 7500;
+
+                if (prevOfflineCount === 1) {
+                    maxReimbursement = Math.min(regionalCap, 5000);
+                } else {
+                    maxReimbursement = regionalCap;
+                }
             }
         }
 
         // eligibleExpenses = registration + travel for offline, else registration only
+        // if outside India and offline, add accommodationExpense too.
         const eligibleExpenses =
-            mode === "offline" ? regFeeNum + travelFareNum : regFeeNum;
+            mode === "offline"
+                ? (conferenceVenue !== "India" ? regFeeNum + travelFareNum + accommodationExpenseNum : regFeeNum + travelFareNum)
+                : regFeeNum;
 
         // final reimbursable amount is min(eligibleExpenses, maxReimbursement) but
         // if maxReimbursement is 0 (policy not determined), treat it as "no cap" and return eligibleExpenses.
@@ -496,7 +544,7 @@ export async function calculateConferenceIncentive(
 
         // Apply author sharing logic for Conference Presentations
         // Amount divided equally among all eligible authors (up to 5th position, plus corresponding author regardless of position)
-        const { authors = [], userEmail } = claimData;
+        const { authors = [] } = claimData;
         if (authors && authors.length > 0) {
             // Filter authors: include up to 5th position OR corresponding author role
             const eligibleAuthors = authors.filter((author) => {
@@ -527,10 +575,16 @@ export async function calculateConferenceIncentive(
 
 
 
-// --- Membership Calculation ---
-
 export async function calculateMembershipIncentive(claimData: Partial<IncentiveClaim>): Promise<{ success: boolean; amount?: number; error?: string }> {
     try {
+        const paymentDateStr = claimData.membershipPaymentDate;
+        if (paymentDateStr) {
+            const paymentDate = new Date(paymentDateStr);
+            const cutoffDate = new Date('2026-09-10T23:59:59');
+            if (paymentDate > cutoffDate) {
+                return { success: true, amount: 0 };
+            }
+        }
         const amountPaid = claimData.membershipAmountPaid || 0;
         if (amountPaid > 0) {
             const incentive = Math.min(amountPaid * 0.5, 10000);
@@ -547,9 +601,9 @@ export async function calculateMembershipIncentive(claimData: Partial<IncentiveC
 
 export async function calculatePatentIncentive(claimData: Partial<IncentiveClaim>): Promise<{ success: boolean; amount?: number; error?: string }> {
     try {
-        const { currentStatus, patentFiledInPuName, isPuSoleApplicant, patentInventors } = claimData;
+        const { currentStatus, patentFiledInPuName, isPuSoleApplicant, patentInventors, patentCoApplicants, patentRoutedViaSsip } = claimData;
 
-        const inventorCount = patentInventors?.length || 1;
+        const inventorCount = (patentInventors?.length || 0) + (patentCoApplicants?.length || 0) || 1;
         if (inventorCount === 0) {
             return { success: true, amount: 0 };
         }
@@ -561,13 +615,15 @@ export async function calculatePatentIncentive(claimData: Partial<IncentiveClaim
         if (status === 'Published') {
             baseAmount = 3000;
         } else if (status === 'Granted' || status === 'Awarded') {
-            baseAmount = 15000;
+            baseAmount = 18000;
         } else {
             return { success: true, amount: 0 };
         }
 
         let totalIncentive = 0;
-        if (patentFiledInPuName) {
+        if (patentRoutedViaSsip) {
+            totalIncentive = 3000;
+        } else if (patentFiledInPuName) {
             if (isPuSoleApplicant) {
                 totalIncentive = baseAmount; // 100% for sole applicant
             } else {
@@ -636,7 +692,7 @@ export async function calculateJournalPublicationPoints(
         }
 
         // Find claimant in author list and get author position
-        const claimant = authors?.find(a => a.email.toLowerCase() === userEmail?.toLowerCase()) || authors[0] || {
+        const claimant = authors?.find(a => a.email?.toLowerCase() === userEmail?.toLowerCase()) || authors[0] || {
             name: claimData.userName || 'Claimant',
             email: userEmail || '',
             role: 'First Author',
@@ -657,7 +713,7 @@ export async function calculateJournalPublicationPoints(
             authorPositionMultiplier = 0.7;
         } else if (claimant.role === 'Co-Author') {
             // Determine author order position
-            const authorOrder = authors?.findIndex(a => a.email.toLowerCase() === userEmail?.toLowerCase()) ?? -1;
+            const authorOrder = authors?.findIndex(a => a.email?.toLowerCase() === userEmail?.toLowerCase()) ?? -1;
 
             if (authorOrder === -1) {
                 return { success: false, error: "Could not determine author position." };

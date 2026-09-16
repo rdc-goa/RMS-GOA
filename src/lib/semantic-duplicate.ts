@@ -63,20 +63,29 @@ function cosineSimilarity(a: number[], b: number[]): number {
   return normA === 0 || normB === 0 ? 0 : dot / (Math.sqrt(normA) * Math.sqrt(normB));
 }
 
+const embeddingCache = new Map<string, number[]>();
+
 async function getEmbedding(text: string): Promise<number[]> {
   const normalized = normalizeText(text);
+  if (embeddingCache.has(normalized)) {
+    return embeddingCache.get(normalized)!;
+  }
+
   const useOpenAI = !!process.env.OPENAI_API_KEY;
   const useGemini = !!process.env.GEMINI_API_KEY;
 
+  let embedding: number[] = [];
   if (useOpenAI) {
-    return await fetchOpenAIEmbedding(normalized);
+    embedding = await fetchOpenAIEmbedding(normalized);
+  } else if (useGemini) {
+    embedding = await fetchGeminiEmbedding(normalized);
   }
 
-  if (useGemini) {
-    return await fetchGeminiEmbedding(normalized);
+  if (embedding.length > 0) {
+    embeddingCache.set(normalized, embedding);
   }
 
-  return [];
+  return embedding;
 }
 
 export async function computeSemanticSimilarity(textA: string, textB: string): Promise<number> {

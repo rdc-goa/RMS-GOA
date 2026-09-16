@@ -24,7 +24,6 @@ import {
   LineChart,
   Settings,
   ShieldCheck,
-  Upload,
   Users,
   History,
   Calendar,
@@ -33,7 +32,6 @@ import {
   Save,
   Loader2,
   Briefcase,
-  BookUp,
   MessageCircle,
   BookOpenCheck,
   Building,
@@ -41,6 +39,7 @@ import {
   FileText,
   Beaker,
   TestTubes,
+  X,
 } from "lucide-react"
 
 import {
@@ -63,11 +62,11 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { Button } from "@/components/ui/button"
 import { auth, db, db_rtdb } from "@/lib/config"
 import { ref, onValue } from "firebase/database"
-import { signOut, onIdTokenChanged, type User as FirebaseUser } from "firebase/auth"
+import { signOut, onIdTokenChanged, signInWithCustomToken, type User as FirebaseUser } from "firebase/auth"
 import { useToast } from "@/hooks/use-toast"
 import { collection, onSnapshot, query, where, doc, getDoc } from "firebase/firestore"
 import { getDefaultModulesForRole } from "@/lib/modules"
-import { saveSidebarOrder, getSystemSettings, setSession, fetchPendingIncentiveApprovalsCountAction } from "@/app/actions"
+import { saveSidebarOrder, getSystemSettings, setSession, fetchPendingIncentiveApprovalsCountAction, impersonateUserByMisId, revertImpersonation } from "@/app/actions"
 
 import { HelpDialog } from "@/components/help-dialog"
 import {
@@ -144,6 +143,69 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const [isLogoutConfirmOpen, setIsLogoutConfirmOpen] = useState(false)
   const [isPostSetupDialogOpen, setIsPostSetupDialogOpen] = useState(false)
   const [linkedProjectsCount, setLinkedProjectsCount] = useState({ imr: 0, emr: 0 })
+  const [isImpersonating, setIsImpersonating] = useState(false)
+  const [targetMisId, setTargetMisId] = useState("")
+  const [isSwitching, setIsSwitching] = useState(false)
+  const [impersonatorName, setImpersonatorName] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      setImpersonatorName(sessionStorage.getItem("impersonatorName"));
+    }
+  }, []);
+
+  const handleImpersonate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!targetMisId.trim() || !user) return;
+    setIsSwitching(true);
+    try {
+      const res = await impersonateUserByMisId(user.uid, targetMisId.trim());
+      if (res.success && res.customToken) {
+        const originalAdminUid = user.uid;
+        const originalAdminName = user.name || "Super-admin";
+        sessionStorage.clear();
+        sessionStorage.setItem("impersonatorUid", originalAdminUid);
+        sessionStorage.setItem("impersonatorName", originalAdminName);
+        localStorage.removeItem("user");
+        const userCredential = await signInWithCustomToken(auth, res.customToken);
+        await setSession(await userCredential.user.getIdToken(true));
+        toast({ title: "Account Switched", description: `Impersonation successful for MIS ID ${targetMisId}.` });
+        setIsImpersonating(false);
+        setTargetMisId("");
+        window.location.reload();
+      } else {
+        throw new Error(res.error || "Failed to switch account.");
+      }
+    } catch (error: any) {
+      toast({ variant: "destructive", title: "Impersonation Failed", description: error.message || "Failed to switch account." });
+    } finally {
+      setIsSwitching(false);
+    }
+  };
+
+  const handleRevertImpersonation = async () => {
+    const adminUid = sessionStorage.getItem("impersonatorUid");
+    if (!adminUid) return;
+    setIsSwitching(true);
+    try {
+      const res = await revertImpersonation(adminUid);
+      if (res.success && res.customToken) {
+        sessionStorage.clear();
+        localStorage.removeItem("user");
+        const userCredential = await signInWithCustomToken(auth, res.customToken);
+        await setSession(await userCredential.user.getIdToken(true));
+        toast({ title: "Returned to Admin", description: "Successfully switched back to your Super-admin account." });
+        window.location.reload();
+      } else {
+        throw new Error(res.error || "Failed to switch back.");
+      }
+    } catch (error: any) {
+      toast({ variant: "destructive", title: "Failed to Switch Back", description: error.message || "Failed to switch back." });
+    } finally {
+      setIsSwitching(false);
+    }
+  };
+
   const router = useRouter()
   const pathname = usePathname()
   const { toast } = useToast()
@@ -308,34 +370,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         icon: ShieldCheck,
         label: "System Analytics",
         condition: user?.role === "Super-admin",
-      },
-      {
-        id: "bulk-upload",
-        href: "/dashboard/bulk-upload",
-        tooltip: "Bulk Upload Projects",
-        icon: Upload,
-        label: "Bulk Upload Projects",
-      },
-      {
-        id: "bulk-upload-papers",
-        href: "/dashboard/bulk-upload-papers",
-        tooltip: "Bulk Upload Papers",
-        icon: BookUp,
-        label: "Bulk Upload Papers",
-      },
-      {
-        id: "bulk-upload-emr",
-        href: "/dashboard/bulk-upload-emr",
-        tooltip: "Bulk Upload EMR",
-        icon: Upload,
-        label: "Bulk Upload EMR",
-      },
-      {
-        id: "bulk-upload-incentives",
-        href: "/dashboard/bulk-upload-incentives",
-        tooltip: "Bulk Upload Incentives",
-        icon: Upload,
-        label: "Bulk Upload Incentives",
       },
       {
         id: "module-management",
@@ -864,6 +898,61 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               <h1 className="text-xl font-semibold">{getPageTitle()}</h1>
             </div>
             <div className="flex items-center gap-2">
+              {impersonatorName && (
+                <Button
+                  type="button"
+                  variant="destructive"
+                  size="sm"
+                  onClick={handleRevertImpersonation}
+                  disabled={isSwitching}
+                  className="h-8 text-xs font-semibold px-3 flex items-center gap-1.5 animate-pulse"
+                >
+                  <Users className="h-3.5 w-3.5" />
+                  <span>Return to Admin ({impersonatorName})</span>
+                </Button>
+              )}
+              {user?.role === "Super-admin" && (
+                <div className="flex items-center gap-1.5 mr-2 bg-muted/40 p-1.5 rounded-lg border border-primary/10">
+                  {isImpersonating ? (
+                    <form onSubmit={handleImpersonate} className="flex items-center gap-1">
+                      <input
+                        type="text"
+                        value={targetMisId}
+                        onChange={(e) => setTargetMisId(e.target.value)}
+                        placeholder="Enter MIS ID..."
+                        className="h-8 w-28 rounded-md border border-input bg-transparent px-2.5 py-1 text-xs shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                        disabled={isSwitching}
+                        required
+                        autoFocus
+                      />
+                      <Button type="submit" size="sm" className="h-8 text-xs font-semibold px-2" disabled={isSwitching}>
+                        {isSwitching ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : "Switch"}
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                        onClick={() => { setIsImpersonating(false); setTargetMisId(""); }}
+                        disabled={isSwitching}
+                      >
+                        <X className="h-4 w-4" />
+                      </Button>
+                    </form>
+                  ) : (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setIsImpersonating(true)}
+                      className="h-8 text-xs font-semibold px-2.5 flex items-center gap-1 text-primary hover:bg-primary/5 hover:text-primary"
+                    >
+                      <Users className="h-3.5 w-3.5" />
+                      <span>Switch Account</span>
+                    </Button>
+                  )}
+                </div>
+              )}
               <HelpDialog />
               <ThemeToggle />
               <UserNav user={user} onLogout={attemptLogout} />

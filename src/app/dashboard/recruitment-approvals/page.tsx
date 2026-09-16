@@ -21,6 +21,8 @@ import {
 } from "@/components/ui/dialog";
 import { Badge } from '@/components/ui/badge';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import { getDefaultModulesForRole } from '@/lib/modules';
 
 function JobDetailsDialog({ job, isOpen, onOpenChange, poster }: { job: ProjectRecruitment | null; isOpen: boolean; onOpenChange: (open: boolean) => void; poster: User | null; }) {
     if (!job) return null;
@@ -74,6 +76,7 @@ function JobDetailsDialog({ job, isOpen, onOpenChange, poster }: { job: ProjectR
 }
 
 export default function RecruitmentApprovalsPage() {
+    const router = useRouter();
     const [user, setUser] = useState<User | null>(null);
     const [allUsers, setAllUsers] = useState<User[]>([]);
     const [pendingPostings, setPendingPostings] = useState<ProjectRecruitment[]>([]);
@@ -111,10 +114,23 @@ export default function RecruitmentApprovalsPage() {
     useEffect(() => {
         const storedUser = localStorage.getItem('user');
         if (storedUser) {
-            setUser(JSON.parse(storedUser));
+            const parsedUser = JSON.parse(storedUser) as User;
+            const allowedModules = parsedUser.allowedModules || getDefaultModulesForRole(parsedUser.role, parsedUser.designation);
+            if (!allowedModules.includes('recruitment-approvals')) {
+                toast({
+                    title: 'Access Denied',
+                    description: "You don't have permission to view this page.",
+                    variant: 'destructive',
+                });
+                router.replace('/dashboard');
+                return;
+            }
+            setUser(parsedUser);
+            fetchAllData();
+        } else {
+            router.replace('/login');
         }
-        fetchAllData();
-    }, [fetchAllData]);
+    }, [router, toast, fetchAllData]);
 
     const handleApproval = async (id: string, newStatus: 'Approved' | 'Rejected') => {
         try {

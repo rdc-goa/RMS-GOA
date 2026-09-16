@@ -30,17 +30,27 @@ export async function submitIncentiveClaimViaApi(
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
-      const errorMessage = errorData.error || errorData.message || `Request failed with status ${response.status}`;
+      let errorMessage = errorData.error || errorData.message || `Request failed with status ${response.status}`;
+      if (errorMessage.toLowerCase().includes("invalid or expired token") || errorMessage.toLowerCase().includes("expired token")) {
+        errorMessage = "Invalid or expired token. Please log out of the portal and login again.";
+      }
       return { success: false, error: errorMessage };
     }
 
     const result = await response.json();
+    if (result.error && (result.error.toLowerCase().includes("invalid or expired token") || result.error.toLowerCase().includes("expired token"))) {
+      result.error = "Invalid or expired token. Please log out of the portal and login again.";
+    }
     return {
       success: result.success ?? true,
       claimId: result.claimId,
       error: result.error,
     };
   } catch (error: any) {
-    return { success: false, error: error?.message || "Failed to submit claim" };
+    let errorMessage = error?.message || "Failed to submit claim";
+    if (errorMessage.toLowerCase().includes("invalid or expired token") || errorMessage.toLowerCase().includes("expired token")) {
+      errorMessage = "Invalid or expired token. Please log out of the portal and login again.";
+    }
+    return { success: false, error: errorMessage };
   }
 }

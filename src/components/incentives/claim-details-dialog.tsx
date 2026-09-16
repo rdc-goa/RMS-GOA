@@ -41,7 +41,7 @@ export function ClaimDetailsDialog({ claim, open, onOpenChange, currentUser, cla
 
 
 
-    const breakdown = calculateIncentiveBreakdown(claim);
+    const breakdown = claim ? calculateIncentiveBreakdown(claim) : null;
     const awardBreakdown = claim?.claimType === 'Award' ? breakdown : null;
     
     const handleDownloadNoting = async () => {
@@ -511,7 +511,7 @@ a.href = url;
                                     <div className="space-y-1 text-sm">
                                         <div className="flex justify-between">
                                             <span>Policy Base ({awardBreakdown.category || 'N/A'}):</span>
-                                            <span className="font-semibold">₹{(awardBreakdown.honorsAmount > 0 || awardBreakdown.isPaid ? (awardBreakdown.category === 'International Award' ? 15000 : awardBreakdown.category === 'National Award' ? 5000 : 2000) : 0).toLocaleString('en-IN')}</span> 
+                                            <span className="font-semibold">₹{((awardBreakdown?.honorsAmount ?? 0) > 0 || awardBreakdown.isPaid ? (awardBreakdown.category === 'International Award' ? 15000 : awardBreakdown.category === 'National Award' ? 5000 : 2000) : 0).toLocaleString('en-IN')}</span> 
                                         </div>
                                         {awardBreakdown.isPaid && (
                                             <div className="flex justify-between text-destructive">
@@ -521,7 +521,7 @@ a.href = url;
                                         )}
                                         <div className="pt-2 border-t mt-2 flex justify-between font-bold text-primary">
                                             <span>Final Honorarium:</span>
-                                            <span>₹{awardBreakdown.honorsAmount.toLocaleString('en-IN')}</span>
+                                            <span>₹{(awardBreakdown?.honorsAmount ?? 0).toLocaleString('en-IN')}</span>
                                         </div>
                                     </div>
                                 </div>
@@ -577,7 +577,7 @@ a.href = url;
                             
                             {breakdown && (
                                 <div className="space-y-2 mt-4 bg-blue-50 dark:bg-blue-950 rounded-lg p-3 border border-blue-200 dark:border-blue-800">
-                                    {!isAmountUnchanged && claim.finalApprovedAmount > 0 && (
+                                    {!isAmountUnchanged && (claim.finalApprovedAmount ?? 0) > 0 && (
                                         <div className="bg-amber-50 dark:bg-amber-950 border border-amber-200 dark:border-amber-800 p-2 rounded mb-2 flex items-start gap-2">
                                             <Bot className="h-4 w-4 text-amber-600 dark:text-amber-400 mt-0.5 flex-shrink-0" />
                                             <p className="text-[10px] text-amber-800 dark:text-amber-200 leading-tight">

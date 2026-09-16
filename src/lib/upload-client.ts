@@ -1,6 +1,6 @@
 import { auth, storage } from "@/lib/config";
 import { ref, uploadBytesResumable, getDownloadURL } from "firebase/storage";
-import { uploadFileToServerAction } from "@/app/actions";
+import { uploadFileToServerAction } from "@/services/storage-service";
 
 /**
  * Upload a file directly to Firebase Storage from the client
@@ -9,18 +9,117 @@ import { uploadFileToServerAction } from "@/app/actions";
  * FALLBACK: If Firebase fails, attempts to upload via Server Action to Google Drive 
  * (Drive fallback is limited to 4.5MB).
  */
+/**
+ * Securely uploads a CFP proposal document (CV, proposal PDF, ethics certificate).
+ * Works for both unauthenticated external visitors and logged-in researchers.
+ */
+export async function uploadPublicCfpFile(
+  file: File,
+  cfpId: string,
+  options?: {
+    onProgress?: (progress: number) => void;
+    signal?: AbortSignal;
+  }
+): Promise<{ success: boolean; url?: string; error?: string; fileName?: string; path?: string }> {
+  try {
+    const formData = new FormData();
+    formData.append("file", file);
+    formData.append("cfpId", cfpId || "general");
+
+    if (options?.onProgress) {
+      return await new Promise((resolve) => {
+        const xhr = new XMLHttpRequest();
+        xhr.open("POST", "/api/upload/cfp");
+
+        if (options?.signal) {
+          options.signal.addEventListener("abort", () => {
+            xhr.abort();
+            resolve({ success: false, error: "Upload cancelled by user" });
+          });
+        }
+
+        xhr.upload.onprogress = (event) => {
+          if (event.lengthComputable && options.onProgress) {
+            const percent = Math.round((event.loaded / event.total) * 100);
+            options.onProgress(percent);
+          }
+        };
+
+        xhr.onload = () => {
+          try {
+            const data = JSON.parse(xhr.responseText);
+            if (xhr.status >= 200 && xhr.status < 300 && data.success) {
+              resolve(data);
+            } else {
+              resolve({ success: false, error: data.error || `Upload failed (${xhr.status})` });
+            }
+          } catch (e) {
+            resolve({ success: false, error: "Invalid server response." });
+          }
+        };
+
+        xhr.onerror = () => {
+          resolve({ success: false, error: "Network error during upload." });
+        };
+
+        xhr.send(formData);
+      });
+    }
+
+    const response = await fetch("/api/upload/cfp", {
+      method: "POST",
+      body: formData,
+      signal: options?.signal,
+    });
+
+    const data = await response.json();
+    if (!response.ok || !data.success) {
+      return { success: false, error: data.error || `Upload failed with status ${response.status}` };
+    }
+
+    return data;
+  } catch (err: any) {
+    if (err.name === "AbortError") {
+      return { success: false, error: "Upload cancelled" };
+    }
+    console.error("Public CFP upload error:", err);
+    return { success: false, error: err.message || "Failed to upload CFP document" };
+  }
+}
+
 export async function uploadFileToApi(
   file: File,
   options?: {
     onProgress?: (progress: number) => void;
     signal?: AbortSignal;
     path?: string;
+    cfpId?: string;
+    isPublic?: boolean;
   }
 ): Promise<{ success: boolean; url?: string; error?: string; fileData?: any; provider?: 'firebase' | 'googledrive' }> {
   try {
-    // 1. Check authentication
+    // 1. Check authentication or fallback to CFP upload
     const user = auth.currentUser;
     if (!user) {
+      if (options?.cfpId || options?.isPublic) {
+        const cfpResult = await uploadPublicCfpFile(file, options?.cfpId || "general", {
+          onProgress: options?.onProgress,
+          signal: options?.signal
+        });
+        return {
+          success: cfpResult.success,
+          url: cfpResult.url,
+          error: cfpResult.error,
+          provider: 'firebase',
+          fileData: cfpResult.success ? {
+            name: file.name,
+            size: file.size,
+            type: file.type,
+            path: cfpResult.path,
+            uploadedAt: new Date().toISOString()
+          } : undefined
+        };
+      }
       return { success: false, error: "User not authenticated - please log in" };
     }
 

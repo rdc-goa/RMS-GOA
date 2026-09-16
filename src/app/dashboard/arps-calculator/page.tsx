@@ -32,8 +32,69 @@ export default function ArpsCalculatorPage() {
     const [results, setResults] = useState<ArpsData | null>(null);
     const router = useRouter();
     const { toast } = useToast();
+    const isSuperAdmin = currentUser?.role === 'Super-admin';
 
+    useEffect(() => {
+        const storedUser = localStorage.getItem('user');
+        if (storedUser) {
+            const u = JSON.parse(storedUser);
+            const allowedModules = u.allowedModules || getDefaultModulesForRole(u.role, u.designation);
+            if (!allowedModules.includes('arps-calculator')) {
+                toast({
+                    title: 'Access Denied',
+                    description: "You don't have permission to view this page.",
+                    variant: 'destructive',
+                });
+                router.replace('/dashboard');
+                return;
+            }
+            setCurrentUser(u);
+            
+            const fetchUsers = async () => {
+                try {
+                    const users = await getAllUsers();
+                    setAllUsers(users);
+                } catch (error) {
+                    console.error('Failed to load users:', error);
+                } finally {
+                    setLoading(false);
+                }
+            };
 
+            if (u.role === 'Super-admin') {
+                fetchUsers();
+            } else {
+                setLoading(false);
+            }
+        } else {
+            router.push('/login');
+        }
+    }, [router, toast]);
+
+    const handleCalculate = async () => {
+        const targetUserId = isSuperAdmin ? selectedUserId : currentUser?.uid;
+        if (!targetUserId || !selectedYear) return;
+
+        setIsCalculating(true);
+        setResults(null);
+        try {
+            const res = (await calculateArpsForUser(targetUserId, selectedYear)) as any;
+            if (res.success && res.data) {
+                setResults(res.data as any);
+                toast({ title: 'Calculation Success', description: 'ARPS calculated successfully.' });
+            } else {
+                toast({ variant: 'destructive', title: 'Calculation Failed', description: res.error || 'Failed to calculate score.' });
+            }
+        } catch (error: any) {
+            toast({
+                variant: 'destructive',
+                title: 'Calculation Error',
+                description: error?.message || 'An unexpected error occurred.',
+            });
+        } finally {
+            setIsCalculating(false);
+        }
+    };
 
     const handleDownloadReport = async () => {
         if (!results) return;
@@ -76,7 +137,7 @@ export default function ArpsCalculatorPage() {
             // Process each user
             for (const user of allUsers) {
                 try {
-                    const result = await calculateArpsForUser(user.uid, selectedYear);
+                    const result = (await calculateArpsForUser(user.uid, selectedYear)) as any;
                     if (!result.success || !result.data) continue;
 
                     const arpsData = result.data;

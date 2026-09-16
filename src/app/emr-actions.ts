@@ -3,7 +3,8 @@
 
 import { adminDb, adminStorage } from "@/lib/admin";
 import type { EmrInterest, User, CoPiDetails, FundingCall, EmrEvaluation } from "@/types";
-import { FieldValue } from "firebase-admin/firestore";
+import { FieldValue, FieldPath } from "firebase-admin/firestore";
+import { emrEvaluatorReminderFlow } from "@/ai/flows/emr-evaluator-reminder";
 import path from 'path';
 import { sendEmail as sendEmailUtility } from "@/lib/email";
 import { formatInTimeZone, toDate } from "date-fns-tz";
@@ -78,7 +79,7 @@ export async function getEmrInterests(callId: string): Promise<EmrInterest[]> {
     const snapshot = await q.get()
     const interests: EmrInterest[] = []
     snapshot.forEach((doc) => {
-      interests.push({ id: doc.id, ...(doc.data() as EmrInterest) })
+      interests.push({ ...(doc.data() as EmrInterest), id: doc.id })
     })
     return interests
   } catch (error) {
@@ -1486,7 +1487,7 @@ export async function uploadRevisedEmrPpt(
 
     if (adminName && interest.userEmail) {
       const callSnap = await adminDb.collection('fundingCalls').doc(interest.callId).get();
-      const callTitle = callSnap.exists() ? (callSnap.data() as FundingCall).title : 'your EMR application';
+      const callTitle = callSnap.exists ? (callSnap.data() as FundingCall).title : 'your EMR application';
 
       const emailHtml = `
           <div ${EMAIL_STYLES.background}>
@@ -1756,7 +1757,7 @@ export async function updateEmrInterestCoPis(
     // Send notifications to newly added Co-PIs
     if (addedUids.length > 0) {
       const usersRef = adminDb.collection("users")
-      const usersQuery = usersRef.where(adminDb.firestore.FieldPath.documentId(), "in", addedUids)
+      const usersQuery = usersRef.where(FieldPath.documentId(), "in", addedUids)
       const newCoPiDocs = await usersQuery.get()
       const batch = adminDb.batch()
 
@@ -2178,3 +2179,511 @@ export async function addSanctionedEmrProject(data: {
     return { success: false, error: 'Failed to add the project.' };
   }
 }
+
+
+export async function getEmrInterestEvaluations(
+  interestId: string
+): Promise<{ success: boolean; evaluations?: EmrEvaluation[]; error?: string }> {
+  try {
+    const evaluationsCol = adminDb.collection("emrInterests").doc(interestId).collection("evaluations");
+    const snapshot = await evaluationsCol.get();
+    const evaluations: EmrEvaluation[] = [];
+    snapshot.forEach((doc) => {
+      evaluations.push(doc.data() as EmrEvaluation);
+    });
+    return { success: true, evaluations };
+  } catch (error: any) {
+    console.error("Error fetching evaluations for interest:", error);
+    return { success: false, error: error.message || "Failed to fetch evaluations." };
+  }
+}
+
+
+
+export async function rescheduleEmrApplicant(interestId: string): Promise<{ success: boolean; error?: string }> {
+  try {
+    const session = await checkAuth({ role: ['admin', 'super-admin', 'cro'] });
+    if (!session.authenticated) return { success: false, error: session.error || "Session expired. Please log out of the portal and log back in." };
+    if (!session.authorized) return { success: false, error: "Unauthorized. Admin/CRO access required." };
+
+    const interestRef = adminDb.collection('emrInterests').doc(interestId);
+    const interestSnap = await interestRef.get();
+    if (!interestSnap.exists) {
+      return { success: false, error: "Interest registration not found." };
+    }
+    const interest = interestSnap.data() as EmrInterest;
+
+    await interestRef.update({
+      status: 'Registered',
+      meetingSlot: FieldValue.delete(),
+      assignedEvaluators: FieldValue.delete(),
+      wasAbsent: false,
+    });
+
+    await logActivity('INFO', 'EMR applicant meeting reset for rescheduling', { interestId, userName: interest.userName });
+    return { success: true };
+  } catch (error: any) {
+    console.error("Error resetting EMR applicant for reschedule:", error);
+    await logActivity('ERROR', 'Failed to reset EMR applicant for reschedule', {
+      interestId,
+      error: error.message,
+      stack: error.stack
+    });
+    return { success: false, error: "Failed to reset meeting slot." };
+  }
+}
+
+export async function rescheduleEmrApplicantWithDetails(
+  interestId: string,
+  meetingDetails: { date: string; time: string; venue: string; pptDeadline: string; evaluatorUids: string[], mode: 'Online' | 'Offline' }
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const session = await checkAuth({ role: ['admin', 'super-admin', 'cro'] });
+    if (!session.authenticated) return { success: false, error: session.error || "Session expired. Please log out of the portal and log back in." };
+    if (!session.authorized) return { success: false, error: "Unauthorized. Admin/CRO access required." };
+
+    const { date, time, venue, pptDeadline, evaluatorUids, mode } = meetingDetails;
+    const timeZone = "Asia/Kolkata";
+
+    if (!evaluatorUids || evaluatorUids.length === 0) {
+      return { success: false, error: "An evaluation committee must be assigned." };
+    }
+
+    const interestRef = adminDb.collection('emrInterests').doc(interestId);
+    const interestSnap = await interestRef.get();
+    if (!interestSnap.exists) {
+      return { success: false, error: "Interest registration not found." };
+    }
+    const interest = interestSnap.data() as EmrInterest;
+
+    const callRef = adminDb.collection("fundingCalls").doc(interest.callId);
+    const callSnap = await callRef.get();
+    if (!callSnap.exists) {
+      return { success: false, error: "Funding call not found." };
+    }
+    const call = callSnap.data() as FundingCall;
+
+    const batch = adminDb.batch();
+    const emailPromises = [];
+
+    const meetingDateTimeString = `${date}T${time}:00`;
+    const pptDeadlineString = pptDeadline;
+    const subjectOnlineIndicator = mode === 'Online' ? ' (Online)' : '';
+
+    const meetingDate = toDate(meetingDateTimeString, { timeZone });
+
+    // Format for ICS
+    const startTimeUTC = formatInTimeZone(meetingDate, 'UTC', "yyyyMMdd'T'HHmmss'Z'");
+    const endTimeUTC = formatInTimeZone(addHours(meetingDate, 1), 'UTC', "yyyyMMdd'T'HHmmss'Z'");
+    const dtstamp = formatInTimeZone(new Date(), 'UTC', "yyyyMMdd'T'HHmmss'Z'");
+
+    batch.update(interestRef, {
+      meetingSlot: { date, time, pptDeadline },
+      status: "Evaluation Pending",
+      assignedEvaluators: evaluatorUids,
+      wasAbsent: false,
+    });
+
+    const notificationRef = adminDb.collection("notifications").doc();
+    batch.set(notificationRef, {
+      uid: interest.userId,
+      title: `Your rescheduled EMR Presentation for "${call.title}" has been set.`,
+      createdAt: new Date().toISOString(),
+      isRead: false,
+    });
+
+    const emailHtml = `
+        <div ${EMAIL_STYLES.background}>
+            ${EMAIL_STYLES.logo}
+            <p style="color: #333333;">Dear ${interest.userName},</p>
+            <p style="color: #555555;">
+                Your presentation slot has been rescheduled for the EMR funding opportunity, "<strong>${call.title}</strong>".
+            </p>
+            <p><strong>Date:</strong> ${formatInTimeZone(meetingDateTimeString, timeZone, "MMMM d, yyyy")}</p>
+            <p><strong>Time:</strong> ${formatInTimeZone(meetingDateTimeString, timeZone, "h:mm a (z)")}</p>
+            <p><strong>${mode === 'Online' ? 'Meeting Link:' : 'Venue:'}</strong> 
+              ${mode === 'Online' ? `<a href="${venue}" style="color: #1a73e8; text-decoration: underline;">${venue}</a>` : venue}
+            </p>
+           
+            ${EMAIL_STYLES.footer}
+        </div>
+    `;
+
+    const icalContent = [
+      'BEGIN:VCALENDAR',
+      'VERSION:2.0',
+      'PRODID:-//ParulUniversity//RDC-Portal//EN',
+      'METHOD:REQUEST',
+      'BEGIN:VEVENT',
+      `UID:${interest.id}@paruluniversity.ac.in`,
+      `DTSTAMP:${dtstamp}`,
+      `DTSTART:${startTimeUTC}`,
+      `DTEND:${endTimeUTC}`,
+      `SUMMARY:Rescheduled EMR Presentation: ${call.title}`,
+      `DESCRIPTION:Your rescheduled presentation for the EMR funding call titled '${call.title}' has been set.`,
+      `LOCATION:${venue}`,
+      `ORGANIZER;CN=RDC Parul University Goa:mailto:${process.env.GMAIL_USER}`,
+      `ATTENDEE;CN=${interest.userName};RSVP=TRUE:mailto:${interest.userEmail}`,
+      'END:VEVENT',
+      'END:VCALENDAR'
+    ].join('\r\n');
+
+    if (interest.userEmail) {
+      emailPromises.push(
+        sendEmailUtility({
+          to: interest.userEmail,
+          subject: `Rescheduled EMR Presentation Slot for: ${call.title}${subjectOnlineIndicator}`,
+          html: emailHtml,
+          from: "default",
+          category: 'EMR',
+          icalEvent: {
+            filename: 'invite.ics',
+            method: 'REQUEST',
+            content: icalContent
+          }
+        }),
+      );
+    }
+
+    // Notify evaluators
+    if (evaluatorUids && evaluatorUids.length > 0) {
+      const evaluatorDocs = await Promise.all(evaluatorUids.map((uid) => adminDb.collection("users").doc(uid).get()));
+
+      const applicantUserDoc = await adminDb.collection("users").doc(interest.userId).get();
+      let applicantDetailsHtml = '';
+      if (applicantUserDoc.exists) {
+        const appUser = applicantUserDoc.data() as User;
+        applicantDetailsHtml = `<li>${appUser.name} (${appUser.institute || 'N/A'})</li>`;
+      } else {
+        applicantDetailsHtml = `<li>${interest.userName}</li>`;
+      }
+
+      for (const evaluatorDoc of evaluatorDocs) {
+        if (evaluatorDoc.exists) {
+          const evaluator = evaluatorDoc.data() as User;
+
+          const evaluatorNotificationRef = adminDb.collection("notifications").doc();
+          batch.set(evaluatorNotificationRef, {
+            uid: evaluator.uid,
+            title: `You've been assigned to a rescheduled EMR evaluation meeting for "${call.title}"`,
+            createdAt: new Date().toISOString(),
+            isRead: false,
+          });
+
+          if (evaluator.email) {
+            const evaluatorEmailHtml = `
+              <div ${EMAIL_STYLES.background}>
+                  ${EMAIL_STYLES.logo}
+                  <p style="color: #333333;">Dear ${evaluator.name},</p>
+                  <p style="color: #555555;">An EMR evaluation committee meeting you are assigned to has been rescheduled.</p>
+                  <p style="color: #555555; margin-top: 15px;">Assigned PI(s):</p>
+                  <ul style="color: #555555; margin-top: 8px; padding-left: 20px;">
+                    ${applicantDetailsHtml}
+                  </ul>
+                  <p><strong>Date:</strong> ${formatInTimeZone(meetingDateTimeString, timeZone, "MMMM d, yyyy")}</p>
+                  <p><strong>Time:</strong> ${formatInTimeZone(meetingDateTimeString, timeZone, "h:mm a (z)")}</p>
+                  <p><strong>${mode === 'Online' ? 'Meeting Link:' : 'Venue:'}</strong> 
+                      ${mode === 'Online' ? `<a href="${venue}" style="color: #1a73e8; text-decoration: underline;">${venue}</a>` : venue}
+                  </p>
+                  <p style="color: #555555; margin-top: 15px;">Please review the assigned presentations on the PU Research Projects Portal.</p>
+                  ${EMAIL_STYLES.footer}
+              </div>
+            `;
+
+            emailPromises.push(
+              sendEmailUtility({
+                to: evaluator.email,
+                subject: `Rescheduled EMR Evaluation Committee Meeting: ${call.title}${subjectOnlineIndicator}`,
+                html: evaluatorEmailHtml,
+                from: "default",
+                category: 'EMR'
+              })
+            );
+          }
+        }
+      }
+    }
+
+    await batch.commit();
+    await Promise.all(emailPromises);
+
+    await logActivity('INFO', 'EMR applicant meeting rescheduled with new slot', { interestId, userName: interest.userName, date, time });
+    return { success: true };
+  } catch (error: any) {
+    console.error("Error rescheduling EMR applicant:", error);
+    await logActivity('ERROR', 'Failed to reschedule EMR applicant with new slot', {
+      interestId,
+      error: error.message,
+      stack: error.stack
+    });
+    return { success: false, error: "Failed to reschedule meeting." };
+  }
+}
+
+export async function triggerEmrEvaluatorReminders(): Promise<{ success: boolean; processed: number; emailsSent: string[]; error?: string }> {
+  try {
+    const timeZone = "Asia/Kolkata";
+    const targetDate = addDays(new Date(), 2);
+    const targetDateString = formatInTimeZone(targetDate, timeZone, "yyyy-MM-dd");
+
+    console.log(`[EMR Reminders] Running reminder check for date: ${targetDateString}`);
+
+    // Query active emrInterests where a meeting is scheduled on targetDateString
+    const interestsSnap = await adminDb.collection("emrInterests")
+      .where("meetingSlot.date", "==", targetDateString)
+      .get();
+
+    if (interestsSnap.empty) {
+      console.log(`[EMR Reminders] No EMR presentations scheduled for ${targetDateString}`);
+      return { success: true, processed: 0, emailsSent: [] };
+    }
+
+    // Group the interests by evaluator UID
+    const evaluatorMeetingsMap: Record<string, any[]> = {};
+    const callIds = new Set<string>();
+
+    interestsSnap.forEach(doc => {
+      const interest = { id: doc.id, ...doc.data() } as EmrInterest;
+      // Skip if evaluation is already complete/done
+      if (interest.status === "Evaluation Done" || interest.status === "Sanctioned" || interest.status === "Not Sanctioned") {
+        return;
+      }
+      
+      const evaluatorUids = interest.assignedEvaluators || [];
+      if (interest.callId) {
+        callIds.add(interest.callId);
+      }
+
+      evaluatorUids.forEach(uid => {
+        if (!evaluatorMeetingsMap[uid]) {
+          evaluatorMeetingsMap[uid] = [];
+        }
+        evaluatorMeetingsMap[uid].push(interest);
+      });
+    });
+
+    const evaluatorUidsToFetch = Object.keys(evaluatorMeetingsMap);
+    if (evaluatorUidsToFetch.length === 0) {
+      console.log(`[EMR Reminders] No assigned evaluators found for scheduled meetings.`);
+      return { success: true, processed: 0, emailsSent: [] };
+    }
+
+    // Pre-fetch all related funding calls to avoid N+1 queries
+    const callCache: Record<string, FundingCall> = {};
+    const callIdsArray = Array.from(callIds);
+    if (callIdsArray.length > 0) {
+      const chunks = [];
+      for (let i = 0; i < callIdsArray.length; i += 10) {
+        chunks.push(callIdsArray.slice(i, i + 10));
+      }
+      for (const chunk of chunks) {
+        const callsSnap = await adminDb.collection("fundingCalls")
+          .where("__name__", "in", chunk)
+          .get();
+        callsSnap.forEach(doc => {
+          callCache[doc.id] = { id: doc.id, ...doc.data() } as FundingCall;
+        });
+      }
+    }
+
+    // Fetch evaluator info from users collection
+    const evaluatorsInfo: Record<string, { name: string; email: string }> = {};
+    const userChunks = [];
+    for (let i = 0; i < evaluatorUidsToFetch.length; i += 10) {
+      userChunks.push(evaluatorUidsToFetch.slice(i, i + 10));
+    }
+    for (const chunk of userChunks) {
+      const usersSnap = await adminDb.collection("users")
+        .where("uid", "in", chunk)
+        .get();
+      usersSnap.forEach(doc => {
+        const uData = doc.data();
+        evaluatorsInfo[doc.id] = {
+          name: uData.name || "Evaluator",
+          email: uData.email,
+        };
+      });
+    }
+
+    const TARGET_EVALUATORS = [
+      "pranav.rathi37922@paruluniversity.ac.in",
+      "vishal.sandhwar8850@paruluniversity.ac.in",
+      "dhruv.gupta46505@paruluniversity.ac.in"
+    ].map(e => e.toLowerCase());
+
+    const emailsSent: string[] = [];
+    let processedCount = 0;
+
+    for (const evalUid of evaluatorUidsToFetch) {
+      const evalInfo = evaluatorsInfo[evalUid];
+      if (!evalInfo || !evalInfo.email) {
+        console.warn(`[EMR Reminders] Evaluator UID ${evalUid} could not be resolved to a valid user/email.`);
+        continue;
+      }
+
+      const emailLower = evalInfo.email.toLowerCase();
+      // Enforce the strict recipient filter requested by the user
+      if (!TARGET_EVALUATORS.includes(emailLower)) {
+        console.log(`[EMR Reminders] Skipping evaluator ${evalInfo.name} (${evalInfo.email}) as they are not in the target evaluators list.`);
+        continue;
+      }
+
+      const rawInterests = evaluatorMeetingsMap[evalUid];
+      const meetingsData = rawInterests.map(interest => {
+        const call = callCache[interest.callId];
+        return {
+          interestId: interest.id,
+          callTitle: call?.title || interest.callTitle || "EMR Call Opportunity",
+          agency: call?.agency || interest.agency || "Funding Agency",
+          applicantName: interest.userName,
+          applicantEmail: interest.userEmail,
+          meetingDate: interest.meetingSlot?.date || targetDateString,
+          meetingTime: interest.meetingSlot?.time || "N/A",
+          venue: call?.meetingDetails?.venue || "N/A",
+          mode: call?.meetingDetails?.mode || "Offline",
+          pptUrl: interest.pptUrl || "",
+          proposalUrl: interest.proposalUrl || "",
+        };
+      });
+
+      processedCount += meetingsData.length;
+
+      let subject = `REMINDER: EMR Presentation Evaluation in 2 Days`;
+      let emailHtml = "";
+      let aiMethodUsed = "Genkit Flow";
+
+      // 1. Try Genkit AI Flow
+      try {
+        console.log(`[EMR Reminders] Calling Genkit AI Flow for evaluator: ${evalInfo.name}`);
+        const aiOutput = await emrEvaluatorReminderFlow({
+          evaluatorName: evalInfo.name,
+          evaluatorEmail: evalInfo.email,
+          meetings: meetingsData,
+        });
+        subject = aiOutput.subject;
+        emailHtml = aiOutput.html;
+      } catch (genkitErr: any) {
+        console.error(`[EMR Reminders] Genkit flow failed for ${evalInfo.email}. Trying OpenRouter fallback...`, genkitErr);
+        aiMethodUsed = "OpenRouter Fallback";
+
+        // 2. Try OpenRouter Fallback
+        try {
+          const { callOpenRouter } = await import("@/lib/openrouter");
+          const openRouterPrompt = `
+            You are an RDC Parul University AI assistant. Format an email reminder for:
+            Evaluator: ${evalInfo.name} (${evalInfo.email})
+            Upcoming EMR Meetings (in 2 days):
+            ${JSON.stringify(meetingsData, null, 2)}
+            
+            Return a JSON object exactly matching the schema:
+            {
+              "subject": "Email Subject Line",
+              "html": "Formatted HTML body without markdown or body tags"
+            }
+          `;
+          const rawText = await callOpenRouter({ prompt: openRouterPrompt });
+          const jsonMatch = rawText.match(/\{[\s\S]*\}/);
+          if (jsonMatch) {
+            const parsed = JSON.parse(jsonMatch[0]);
+            subject = parsed.subject;
+            emailHtml = parsed.html;
+          } else {
+            throw new Error("Failed to extract JSON from OpenRouter output");
+          }
+        } catch (orErr: any) {
+          console.error(`[EMR Reminders] OpenRouter fallback also failed. Using standard HTML template.`, orErr);
+          aiMethodUsed = "Hardcoded Fallback Template";
+
+          // 3. Robust Local Fallback HTML
+          subject = `REMINDER: Upcoming EMR Call Presentations - 2 Days Left`;
+          const rowsHtml = meetingsData.map(m => `
+            <div style="padding: 15px; border: 1px solid #eeeeee; border-radius: 8px; margin-top: 15px; background-color:#f8f9fa;">
+              <p><strong>Opportunity:</strong> ${m.callTitle} (${m.agency})</p>
+              <p><strong>Applicant:</strong> ${m.applicantName}</p>
+              <p><strong>Schedule:</strong> ${m.meetingDate} at ${m.meetingTime}</p>
+              <p><strong>Mode:</strong> ${m.mode}</p>
+              <p><strong>${m.mode === 'Online' ? 'Meeting Link:' : 'Venue:'}</strong> 
+                ${m.mode === 'Online' ? `<a href="${m.venue}" style="color: #1a73e8; text-decoration: underline;">${m.venue}</a>` : m.venue}
+              </p>
+              ${m.pptUrl ? `<p><strong>Presentation Slide:</strong> <a href="${m.pptUrl}" style="color: #1a73e8;">View PPT</a></p>` : ''}
+              ${m.proposalUrl ? `<p><strong>Proposal Document:</strong> <a href="${m.proposalUrl}" style="color: #1a73e8;">View Proposal</a></p>` : ''}
+            </div>
+          `).join('');
+
+          emailHtml = `
+            <div style="font-family:Arial, sans-serif; padding:20px; color:#333333; line-height: 1.6; max-width: 600px; margin: 0 auto;">
+              <p>Dear Prof. ${evalInfo.name},</p>
+              <p>This is a reminder that you are scheduled to evaluate EMR presentations in 2 days.</p>
+              ${rowsHtml}
+              <hr style="border-top: 1px solid #eeeeee; margin-top: 20px;">
+              <p style="color:#555555; margin-top: 20px;">Best Regards,</p>
+              <p style="color:#555555;">Research & Development Cell Team,</p>
+              <p style="color:#555555;">Parul University</p>
+            </div>
+          `;
+        }
+      }
+
+      // Add wrapper around AI output to match general styles
+      const finalHtml = `
+        <div style="font-family:Arial, sans-serif; padding:20px; color:#333333; line-height: 1.6; max-width: 600px; margin: 0 auto;">
+          <div style="text-align:center; margin-bottom:20px;">
+            <img src="https://pinxoxpbufq92wb4.public.blob.vercel-storage.com/RDC-PU-LOGO-BLACK.svg" alt="RDC Logo" style="max-width:300px; height:auto;" />
+          </div>
+          ${emailHtml}
+          <div style="font-size:10px; color:#999999; text-align:center; margin-top:30px; border-top: 1px solid #eeeeee; padding-top: 15px;">
+            This is a system generated automatic email. Powered by RDC AI Reminder System (${aiMethodUsed}).
+          </div>
+        </div>
+      `;
+
+      // Send the email using helpdeskrdc transporter
+      console.log(`[EMR Reminders] Sending email to ${evalInfo.email} via RDC transporter...`);
+      const emailResult = await sendEmailUtility({
+        to: evalInfo.email,
+        subject: subject,
+        html: finalHtml,
+        from: 'rdc',
+        category: 'EMR',
+      });
+
+      if (emailResult.success) {
+        emailsSent.push(evalInfo.email);
+
+        // Record an in-app notification for the evaluator
+        const notifRef = adminDb.collection("notifications").doc();
+        await notifRef.set({
+          uid: evalUid,
+          title: `EMR presentation evaluations reminder (in 2 days). Email sent.`,
+          createdAt: new Date().toISOString(),
+          isRead: false,
+        });
+      } else {
+        console.error(`[EMR Reminders] Failed to send email to ${evalInfo.email}: ${emailResult.error}`);
+        await logActivity("ERROR", `Failed to send EMR evaluator reminder email to ${evalInfo.email}`, {
+          evaluatorUid: evalUid,
+          error: emailResult.error
+        });
+      }
+    }
+
+    if (emailsSent.length > 0) {
+      await logActivity("INFO", `Sent EMR evaluator reminders for meetings scheduled on ${targetDateString}`, {
+        emailsSent,
+        meetingsProcessedCount: processedCount
+      });
+    }
+
+    return { success: true, processed: processedCount, emailsSent };
+  } catch (error: any) {
+    console.error(`[EMR Reminders] System error:`, error);
+    await logActivity("ERROR", `EMR evaluator reminder process failed`, {
+      error: error.message,
+      stack: error.stack
+    });
+    return { success: false, processed: 0, emailsSent: [], error: error.message };
+  }
+}
+
+
+

@@ -1,4 +1,4 @@
-'use server';
+﻿'use server';
 
 import nodemailer from 'nodemailer';
 import { getSystemSettings } from '@/app/actions';
@@ -66,6 +66,7 @@ interface EmailOptions {
   cc?: string;
   bcc?: string;
   subject: string;
+  text?: string;
   html: string;
   attachments?: { filename: string; path: string }[];
   from: 'default' | 'rdc' | 'noreply';
@@ -83,7 +84,7 @@ type MailSendResult = {
   message?: string;
 };
 
-export async function sendEmail({ to, cc, bcc, subject, html, attachments, from = 'default', icalEvent, category }: EmailOptions): Promise<MailSendResult> {
+export async function sendEmail({ to, cc, bcc, subject, text, html, attachments, from = 'default', icalEvent, category }: EmailOptions): Promise<MailSendResult> {
   // DND Check
   try {
     const settings = await getSystemSettings();
@@ -151,13 +152,26 @@ export async function sendEmail({ to, cc, bcc, subject, html, attachments, from 
     cc: cc,
     bcc: finalBcc,
     subject: subject,
+    text: text,
     html: html,
     attachments: attachments,
     icalEvent: icalEvent,
   };
 
   try {
-    await transporter.sendMail(mailOptions);
+    try {
+      await transporter.sendMail(mailOptions);
+    } catch (initialErr: any) {
+      const errMsg = (initialErr?.message || '') + ' ' + (initialErr?.code || '');
+      const isTransient = /forcibly closed|ECONNRESET|ETIMEDOUT|421|450|rate limit|too many|stream reading error/i.test(errMsg);
+      if (isTransient) {
+        console.warn(`Transient Gmail socket drop for ${to} (${initialErr.message}). Retrying in 1.5s...`);
+        await new Promise((r) => setTimeout(r, 1500));
+        await transporter.sendMail(mailOptions);
+      } else {
+        throw initialErr;
+      }
+    }
     console.log(`Email sent successfully to ${to} from ${selectedSender} account.`);
     await logEvent('NOTIFICATION', `Email sent successfully: ${subject}`, {
       metadata: { to, subject, from: selectedSender, attachments: attachments?.length || 0 },
@@ -207,3 +221,4 @@ export async function sendEmail({ to, cc, bcc, subject, html, attachments, from 
     return { success: false, error: error.message };
   }
 }
+

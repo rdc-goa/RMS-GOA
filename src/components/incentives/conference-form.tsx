@@ -13,10 +13,9 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert"
 import { Separator } from "@/components/ui/separator"
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, useRef } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { useToast } from "@/hooks/use-toast"
-import { useAuth as useClientAuth } from '../contexts/AuthContext'
 import { db } from "@/lib/config"
 import { collection, query, where, getDocs, orderBy } from "firebase/firestore"
 import type { User, IncentiveClaim, Author } from "@/types"
@@ -31,78 +30,99 @@ import { Badge } from "@/components/ui/badge"
 import { Label } from "@/components/ui/label"
 import { submitIncentiveClaimViaApi } from "@/lib/incentive-claim-client"
 import { getIncentiveClaimByIdAction, checkDuplicateConferenceClaimAction } from "@/app/incentive-actions"
+import { extractConferenceIQACParams } from "@/lib/iqac-autofill"
+import { verifyIqacSignatureAction } from "@/app/actions"
 const MAX_FILE_SIZE = 10 * 1024 * 1024 // 10 MB
 
-const workshopEventTypes = ["STTP", "Workshop", "Training Program", "FDP", "Other"]
+const workshopEventTypes = ["STTP", "Workshop", "Training Program", "FDP", "Invited Talk/Guest Speaker", "Other"]
 
 const conferenceSchema = z
   .object({
-    eventType: z.string({ required_error: "Please select an event type." }),
+    eventType: z.string({ required_error: "Please choose an event classification from the dropdown list." }),
     conferencePaperTitle: z.string().optional(),
-    conferenceName: z.string().min(3, "Conference name is required."),
-    conferenceMode: z.enum(["Online", "Offline"], { required_error: "Presentation mode is required." }),
+    conferenceName: z.string().min(3, "Please enter the full, official name of the conference (at least 3 characters long)."),
+    conferenceMode: z.enum(["Online", "Offline"], { required_error: "Please select whether you attended the conference 'Online' or 'Offline'." }),
     onlinePresentationOrder: z.enum(["First", "Second", "Third", "Additional"]).optional(),
-    conferenceType: z.enum(["International", "National", "Regional/State"], { required_error: "Conference type is required." }),
+    conferenceType: z.enum(["International", "National", "Regional/State"], { required_error: "Please specify whether the conference is 'National', 'International', or 'Regional/State'." }),
     conferenceVenue: z.enum(
-      ["India", "Indian Subcontinent", "South Korea, Japan, Australia and Middle East", "Europe", "African/South American/North American", "Other"],
-      { required_error: "Conference venue is required." }
+      ["India", "Indian Subcontinent", "South Korea, Japan and Middle East", "Europe and Australia", "African/South American/North American", "Other"],
+      { required_error: "Please select the location or region where the conference was hosted." }
     ),
     presentationType: z.enum(["Oral", "Poster", "Other"]).optional(),
     govtFundingRequestProof: z
       .any()
       .optional()
-      .refine((files) => !files?.[0] || files?.[0]?.size <= MAX_FILE_SIZE, "File must be less than 10 MB."),
-    registrationFee: z.coerce.number().nonnegative("Fee cannot be negative.").optional(),
-    travelFare: z.coerce.number().nonnegative("Fare cannot be negative.").optional(),
+      .refine((files) => !files?.[0] || files?.[0]?.size <= MAX_FILE_SIZE, "The uploaded government funding request proof file exceeds the 10 MB limit."),
+    registrationFee: z.coerce.number().nonnegative("The registration fee amount cannot be less than zero.").optional(),
+    travelFare: z.coerce.number().nonnegative("The travel fare amount cannot be less than zero.").optional(),
     wasPresentingAuthor: z.boolean().optional(),
     isPuNamePresent: z.boolean().optional(),
     abstractUpload: z
       .any()
-      .refine((files) => files?.length > 0, "An abstract is required.")
-      .refine((files) => !files?.[0] || files?.[0]?.type === "application/pdf", "Abstract must be a PDF file.")
-      .refine((files) => !files?.[0] || files?.[0]?.size <= MAX_FILE_SIZE, "File must be less than 10 MB."),
-    organizerName: z.string().min(2, "Organizer name is required."),
-    eventWebsite: z.string().url("Please enter a valid URL.").optional().or(z.literal("")),
-    conferenceDate: z.string().min(1, "Conference start date is required."),
-    conferenceEndDate: z.string().min(1, "Conference end date is required."),
-    presentationDate: z.string().min(1, "Presentation date is required."),
+      .refine((files) => files?.length > 0, "Please upload a PDF of the accepted abstract for your presentation.")
+      .refine((files) => !files?.[0] || files?.[0]?.type === "application/pdf", "The uploaded abstract must be a PDF file.")
+      .refine((files) => !files?.[0] || files?.[0]?.size <= MAX_FILE_SIZE, "The uploaded abstract file size exceeds the 10 MB limit."),
+    organizerName: z.string().min(2, "Please enter the name of the institution or organization hosting this event (at least 2 characters long)."),
+    eventWebsite: z.string().url("Please enter a valid event website address starting with http:// or https://.").optional().or(z.literal("")),
+    conferenceDate: z.string().min(1, "Please select the official start date of the conference."),
+    conferenceEndDate: z.string().min(1, "Please select the official end date of the conference."),
+    presentationDate: z.string().min(1, "Please select the date on which you made your presentation."),
     registrationFeeProof: z
       .any()
       .optional()
-      .refine((files) => !files?.[0] || files?.[0]?.size <= MAX_FILE_SIZE, "File must be less than 10 MB."),
+      .refine((files) => !files?.[0] || files?.[0]?.size <= MAX_FILE_SIZE, "The uploaded registration fee proof file exceeds the 10 MB limit."),
     participationCertificate: z
       .any()
-      .refine((files) => files?.length > 0, "Participation certificate is required.")
-      .refine((files) => !files?.[0] || files?.[0]?.type === "application/pdf", "File must be a PDF.")
-      .refine((files) => !files?.[0] || files?.[0]?.size <= MAX_FILE_SIZE, "File must be less than 10 MB."),
+      .refine((files) => files?.length > 0, "Please upload your official Certificate of Presentation/Participation (as a PDF file).")
+      .refine((files) => !files?.[0] || files?.[0]?.type === "application/pdf", "The uploaded presentation certificate must be a PDF file.")
+      .refine((files) => !files?.[0] || files?.[0]?.size <= MAX_FILE_SIZE, "The uploaded certificate file size exceeds the 10 MB limit."),
     wonPrize: z.boolean().optional(),
     prizeDetails: z.string().optional(),
     prizeProof: z
       .any()
       .optional()
-      .refine((files) => !files?.[0] || files?.[0]?.size <= MAX_FILE_SIZE, "File must be less than 10 MB."),
+      .refine((files) => !files?.[0] || files?.[0]?.size <= MAX_FILE_SIZE, "The uploaded prize proof file exceeds the 10 MB limit."),
     conferenceProof: z
       .any()
       .optional()
-      .refine((files) => !files || Array.from(files as FileList).every((file) => file.size <= MAX_FILE_SIZE), "File must be less than 10 MB."),
+      .refine((files) => !files || Array.from(files as FileList).every((file) => file.size <= MAX_FILE_SIZE), "The uploaded conference proof file exceeds the 10 MB limit."),
+    presencePhotographs: z
+      .any()
+      .optional()
+      .refine(
+        (files) =>
+          !files ||
+          Array.from(files as FileList).every(
+            (file) =>
+              ["image/png", "image/jpeg", "image/jpg"].includes(file.type) ||
+              /\.(png|jpe?g)$/i.test(file.name)
+          ),
+        "Only PNG, JPG, and JPEG files are allowed."
+      )
+      .refine((files) => !files || Array.from(files as FileList).every((file) => file.size <= MAX_FILE_SIZE), "The uploaded photographs exceed the 10 MB limit."),
     additionalDocuments: z
       .any()
       .optional()
-      .refine((files) => !files || Array.from(files as FileList).every((file) => file.size <= MAX_FILE_SIZE), "File must be less than 10 MB."),
+      .refine((files) => !files || Array.from(files as FileList).every((file) => file.size <= MAX_FILE_SIZE), "The uploaded additional document size exceeds the 10 MB limit."),
     attendedOtherConference: z.boolean().optional(),
     travelPlaceVisited: z.string().optional(),
     travelMode: z.enum(["Bus", "Train", "Air", "Other"]).optional(),
     travelReceipts: z
       .any()
       .optional()
-      .refine((files) => !files?.[0] || files?.[0]?.size <= MAX_FILE_SIZE, "File must be less than 10 MB."),
-    conferenceSelfDeclaration: z.boolean().refine((val) => val === true, { message: "You must agree to the self-declaration." }),
+      .refine((files) => !files?.[0] || files?.[0]?.size <= MAX_FILE_SIZE, "The uploaded travel receipts file exceeds the 10 MB limit."),
+    accommodationExpense: z.coerce.number().nonnegative("The accommodation expense amount cannot be less than zero.").optional(),
+    accommodationProof: z
+      .any()
+      .optional()
+      .refine((files) => !files?.[0] || files?.[0]?.size <= MAX_FILE_SIZE, "The uploaded accommodation bill file exceeds the 10 MB limit."),
+    conferenceSelfDeclaration: z.boolean().refine((val) => val === true, { message: "You must check the self-declaration box to confirm you have not received reimbursement for this conference from other sources." }),
     authors: z
       .array(
         z
           .object({
-            name: z.string().min(2, "Author name is required."),
-            email: z.string().email("Invalid email format.").or(z.literal("")),
+            name: z.string().min(2, "Author name must be a complete name (at least 2 characters long)."),
+            email: z.string().email("Please enter a valid email address (e.g. name@domain.com) for this author.").or(z.literal("")),
             uid: z.string().optional().nullable(),
             role: z.enum([
               "First Author",
@@ -116,44 +136,60 @@ const conferenceSchema = z
             status: z.enum(["approved", "pending", "Applied"]),
           })
           .refine((data) => data.isExternal || !!data.email, {
-            message: "Email is required for internal authors.",
+            message: "Internal authors must have a valid email address to verify their university affiliation.",
             path: ["email"],
           })
       )
-      .min(1, "At least one author is required.")
+      .min(1, "You must list at least one author (the primary claimant).")
       .refine(
         (data) => {
           const firstAuthors = data.filter((author) => author.role === "First Author" || author.role === "First & Corresponding Author")
           return firstAuthors.length <= 1
         },
-        { message: "Only one author can be designated as the First Author.", path: ["authors"] }
+        { message: "A publication can only have one primary 'First Author' or 'First & Corresponding Author'. Please adjust roles accordingly.", path: ["authors"] }
       ),
     authorType: z.string().optional(),
     totalAuthors: z.string().optional(),
     authorPosition: z.enum(['1st', '2nd', '3rd', '4th', '5th', '6th', '7th', '8th', '9th', '10th']).optional(),
   })
   .refine(
-    (data) => !(data.conferenceVenue && data.conferenceVenue !== "India") || (!!data.govtFundingRequestProof && data.govtFundingRequestProof.length > 0),
-    { message: "Proof of government funding request is required for conferences outside India.", path: ["govtFundingRequestProof"] }
+    (data) => {
+      if (data.eventType === "Conference" && data.conferenceMode === "Online") {
+        return true
+      }
+      return !(data.conferenceVenue && data.conferenceVenue !== "India") || (!!data.govtFundingRequestProof && data.govtFundingRequestProof.length > 0)
+    },
+    { message: "Since this conference was outside India, please upload the proof of your application for government travel funding.", path: ["govtFundingRequestProof"] }
+  )
+  .refine(
+    (data) => {
+      if (data.eventType === "Conference" && data.conferenceMode === "Offline") {
+        const hasUrl = !!(data as any).presencePhotographsUrls && (data as any).presencePhotographsUrls.length > 0;
+        const hasNewUpload = !!data.presencePhotographs && data.presencePhotographs.length > 0;
+        return hasUrl || hasNewUpload;
+      }
+      return true;
+    },
+    { message: "Please upload photographs justifying your presence at the conference.", path: ["presencePhotographs"] }
   )
   .refine((data) => !data.wonPrize || (!!data.prizeDetails && data.prizeDetails.length > 2), {
-    message: "Prize details are required if you won a prize.",
+    message: "You indicated that you won a prize. Please specify the prize details.",
     path: ["prizeDetails"],
   })
   .refine((data) => !data.wonPrize || (!!data.prizeProof && data.prizeProof.length > 0), {
-    message: "Proof of prize is required if you won a prize.",
+    message: "Please upload the proof of your award or prize.",
     path: ["prizeProof"],
   })
   .refine((data) => data.conferenceMode === "Online" || !!data.presentationType, {
-    message: "Presentation type is required for offline conferences.",
+    message: "Please specify the presentation type (Oral, Poster, etc.) since you attended offline.",
     path: ["presentationType"],
   })
   .refine((data) => !data.conferenceDate || !data.presentationDate || new Date(data.presentationDate) >= new Date(data.conferenceDate), {
-    message: "Presentation date must be on or after the conference start date.",
+    message: "Your presentation date must be on or after the conference start date.",
     path: ["presentationDate"],
   })
   .refine((data) => !data.conferenceDate || !data.conferenceEndDate || new Date(data.conferenceEndDate) >= new Date(data.conferenceDate), {
-    message: "End date must be on or after the start date.",
+    message: "The conference end date cannot be earlier than its start date.",
     path: ["conferenceEndDate"],
   })
   .refine(
@@ -161,22 +197,42 @@ const conferenceSchema = z
       const today = new Date().toISOString().split("T")[0];
       return !data.conferenceDate || data.conferenceDate <= today;
     },
-    { message: "Conference start date cannot be in the future.", path: ["conferenceDate"] }
+    { message: "The conference start date cannot be in the future.", path: ["conferenceDate"] }
   )
   .refine(
     (data) => {
       const today = new Date().toISOString().split("T")[0];
       return !data.presentationDate || data.presentationDate <= today;
     },
-    { message: "Presentation date cannot be in the future.", path: ["presentationDate"] }
+    { message: "Your presentation date cannot be in the future.", path: ["presentationDate"] }
+  )
+  .refine(
+    (data) => {
+      if (data.conferenceMode === "Offline" && data.conferenceVenue !== "India") {
+        return data.accommodationExpense !== undefined && data.accommodationExpense > 0;
+      }
+      return true;
+    },
+    { message: "Please specify the accommodation expense amount since the conference is offline and outside India.", path: ["accommodationExpense"] }
+  )
+  .refine(
+    (data) => {
+      if (data.conferenceMode === "Offline" && data.conferenceVenue !== "India") {
+        const hasUrl = !!(data as any).accommodationProofUrl;
+        const hasNewUpload = !!data.accommodationProof && data.accommodationProof.length > 0;
+        return hasUrl || hasNewUpload;
+      }
+      return true;
+    },
+    { message: "Please upload your accommodation invoice/proof.", path: ["accommodationProof"] }
   );
 
 type ConferenceFormValues = z.infer<typeof conferenceSchema>
 
-const eventTypes = ["Conference", "Seminar", "Symposium", "Invited Talk/Guest Speaker", ...workshopEventTypes]
+const eventTypes = ["Conference", "Seminar", "Symposium", ...workshopEventTypes]
 
 const conferenceVenueOptions = {
-  International: ["India", "Indian Subcontinent", "South Korea, Japan, Australia and Middle East", "Europe", "African/South American/North American", "Other"],
+  International: ["India", "Indian Subcontinent", "South Korea, Japan and Middle East", "Europe and Australia", "African/South American/North American", "Other"],
   National: ["India"],
   "Regional/State": ["India"],
 }
@@ -290,6 +346,12 @@ function ReviewDetails({
                       <span className="font-bold font-mono">₹{data.travelFare?.toLocaleString("en-IN") || 0}</span>
                     </div>
                   )}
+                  {data.conferenceMode === "Offline" && data.conferenceVenue !== "India" && (
+                    <div className="flex justify-between items-center text-xs">
+                      <span className="text-muted-foreground">Accommodation Expense:</span>
+                      <span className="font-bold font-mono">₹{data.accommodationExpense?.toLocaleString("en-IN") || 0}</span>
+                    </div>
+                  )}
                 </div>
 
                 <div className="bg-primary p-6 rounded-[2rem] text-primary-foreground shadow-xl shadow-primary/20 relative overflow-hidden group">
@@ -367,16 +429,34 @@ function ReviewDetails({
               </div>
             )}
 
-            {(data.conferenceProof || (data.additionalDocuments && data.additionalDocuments.length > 0)) && (
+            {(data.conferenceProof || (data as any).conferenceProofUrl || data.presencePhotographs || (data as any).presencePhotographsUrls || data.accommodationProof || (data as any).accommodationProofUrl || (data.additionalDocuments && data.additionalDocuments.length > 0)) && (
               <div>
                 <p className="font-semibold text-muted-foreground uppercase text-[10px] tracking-wider mb-1">Supportive Documents</p>
                 <div className="flex flex-col gap-1.5">
-                  {data.conferenceProof?.[0] && (
+                  {(data.conferenceProof?.[0] || (data as any).conferenceProofUrl) && (
                     <div className="flex items-center gap-2 p-2.5 rounded-lg border bg-primary/5 shadow-sm transition-all text-xs font-medium border-primary/20">
                       <FileText className="h-4 w-4 text-primary shrink-0" />
-                      <span className="truncate">Conference Proof: {data.conferenceProof[0].name}</span>
+                      <span className="truncate">Conference Proof: {data.conferenceProof?.[0]?.name || "Brochure/Invitation uploaded"}</span>
                     </div>
                   )}
+                  {(data.accommodationProof?.[0] || (data as any).accommodationProofUrl) && (
+                    <div className="flex items-center gap-2 p-2.5 rounded-lg border bg-primary/5 shadow-sm transition-all text-xs font-medium border-primary/20">
+                      <FileText className="h-4 w-4 text-primary shrink-0" />
+                      <span className="truncate">Accommodation Bill: {data.accommodationProof?.[0]?.name || "Accommodation Invoice uploaded"}</span>
+                    </div>
+                  )}
+                  {data.presencePhotographs && Array.from(data.presencePhotographs as FileList).map((file: File, idx: number) => (
+                    <div key={`photo-file-${idx}`} className="flex items-center gap-2 p-2.5 rounded-lg border bg-primary/5 shadow-sm transition-all text-xs font-medium border-primary/20">
+                      <FileText className="h-4 w-4 text-primary shrink-0" />
+                      <span className="truncate">Presence Photograph {idx + 1}: {file.name}</span>
+                    </div>
+                  ))}
+                  {!data.presencePhotographs && (data as any).presencePhotographsUrls && (data as any).presencePhotographsUrls.map((url: string, idx: number) => (
+                    <div key={`photo-url-${idx}`} className="flex items-center gap-2 p-2.5 rounded-lg border bg-primary/5 shadow-sm transition-all text-xs font-medium border-primary/20">
+                      <FileText className="h-4 w-4 text-primary shrink-0" />
+                      <span className="truncate">Presence Photograph {idx + 1}: Photograph uploaded</span>
+                    </div>
+                  ))}
                   {data.additionalDocuments && Array.from(data.additionalDocuments as FileList).map((file: File, idx: number) => (
                     <div key={idx} className="flex items-center gap-2 p-2.5 rounded-lg border bg-muted/30 shadow-sm transition-all text-xs font-medium">
                       <FileText className="h-4 w-4 text-primary shrink-0" />
@@ -441,15 +521,19 @@ function ConferenceFormContent({ user, onEventTypeChange }: { user: User; onEven
   const router = useRouter()
   const searchParams = useSearchParams()
   const [isSubmitting, setIsSubmitting] = useState(false)
-  const clientAuth = useClientAuth();
   const [bankDetailsMissing, setBankDetailsMissing] = useState(false)
   const [orcidOrMisIdMissing, setOrcidOrMisIdMissing] = useState(false)
-  const [eligibility, setEligibility] = useState<{ eligible: boolean; nextAvailableDate?: string }>({ eligible: true })
+  const [eligibility, setEligibility] = useState<{ eligible: boolean; nextAvailableDate?: string; reason?: string }>({ eligible: true })
   const [isLoadingDraft, setIsLoadingDraft] = useState(true)
   const [step, setStep] = useState<"edit" | "review">("edit")
   const [calculatedIncentive, setCalculatedIncentive] = useState<number | null>(null)
   const [calculationBreakdown, setCalculationBreakdown] = useState<{ eligibleExpenses?: number; maxReimbursement?: number } | null>(null)
   const [showLogic, setShowLogic] = useState(false)
+  const [rejectionComments, setRejectionComments] = useState<string | null>(null)
+  const hasVerifiedIqac = useRef(false)
+  const [isVerifyingIqac, setIsVerifyingIqac] = useState(false)
+  const [iqacVerificationError, setIqacVerificationError] = useState<string | null>(null)
+  const [isPrefilledFromIQAC, setIsPrefilledFromIQAC] = useState(false)
 
   const form = useForm<ConferenceFormValues>({
     resolver: zodResolver(conferenceSchema),
@@ -480,11 +564,14 @@ function ConferenceFormContent({ user, onEventTypeChange }: { user: User; onEven
       prizeDetails: "",
       prizeProof: undefined,
       conferenceProof: undefined,
+      presencePhotographs: undefined,
       additionalDocuments: undefined,
       attendedOtherConference: false,
       travelPlaceVisited: "",
       travelMode: undefined,
       travelReceipts: undefined,
+      accommodationExpense: 0,
+      accommodationProof: undefined,
       conferenceSelfDeclaration: false,
       authorType: "",
       totalAuthors: "",
@@ -496,6 +583,70 @@ function ConferenceFormContent({ user, onEventTypeChange }: { user: User; onEven
     control: form.control,
     name: "authors",
   })
+
+  const formValues = form.watch();
+
+  const clearLocalBackup = useCallback(() => {
+    if (user) {
+      localStorage.removeItem(`local_draft_conference_form_${user.uid}`);
+    }
+  }, [user]);
+
+  // Auto-save form values to localStorage
+  useEffect(() => {
+    if (!user || isLoadingDraft) return;
+    const key = `local_draft_conference_form_${user.uid}`;
+
+    const valuesToSave = {
+      ...formValues,
+      govtFundingRequestProof: undefined,
+      abstractUpload: undefined,
+      registrationFeeProof: undefined,
+      participationCertificate: undefined,
+      prizeProof: undefined,
+      conferenceProof: undefined,
+      presencePhotographs: undefined,
+      additionalDocuments: undefined,
+      travelReceipts: undefined,
+      accommodationProof: undefined,
+    };
+
+    localStorage.setItem(key, JSON.stringify(valuesToSave));
+  }, [formValues, user, isLoadingDraft]);
+
+  // Prompt to restore local backup on load
+  useEffect(() => {
+    if (!user || isLoadingDraft) return;
+    const key = `local_draft_conference_form_${user.uid}`;
+    const backupStr = localStorage.getItem(key);
+    if (backupStr) {
+      try {
+        const backup = JSON.parse(backupStr);
+        if (backup.conferenceName && backup.conferenceName.length > 3 && backup.conferenceName !== form.getValues('conferenceName')) {
+          toast({
+            title: "Unsaved Changes Found",
+            description: "We found unsaved changes from your previous session. Do you want to restore them?",
+            duration: 15000,
+            action: (
+              <Button
+                variant="default"
+                size="sm"
+                className="bg-primary text-primary-foreground font-bold hover:bg-primary/95"
+                onClick={() => {
+                  form.reset(backup);
+                  toast({ title: "Restored", description: "Your details have been successfully recovered." });
+                }}
+              >
+                Restore
+              </Button>
+            ),
+          });
+        }
+      } catch (e) {
+        console.error("Failed to parse local backup:", e);
+      }
+    }
+  }, [user, isLoadingDraft, form, toast]);
 
   const selectedEventType = form.watch("eventType")
 
@@ -531,9 +682,16 @@ function ConferenceFormContent({ user, onEventTypeChange }: { user: User; onEven
         form.setValue("conferenceVenue", "India", { shouldValidate: true })
       }
 
+      if (value.conferenceMode === "Offline" && value.conferenceVenue && value.conferenceVenue !== "India") {
+        if (value.travelMode !== "Air" && value.travelMode !== "Other") {
+          form.setValue("travelMode", "Air", { shouldValidate: true })
+        }
+      }
+
       const fieldsForRecalculation = [
         "registrationFee",
         "travelFare",
+        "accommodationExpense",
         "conferenceMode",
         "onlinePresentationOrder",
         "conferenceType",
@@ -550,7 +708,7 @@ function ConferenceFormContent({ user, onEventTypeChange }: { user: User; onEven
   }, [form, calculate])
 
   useEffect(() => {
-    if (user && clientAuth.initialLoadComplete) {
+    if (user) {
       setBankDetailsMissing(!user.bankDetails)
       setOrcidOrMisIdMissing(!user.orcidId || !user.misId)
 
@@ -566,44 +724,101 @@ function ConferenceFormContent({ user, onEventTypeChange }: { user: User; onEven
         })
       }
 
-      const checkEligibility = async () => {
-        const claimsRef = collection(db, "incentiveClaims")
-        const q = query(
-          claimsRef,
-          where("uid", "==", user.uid),
-          where("claimType", "==", "Conference Presentations"),
-          where("status", "in", ["Accepted", "Submitted to Accounts", "Payment Completed"]),
-          orderBy("submissionDate", "desc")
-        )
-        const snapshot = await getDocs(q)
-        if (!snapshot.empty) {
-          const lastPuConferenceClaim = snapshot.docs
-            .map((docItem) => docItem.data() as IncentiveClaim)
-            .find(
-              (claim) => claim.organizerName?.toLowerCase().includes("parul university") || claim.conferenceName?.toLowerCase().includes("picet")
-            )
-
-          if (lastPuConferenceClaim) {
-            const lastClaimDate = parseISO(lastPuConferenceClaim.submissionDate)
-            const oneYearAgo = addYears(new Date(), -1)
-
-            if (lastClaimDate > oneYearAgo) {
-              const nextDate = addYears(lastClaimDate, 1)
-              setEligibility({
-                eligible: false,
-                nextAvailableDate: format(nextDate, "PPP"),
-              })
-            }
-          }
-        }
-      }
-      checkEligibility()
+      // Removed old PU eligibility check to use dynamic re-evaluation
     }
     const claimId = searchParams.get("claimId")
     if (!claimId) {
       setIsLoadingDraft(false)
     }
   }, [append, form, searchParams, user])
+
+  const watchedVenue = form.watch("conferenceVenue");
+  const watchedMode = form.watch("conferenceMode");
+  const watchedType = form.watch("conferenceType");
+  const watchedOrg = form.watch("organizerName");
+  const watchedConfName = form.watch("conferenceName");
+
+  useEffect(() => {
+    if (!user) return;
+    
+    const checkEligibility = async () => {
+      const claimsRef = collection(db, "incentiveClaims");
+      const q = query(
+        claimsRef,
+        where("uid", "==", user.uid),
+        where("claimType", "==", "Conference Presentations"),
+        where("status", "in", ["Accepted", "Submitted to Accounts", "Payment Completed"]),
+        orderBy("submissionDate", "desc")
+      );
+      const snapshot = await getDocs(q);
+      
+      let offlineCountLastYear = 0;
+      let onlineCountLastYear = 0;
+      let intlCountLast2Years = 0;
+      let puCountLastYear = 0;
+      
+      const now = new Date();
+      const oneYearAgo = addYears(now, -1);
+      const twoYearsAgo = addYears(now, -2);
+      
+      const claimId = searchParams.get("claimId");
+      
+      snapshot.docs.forEach((docItem) => {
+        const claim = docItem.data() as IncentiveClaim;
+        if (claimId && docItem.id === claimId) return;
+        
+        const subDate = claim.submissionDate ? parseISO(claim.submissionDate) : null;
+        if (!subDate) return;
+        
+        const mode = (claim.conferenceMode || "").toLowerCase().trim();
+        const isPu = claim.organizerName?.toLowerCase().includes("parul university") || claim.conferenceName?.toLowerCase().includes("picet");
+        
+        if (isPu && subDate > oneYearAgo) {
+          puCountLastYear++;
+        }
+        if (mode === "online" && subDate > oneYearAgo) {
+          onlineCountLastYear++;
+        }
+        if (mode === "offline" && subDate > oneYearAgo) {
+          offlineCountLastYear++;
+        }
+        const isIntlOutsideIndia = mode === "offline" && claim.conferenceType === "International" && claim.conferenceVenue !== "India";
+        if (isIntlOutsideIndia && subDate > twoYearsAgo) {
+          intlCountLast2Years++;
+        }
+      });
+      
+      form.setValue("previousOfflinePresentationsCount" as any, offlineCountLastYear);
+      form.setValue("previousOnlinePresentationsCount" as any, onlineCountLastYear);
+      
+      let isEligible = true;
+      let reason = "";
+      
+      const isCurrentPu = watchedOrg?.toLowerCase().includes("parul university") || watchedConfName?.toLowerCase().includes("picet");
+      
+      if (isCurrentPu && puCountLastYear >= 1) {
+        isEligible = false;
+        reason = "PU conference assistance is limited to one claim per year.";
+      } else if (watchedMode === "Online" && onlineCountLastYear >= 1) {
+        isEligible = false;
+        reason = "Online paper presentations are limited to one claim per year.";
+      } else if (watchedMode === "Offline" && watchedType === "International" && watchedVenue !== "India" && intlCountLast2Years >= 1) {
+        isEligible = false;
+        reason = "Financial travel support for international conferences outside India is limited to once in two years.";
+      } else if (watchedMode === "Offline" && offlineCountLastYear >= 2) {
+        isEligible = false;
+        reason = "Physical/offline conference presentations are limited to two claims per year.";
+      }
+      
+      setEligibility({
+        eligible: isEligible,
+        reason: reason,
+        nextAvailableDate: undefined
+      });
+    };
+    
+    checkEligibility();
+  }, [user, watchedVenue, watchedMode, watchedType, watchedOrg, watchedConfName, searchParams, form]);
 
   useEffect(() => {
     const claimId = searchParams.get("claimId")
@@ -623,9 +838,16 @@ function ConferenceFormContent({ user, onEventTypeChange }: { user: User; onEven
               participationCertificate: undefined,
               prizeProof: undefined,
               conferenceProof: undefined,
+              presencePhotographs: undefined,
               additionalDocuments: undefined,
               travelReceipts: undefined,
+              accommodationProof: undefined,
             })
+            // Check if there are rejection comments in approvals
+            const lastApproval = draftData.approvals?.filter((a: any) => a != null).reverse().find((a: any) => a.status === 'Not Approved');
+            if (lastApproval?.comments) {
+              setRejectionComments(lastApproval.comments);
+            }
           } else {
             toast({ variant: "destructive", title: result.error || "Draft Not Found" })
           }
@@ -639,45 +861,133 @@ function ConferenceFormContent({ user, onEventTypeChange }: { user: User; onEven
     }
   }, [searchParams, user, form, toast])
 
-  const checkDuplicateClaim = async (paperTitle: string) => {
-    console.log("🔍 [Client] checkDuplicateClaim triggered with:", { paperTitle });
-    if (!paperTitle) {
-      console.log("🔍 [Client] Missing paperTitle, skipping check.");
-      return { isDuplicate: false };
-    }
+  // Extract and pre-fill form fields if data is passed from IQAC Portal
+  useEffect(() => {
+    if (!user || isLoadingDraft) return;
+    if (hasVerifiedIqac.current) return;
 
-    try {
-      const claimId = searchParams.get("claimId");
-      console.log("🔍 [Client] Current claimId (from URL):", claimId);
-      console.log("🔍 [Client] Logged in user UID:", user?.uid);
+    const claimId = searchParams.get('claimId');
+    if (claimId) return; // Do not overwrite when opening an existing draft
 
-      console.log("🔍 [Client] Invoking server action checkDuplicateConferenceClaimAction...");
-      const result = await checkDuplicateConferenceClaimAction(
-        paperTitle,
-        "dummy-conf",
-        claimId,
-        user?.uid
-      );
-      console.log("🔍 [Client] Server action returned result:", result);
+    const iqacData = extractConferenceIQACParams(searchParams);
+    if (!iqacData) return; // No prefill parameters are present, no verification needed
 
-      if (result.success && result.isDuplicate) {
-        console.log("🔍 [Client] Duplicate detected! Applied by:", result.appliedBy);
-        return {
-          isDuplicate: true,
-          appliedBy: result.appliedBy || "Another researcher"
-        };
-      } else {
-        console.log("🔍 [Client] No duplicate found.");
+    hasVerifiedIqac.current = true;
+
+    const sig = searchParams.get('sig');
+    const ts = searchParams.get('ts');
+
+    const verifyIqac = async () => {
+      setIqacVerificationError(null);
+
+      // MIS ID comparison check
+      const urlMisId = searchParams.get('misCode') || searchParams.get('misId');
+      const userMisId = user.misId;
+
+      if (!urlMisId) {
+        setIqacVerificationError("Security verification failed: Missing MIS ID (misCode) in the redirect URL.");
+        return;
       }
-    } catch (error) {
-      console.error("❌ [Client] Error checking duplicate claim:", error);
-    }
+
+      if (urlMisId !== userMisId) {
+        setIqacVerificationError(`Security verification failed: MIS ID mismatch. This link was generated for MIS ID ${urlMisId}, but your current session is logged in as MIS ID ${userMisId || 'None'}.`);
+        return;
+      }
+
+      // 1. Reject if sig or ts is missing
+      if (!sig || !ts) {
+        setIqacVerificationError("Security verification failed: Missing signature (sig) or timestamp (ts).");
+        return;
+      }
+
+      setIsVerifyingIqac(true);
+      // Build a record of query params
+      const paramsRecord: Record<string, string> = {};
+      searchParams.forEach((val, key) => {
+        paramsRecord[key] = val;
+      });
+
+      const verificationResult = await verifyIqacSignatureAction(paramsRecord);
+      setIsVerifyingIqac(false);
+
+      if (verificationResult.isValid) {
+        const iqacData = extractConferenceIQACParams(searchParams);
+        if (iqacData) {
+          const currentValues = form.getValues();
+          const newValues: any = {
+            ...currentValues,
+            ...iqacData,
+          };
+
+          let mergedAuthors = [...(iqacData.authors || [])];
+
+          // Keep current logged-in user or other authors already in form unless duplicate
+          const existingAuthors = currentValues.authors || [];
+          existingAuthors.forEach(ea => {
+            const exists = mergedAuthors.some(a => a.email.toLowerCase() === ea.email.toLowerCase());
+            if (!exists) {
+              mergedAuthors.push(ea);
+            }
+          });
+
+          // Append resolved PU co-authors from MIS IDs
+          if (verificationResult.coAuthors && verificationResult.coAuthors.length > 0) {
+            verificationResult.coAuthors.forEach((coAuthor: any) => {
+              const exists = mergedAuthors.some(a => a.email.toLowerCase() === coAuthor.email.toLowerCase());
+              if (!exists) {
+                mergedAuthors.push(coAuthor);
+              }
+            });
+          }
+
+          // Map roles: claimant = Presenting Author, others = Co-Author
+          newValues.authors = mergedAuthors.map(author => {
+            const isSelf = author.email.toLowerCase() === user.email.toLowerCase();
+            return {
+              ...author,
+              role: isSelf ? "Presenting Author" : "Co-Author"
+            };
+          });
+
+          form.reset(newValues);
+          setIsPrefilledFromIQAC(true);
+          toast({
+            title: "IQAC Integration",
+            description: "Conference details have been pre-filled from IQAC Portal.",
+          });
+        }
+      } else {
+        setIqacVerificationError(verificationResult.error || "Security verification failed: Invalid signature.");
+      }
+    };
+
+    verifyIqac();
+  }, [searchParams, user, isLoadingDraft, form, toast]);
+
+  const checkDuplicateClaim = async (paperTitle?: string | null): Promise<{ isDuplicate: boolean; appliedBy?: string }> => {
     return { isDuplicate: false };
   };
 
   const handleProceedToReview = async () => {
     const isValid = await form.trigger()
     if (isValid) {
+      // Validate that Your Author Category matches user's role in Authorship & Disclosure
+      const authors = form.getValues("authors")
+      const authorType = form.getValues("authorType")
+      const currentUserAuthor = authors.find(a => a.email?.toLowerCase() === user.email.toLowerCase())
+      if (currentUserAuthor && currentUserAuthor.role !== authorType) {
+        form.setError("authorType", {
+          type: "custom",
+          message: "Your Author Category must match your role in the Authorship & Disclosure section."
+        })
+        toast({
+          variant: "destructive",
+          title: "Validation Error",
+          description: "Your Author Category must match your role in the Authorship & Disclosure section."
+        })
+        return
+      }
+
       const title = form.getValues("conferencePaperTitle");
       setIsSubmitting(true);
       const dup = await checkDuplicateClaim(title);
@@ -698,10 +1008,62 @@ function ConferenceFormContent({ user, onEventTypeChange }: { user: User; onEven
 
       setStep("review")
     } else {
+      console.error("FORM VALIDATION ERRORS:", JSON.stringify(form.formState.errors, null, 2))
+      const errorKeys = Object.keys(form.formState.errors);
+
+      const getReadableFieldName = (key: string) => {
+        const mapping: Record<string, string> = {
+          eventType: "Event Classification",
+          conferenceMode: "Presentation Mode",
+          onlinePresentationOrder: "Online Presentation Order",
+          conferencePaperTitle: "Paper Title",
+          conferenceName: "Conference Name",
+          eventWebsite: "Event Website URL",
+          organizerName: "Organizing Body",
+          presentationType: "Presentation Category",
+          conferenceType: "Global Scale",
+          conferenceVenue: "Physical Location",
+          authors: "Authors List"
+        };
+        return mapping[key] || key;
+      };
+
+      const getErrorMessage = (err: any): string => {
+        if (!err) return "Invalid value";
+        if (err.message) return err.message;
+        if (Array.isArray(err)) {
+          for (const subErr of err) {
+            if (subErr) {
+              const messages: string[] = [];
+              for (const [subKey, subVal] of Object.entries(subErr)) {
+                if (subVal && typeof subVal === 'object' && 'message' in subVal) {
+                  messages.push((subVal as any).message);
+                }
+              }
+              if (messages.length > 0) return messages.join(", ");
+            }
+          }
+        }
+        return "Invalid value";
+      };
+
+      const errorMessages = Object.entries(form.formState.errors)
+        .map(([key, err]: [string, any]) => {
+          const fieldName = getReadableFieldName(key);
+          const msg = getErrorMessage(err);
+          return `${fieldName}: ${msg}`;
+        })
+        .slice(0, 3)
+        .join("\n");
+
+      const toastDescription = errorMessages
+        ? `Please correct the following fields:\n${errorMessages}${errorKeys.length > 3 ? `\n...and ${errorKeys.length - 3} more field(s).` : ''}`
+        : "Please review the highlighted fields in the form and correct the validation errors before proceeding.";
+
       toast({
         variant: "destructive",
         title: "Validation Error",
-        description: "Please correct the errors before proceeding.",
+        description: toastDescription,
       })
     }
   }
@@ -714,6 +1076,24 @@ function ConferenceFormContent({ user, onEventTypeChange }: { user: User; onEven
         description: "Please add your bank details, ORCID iD, and MIS ID in Settings before submitting a claim.",
       })
       return
+    }
+
+    if (status === "Pending") {
+      const authors = form.getValues("authors")
+      const authorType = form.getValues("authorType")
+      const currentUserAuthor = authors.find(a => a.email?.toLowerCase() === user.email.toLowerCase())
+      if (currentUserAuthor && currentUserAuthor.role !== authorType) {
+        form.setError("authorType", {
+          type: "custom",
+          message: "Your Author Category must match your role in the Authorship & Disclosure section."
+        })
+        toast({
+          variant: "destructive",
+          title: "Validation Error",
+          description: "Your Author Category must match your role in the Authorship & Disclosure section."
+        })
+        return
+      }
     }
 
     const title = form.getValues("conferencePaperTitle");
@@ -744,7 +1124,7 @@ function ConferenceFormContent({ user, onEventTypeChange }: { user: User; onEven
         return result.url
       }
 
-      const { govtFundingRequestProof, abstractUpload, registrationFeeProof, participationCertificate, prizeProof, travelReceipts, conferenceProof, additionalDocuments, ...restOfData } =
+      const { govtFundingRequestProof, abstractUpload, registrationFeeProof, participationCertificate, prizeProof, travelReceipts, conferenceProof, presencePhotographs, additionalDocuments, accommodationProof, ...restOfData } =
         data
 
       const [
@@ -755,6 +1135,7 @@ function ConferenceFormContent({ user, onEventTypeChange }: { user: User; onEven
         prizeProofUrl,
         travelReceiptsUrl,
         conferenceProofUrl,
+        accommodationProofUrl,
       ] = await Promise.all([
         uploadFileHelper(govtFundingRequestProof?.[0], "conference-funding-proof"),
         uploadFileHelper(abstractUpload?.[0], "conference-abstract"),
@@ -763,6 +1144,7 @@ function ConferenceFormContent({ user, onEventTypeChange }: { user: User; onEven
         uploadFileHelper(prizeProof?.[0], "conference-prize-proof"),
         uploadFileHelper(travelReceipts?.[0], "conference-travel-receipts"),
         uploadFileHelper(conferenceProof?.[0], "conference-proof"),
+        uploadFileHelper(accommodationProof?.[0], "conference-accommodation-proof"),
       ])
 
       const additionalDocumentsUrlsRaw = additionalDocuments && additionalDocuments.length > 0
@@ -770,6 +1152,14 @@ function ConferenceFormContent({ user, onEventTypeChange }: { user: User; onEven
         : []
 
       const additionalDocumentsUrls = additionalDocumentsUrlsRaw.filter(Boolean) as string[]
+
+      const presencePhotographsUrlsRaw = presencePhotographs && presencePhotographs.length > 0
+        ? await Promise.all(Array.from(presencePhotographs as FileList).map(file => uploadFileHelper(file as File, "conference-presence-photographs")))
+        : []
+
+      const presencePhotographsUrls = presencePhotographsUrlsRaw.length > 0
+        ? presencePhotographsUrlsRaw.filter(Boolean) as string[]
+        : (data as any).presencePhotographsUrls || []
 
       const autoDuration = (() => {
         if (restOfData.conferenceDate && (restOfData as any).conferenceEndDate) {
@@ -789,10 +1179,12 @@ function ConferenceFormContent({ user, onEventTypeChange }: { user: User; onEven
         participationCertificateUrl: participationCertificateUrl ?? undefined,
         prizeProofUrl: prizeProofUrl ?? undefined,
         travelReceiptsUrl: travelReceiptsUrl ?? undefined,
+        accommodationProofUrl: accommodationProofUrl ?? undefined,
         conferenceProofUrl: conferenceProofUrl ?? undefined,
+        presencePhotographsUrls: presencePhotographsUrls.length > 0 ? presencePhotographsUrls : undefined,
         additionalDocumentsUrls: additionalDocumentsUrls.length > 0 ? additionalDocumentsUrls : undefined,
         calculatedIncentive: calculatedIncentive ?? undefined,
-        conferenceDuration: autoDuration ?? restOfData.conferenceDuration,
+        conferenceDuration: autoDuration ?? (restOfData as any).conferenceDuration,
         misId: user.misId ?? undefined,
         orcidId: user.orcidId ?? undefined,
         bankDetails: user.bankDetails ?? undefined,
@@ -806,6 +1198,10 @@ function ConferenceFormContent({ user, onEventTypeChange }: { user: User; onEven
         submissionDate: new Date().toISOString(),
         authorType: data.authorType,
         totalAuthors: data.totalAuthors,
+        externalId: searchParams.get('externalId') || (form.getValues() as any).externalId || undefined,
+        source: searchParams.get('source') || (form.getValues() as any).source || undefined,
+        iqacClaimType: searchParams.get('claimType') || (form.getValues() as any).claimType || undefined,
+        paperProofLink: searchParams.get('paperProofLink') || (form.getValues() as any).paperProofLink || undefined,
       }
 
       const claimId = searchParams.get("claimId")
@@ -817,6 +1213,7 @@ function ConferenceFormContent({ user, onEventTypeChange }: { user: User; onEven
         title: status === "Draft" ? "Draft Saved!" : "Success",
         description: status === "Draft" ? "You can continue editing later." : "Your incentive claim has been submitted.",
       })
+      clearLocalBackup()
       router.push("/dashboard/incentive-claim" + (status === "Pending" ? "?tab=my-claims" : ""))
     } catch (error: any) {
       toast({ variant: "destructive", title: "Error", description: error.message || "Failed to submit claim. Please try again." })
@@ -855,11 +1252,14 @@ function ConferenceFormContent({ user, onEventTypeChange }: { user: User; onEven
     }
 
     update(index, { ...authors[index], role })
+    if (authors[index].email.toLowerCase() === user.email.toLowerCase()) {
+      form.setValue("authorType", role, { shouldValidate: true })
+    }
   }
 
   const { conferenceMode, conferenceType, wonPrize, organizerName, conferenceName, conferenceVenue, conferenceDate, eventType: watchedEventType } = form.watch()
   const isPuConference = organizerName?.toLowerCase().includes("parul university") || conferenceName?.toLowerCase().includes("picet")
-  const isFormDisabled = (!eligibility.eligible && isPuConference) || isSubmitting
+  const isFormDisabled = !eligibility.eligible || isSubmitting
   const isNonPaperEvent = watchedEventType === "Invited Talk/Guest Speaker"
 
   if (isLoadingDraft) return <div className="flex justify-center py-20"><Loader2 className="h-10 w-10 animate-spin text-primary" /></div>
@@ -915,23 +1315,64 @@ function ConferenceFormContent({ user, onEventTypeChange }: { user: User; onEven
               </Alert>
             )}
 
-            {!eligibility.eligible && isPuConference && (
+            {rejectionComments && (
+              <Alert variant="destructive" className="bg-destructive/10 border-destructive/20 text-destructive rounded-xl ring-1 ring-destructive/10">
+                <AlertCircle className="h-5 w-5" />
+                <AlertTitle className="font-bold">Prior Rejection Comments</AlertTitle>
+                <AlertDescription className="mt-1">
+                  This claim was previously not approved with reviewer comments: <strong>"{rejectionComments}"</strong>. Please address these comments before resubmitting.
+                </AlertDescription>
+              </Alert>
+            )}
+
+            {isVerifyingIqac && (
+              <Alert className="bg-primary/5 border-primary/20 rounded-xl ring-1 ring-primary/10">
+                <Loader2 className="h-5 w-5 animate-spin text-primary" />
+                <AlertTitle className="font-bold">Verifying IQAC Signature</AlertTitle>
+                <AlertDescription className="mt-1">
+                  Verifying security signature and pre-filling details from the IQAC Portal...
+                </AlertDescription>
+              </Alert>
+            )}
+
+            {iqacVerificationError && (
+              <Alert variant="destructive" className="bg-destructive/10 border-destructive/20 text-destructive rounded-xl ring-1 ring-destructive/10">
+                <AlertCircle className="h-5 w-5" />
+                <AlertTitle className="font-bold">Security Verification Failed</AlertTitle>
+                <AlertDescription className="mt-1">
+                  {iqacVerificationError} Prefill data from IQAC is disabled. You can still fill the form manually.
+                </AlertDescription>
+              </Alert>
+            )}
+
+            {isPrefilledFromIQAC && (
+              <Alert className="bg-emerald-500/10 border-emerald-500/30 text-emerald-700 dark:text-emerald-400 rounded-xl">
+                <CheckCircle2 className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
+                <AlertTitle className="font-bold">IQAC Integration: Data Pre-filled</AlertTitle>
+                <AlertDescription className="mt-1">
+                  This form has been automatically populated with conference data passed from the IQAC Portal. Please review all details before submitting.
+                </AlertDescription>
+              </Alert>
+            )}
+
+            {!eligibility.eligible && (
               <Alert className="bg-destructive/5 border-destructive text-destructive rounded-2xl">
                 <AlertCircle className="h-5 w-5" />
-                <AlertTitle className="font-bold">Wait Period Active</AlertTitle>
+                <AlertTitle className="font-bold">Ineligible for Claim</AlertTitle>
                 <AlertDescription>
-                  PU conference assistance allows one claim per academic year. Next eligibility starts: <strong>{eligibility.nextAvailableDate}</strong>.
+                  {eligibility.reason || "You are not eligible to claim conference assistance at this time under the R&D policy."}
                 </AlertDescription>
               </Alert>
             )}
 
             <Alert className="bg-primary/5 border-primary/20 rounded-2xl ring-1 ring-primary/10">
               <Info className="h-5 w-5 text-primary" />
-              <AlertTitle className="text-primary font-bold">Assistance Highlights</AlertTitle>
+              <AlertTitle className="text-primary font-bold">Assistance Highlights (August 2026 Revision)</AlertTitle>
               <AlertDescription className="text-[11px] leading-relaxed space-y-1 mt-1">
-                <p>• <strong>Offline</strong> travel assistance is eligible ONCE every TWO academic years.</p>
+                <p>• <strong>Offline / Physical</strong>: Max 2 claims per year. The 2nd claim is capped at ₹5,000.</p>
+                <p>• <strong>International (Outside India)</strong>: Max once in 2 years. Pre-approval & government funding application required.</p>
+                <p>• <strong>Online Presentations</strong>: Max 1 claim per year (75% registration fee, cap ₹6,000).</p>
                 <p>• <strong>PU Conferences</strong>: 75% reimbursement of registration fee (One claim/year).</p>
-                <p>• <strong>International</strong>: Mandatory proof of Government travel grant application for offline travel.</p>
               </AlertDescription>
             </Alert>
 
@@ -944,7 +1385,7 @@ function ConferenceFormContent({ user, onEventTypeChange }: { user: User; onEven
               <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                 <FormField name="eventType" control={form.control} render={({ field }) => (
                   <FormItem>
-                    <FormLabel className="text-base font-semibold">Event Classification</FormLabel>
+                    <FormLabel className="text-base font-semibold">Event Classification <span className="text-destructive font-black">*</span></FormLabel>
                     <Select onValueChange={field.onChange} value={field.value} disabled={isFormDisabled}>
                       <FormControl><SelectTrigger className="h-12 shadow-sm"><SelectValue placeholder="Select type" /></SelectTrigger></FormControl>
                       <SelectContent>{eventTypes.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}</SelectContent>
@@ -955,7 +1396,7 @@ function ConferenceFormContent({ user, onEventTypeChange }: { user: User; onEven
 
                 <FormField name="conferenceMode" control={form.control} render={({ field }) => (
                   <FormItem>
-                    <FormLabel className="text-base font-semibold">Presentation Mode</FormLabel>
+                    <FormLabel className="text-base font-semibold">Presentation Mode <span className="text-destructive font-black">*</span></FormLabel>
                     <FormControl>
                       <RadioGroup onValueChange={field.onChange} value={field.value} className="flex gap-6 pt-2">
                         <Label htmlFor="mode-on" className="flex items-center space-x-3 bg-muted/40 px-5 py-2.5 rounded-xl border border-muted-foreground/10 hover:bg-muted transition-all cursor-pointer [&:has([data-state=checked])]:border-primary [&:has([data-state=checked])]:bg-primary/5">
@@ -991,7 +1432,7 @@ function ConferenceFormContent({ user, onEventTypeChange }: { user: User; onEven
               {!isNonPaperEvent && (
                 <FormField name="conferencePaperTitle" control={form.control} render={({ field }) => (
                   <FormItem>
-                    <FormLabel className="text-base font-semibold">Title of the Research Paper</FormLabel>
+                    <FormLabel className="text-base font-semibold">Title of the Research Paper <span className="text-destructive font-black">*</span></FormLabel>
                     <FormControl>
                       <Input
                         placeholder="Exact title as per certificate"
@@ -1000,7 +1441,7 @@ function ConferenceFormContent({ user, onEventTypeChange }: { user: User; onEven
                           field.onBlur();
                           const title = e.target.value;
                           if (title) {
-                            const dup = await checkDuplicateClaim(title, "dummy-conf");
+                            const dup = await checkDuplicateClaim(title);
                             if (dup && dup.isDuplicate) {
                               form.setError("conferencePaperTitle", {
                                 type: "custom",
@@ -1028,7 +1469,7 @@ function ConferenceFormContent({ user, onEventTypeChange }: { user: User; onEven
               <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                 <FormField name="conferenceName" control={form.control} render={({ field }) => (
                   <FormItem>
-                    <FormLabel className="text-base font-semibold">Conference Full Name</FormLabel>
+                    <FormLabel className="text-base font-semibold">Conference Full Name <span className="text-destructive font-black">*</span></FormLabel>
                     <FormControl>
                       <Input
                         placeholder="e.g. IEEE World Congress..."
@@ -1047,12 +1488,12 @@ function ConferenceFormContent({ user, onEventTypeChange }: { user: User; onEven
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                 <FormField name="organizerName" control={form.control} render={({ field }) => (
-                  <FormItem><FormLabel className="text-base font-semibold">Organizing Body</FormLabel><FormControl><Input placeholder="e.g. Parul Institute of Engineering..." {...field} disabled={isFormDisabled} className="h-12 shadow-sm" /></FormControl><FormMessage /></FormItem>
+                  <FormItem><FormLabel className="text-base font-semibold">Organizing Body <span className="text-destructive font-black">*</span></FormLabel><FormControl><Input placeholder="e.g. Parul Institute of Engineering..." {...field} disabled={isFormDisabled} className="h-12 shadow-sm" /></FormControl><FormMessage /></FormItem>
                 )} />
                 {conferenceMode === "Offline" && (
                   <FormField name="presentationType" control={form.control} render={({ field }) => (
                     <FormItem className="animate-in slide-in-from-top-2 duration-300">
-                      <FormLabel className="text-base font-semibold">Presentation Category</FormLabel>
+                      <FormLabel className="text-base font-semibold">Presentation Category <span className="text-destructive font-black">*</span></FormLabel>
                       <Select onValueChange={field.onChange} value={field.value} disabled={isFormDisabled}>
                         <FormControl><SelectTrigger className="h-12 shadow-sm"><SelectValue placeholder="Select type" /></SelectTrigger></FormControl>
                         <SelectContent>
@@ -1077,7 +1518,7 @@ function ConferenceFormContent({ user, onEventTypeChange }: { user: User; onEven
               <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                 <FormField name="conferenceType" control={form.control} render={({ field }) => (
                   <FormItem>
-                    <FormLabel className="text-base font-semibold">Global Scale</FormLabel>
+                    <FormLabel className="text-base font-semibold">Global Scale <span className="text-destructive font-black">*</span></FormLabel>
                     <Select onValueChange={field.onChange} value={field.value} disabled={isFormDisabled}>
                       <FormControl><SelectTrigger className="h-12 shadow-sm"><SelectValue placeholder="Select scope" /></SelectTrigger></FormControl>
                       <SelectContent>
@@ -1090,7 +1531,7 @@ function ConferenceFormContent({ user, onEventTypeChange }: { user: User; onEven
 
                 <FormField name="conferenceVenue" control={form.control} render={({ field }) => (
                   <FormItem>
-                    <FormLabel className="text-base font-semibold">Physical Location</FormLabel>
+                    <FormLabel className="text-base font-semibold">Physical Location <span className="text-destructive font-black">*</span></FormLabel>
                     <Select onValueChange={field.onChange} value={field.value} disabled={!conferenceType || isFormDisabled}>
                       <FormControl><SelectTrigger className="h-12 shadow-sm"><SelectValue placeholder="Select region" /></SelectTrigger></FormControl>
                       <SelectContent>
@@ -1104,22 +1545,22 @@ function ConferenceFormContent({ user, onEventTypeChange }: { user: User; onEven
 
               <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
                 <FormField name="conferenceDate" control={form.control} render={({ field }) => (
-                  <FormItem><FormLabel className="text-base font-semibold flex items-center gap-2"><Calendar className="h-4 w-4" /> Start Date</FormLabel><FormControl><Input type="date" {...field} max={new Date().toISOString().split("T")[0]} disabled={isFormDisabled} className="h-12 shadow-sm cursor-pointer" /></FormControl><FormMessage /></FormItem>
+                  <FormItem><FormLabel className="text-base font-semibold flex items-center gap-2"><Calendar className="h-4 w-4" /> Start Date <span className="text-destructive font-black">*</span></FormLabel><FormControl><Input type="date" {...field} max={new Date().toISOString().split("T")[0]} disabled={isFormDisabled} className="h-12 shadow-sm cursor-pointer" /></FormControl><FormMessage /></FormItem>
                 )} />
                 <FormField name="conferenceEndDate" control={form.control} render={({ field }) => (
-                  <FormItem><FormLabel className="text-base font-semibold flex items-center gap-2"><Calendar className="h-4 w-4" /> End Date</FormLabel><FormControl><Input type="date" {...field} min={conferenceDate || undefined} max={new Date().toISOString().split("T")[0]} disabled={isFormDisabled} className="h-12 shadow-sm cursor-pointer" /></FormControl><FormMessage /></FormItem>
+                  <FormItem><FormLabel className="text-base font-semibold flex items-center gap-2"><Calendar className="h-4 w-4" /> End Date <span className="text-destructive font-black">*</span></FormLabel><FormControl><Input type="date" {...field} min={conferenceDate || undefined} max={new Date().toISOString().split("T")[0]} disabled={isFormDisabled} className="h-12 shadow-sm cursor-pointer" /></FormControl><FormMessage /></FormItem>
                 )} />
                 <FormField name="presentationDate" control={form.control} render={({ field }) => (
-                  <FormItem><FormLabel className="text-base font-semibold flex items-center gap-2"><Calendar className="h-4 w-4" /> Presentation Date</FormLabel><FormControl><Input type="date" {...field} min={conferenceDate || undefined} max={new Date().toISOString().split("T")[0]} disabled={isFormDisabled} className="h-12 shadow-sm cursor-pointer" /></FormControl><FormMessage /></FormItem>
+                  <FormItem><FormLabel className="text-base font-semibold flex items-center gap-2"><Calendar className="h-4 w-4" /> Presentation Date <span className="text-destructive font-black">*</span></FormLabel><FormControl><Input type="date" {...field} min={conferenceDate || undefined} max={new Date().toISOString().split("T")[0]} disabled={isFormDisabled} className="h-12 shadow-sm cursor-pointer" /></FormControl><FormMessage /></FormItem>
                 )} />
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-8 pt-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                 <FormField name="abstractUpload" control={form.control} render={({ field: { value, onChange, ...rest } }) => (
-                  <FormItem className="space-y-3"><FormLabel className="font-bold flex items-center gap-2 underline decoration-primary decoration-2"><FileText className="h-4 w-4" /> Full Abstract</FormLabel><FormControl><Input type="file" accept=".pdf" className="h-12 border-dashed border-2 bg-muted/20" onChange={e => onChange(e.target.files)} disabled={isFormDisabled} {...rest} /></FormControl><FormMessage /></FormItem>
+                  <FormItem className="space-y-3"><FormLabel className="font-bold flex items-center gap-2 underline decoration-primary decoration-2"><FileText className="h-4 w-4" /> Full Abstract <span className="text-destructive font-black">*</span></FormLabel><FormControl><Input type="file" accept=".pdf" className="h-12 border-dashed border-2 bg-muted/20" onChange={e => onChange(e.target.files)} disabled={isFormDisabled} {...rest} /></FormControl><FormMessage /></FormItem>
                 )} />
                 <FormField name="participationCertificate" control={form.control} render={({ field: { value, onChange, ...rest } }) => (
-                  <FormItem className="space-y-3"><FormLabel className="font-bold flex items-center gap-2 underline decoration-primary decoration-2"><Award className="h-4 w-4" /> Participation Certificate</FormLabel><FormControl><Input type="file" accept=".pdf" className="h-12 border-dashed border-2 bg-muted/20" onChange={e => onChange(e.target.files)} disabled={isFormDisabled} {...rest} /></FormControl><FormMessage /></FormItem>
+                  <FormItem className="space-y-3"><FormLabel className="font-bold flex items-center gap-2 underline decoration-primary decoration-2"><Award className="h-4 w-4" /> Participation Certificate <span className="text-destructive font-black">*</span></FormLabel><FormControl><Input type="file" accept=".pdf" className="h-12 border-dashed border-2 bg-muted/20" onChange={e => onChange(e.target.files)} disabled={isFormDisabled} {...rest} /></FormControl><FormMessage /></FormItem>
                 )} />
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-8 pt-4">
@@ -1130,6 +1571,33 @@ function ConferenceFormContent({ user, onEventTypeChange }: { user: User; onEven
                   <FormItem className="space-y-3"><FormLabel className="font-bold flex items-center gap-2 text-muted-foreground"><FileText className="h-4 w-4" /> Additional Supportive Documents (Optional)</FormLabel><FormControl><Input type="file" multiple accept=".pdf,.doc,.docx,.jpg,.jpeg,.png,.zip" className="h-12 border-dashed border-2 bg-muted/5 hover:bg-muted/10 transition-colors" onChange={e => onChange(e.target.files)} disabled={isFormDisabled} {...rest} /></FormControl><FormDescription className="text-xs">Upload any other relevant files, letters, or bills here.</FormDescription><FormMessage /></FormItem>
                 )} />
               </div>
+
+              {watchedEventType === "Conference" && conferenceMode === "Offline" && (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-8 pt-4">
+                  <FormField name="presencePhotographs" control={form.control} render={({ field: { value, onChange, ...rest } }) => (
+                    <FormItem className="space-y-3">
+                      <FormLabel className="font-bold flex items-center gap-2 underline decoration-primary decoration-2">
+                        <FileText className="h-4 w-4 text-primary" /> Presence Photographs <span className="text-destructive font-black">*</span>
+                      </FormLabel>
+                      <FormControl>
+                        <Input
+                          type="file"
+                          multiple
+                          accept=".png,.jpg,.jpeg,image/png,image/jpeg"
+                          className="h-12 border-dashed border-2 bg-muted/20 hover:bg-muted/30 transition-colors"
+                          onChange={e => onChange(e.target.files)}
+                          disabled={isFormDisabled}
+                          {...rest}
+                        />
+                      </FormControl>
+                      <FormDescription className="text-xs">
+                        Upload photographs justifying your presence at the conference (PNG, JPG, or JPEG format).
+                      </FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )} />
+                </div>
+              )}
             </section>
 
             <Separator className="my-10" />
@@ -1181,8 +1649,26 @@ function ConferenceFormContent({ user, onEventTypeChange }: { user: User; onEven
                   name="authorType"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel className="text-sm font-semibold">Your Author Category</FormLabel>
-                      <Select onValueChange={field.onChange} value={field.value}>
+                      <FormLabel className="text-sm font-semibold">Your Author Category <span className="text-destructive font-black">*</span></FormLabel>
+                      <Select
+                        onValueChange={(val) => {
+                          const authors = form.getValues("authors")
+                          const userIdx = authors.findIndex((a) => a.email?.toLowerCase() === user.email.toLowerCase())
+                          if (userIdx !== -1) {
+                            const isTryingToBeFirst = val === "First Author" || val === "First & Corresponding Author"
+                            const isAnotherFirst = authors.some((a, i) => i !== userIdx && (a.role === "First Author" || a.role === "First & Corresponding Author"))
+
+                            if (isTryingToBeFirst && isAnotherFirst) {
+                              toast({ title: "Conflict", description: "Another author is already the First Author.", variant: "destructive" })
+                              return
+                            }
+
+                            update(userIdx, { ...authors[userIdx], role: val as Author["role"] })
+                          }
+                          field.onChange(val)
+                        }}
+                        value={field.value}
+                      >
                         <FormControl>
                           <SelectTrigger className="h-10 shadow-sm rounded-lg">
                             <SelectValue placeholder="Select Category" />
@@ -1204,7 +1690,7 @@ function ConferenceFormContent({ user, onEventTypeChange }: { user: User; onEven
                   name="totalAuthors"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel className="text-sm font-semibold">Total Author Count</FormLabel>
+                      <FormLabel className="text-sm font-semibold">Total Author Count <span className="text-destructive font-black">*</span></FormLabel>
                       <Select onValueChange={field.onChange} value={field.value}>
                         <FormControl>
                           <SelectTrigger className="h-10 shadow-sm rounded-lg">
@@ -1229,7 +1715,7 @@ function ConferenceFormContent({ user, onEventTypeChange }: { user: User; onEven
                   name="authorPosition"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel className="text-sm font-semibold">Your Author Position</FormLabel>
+                      <FormLabel className="text-sm font-semibold">Your Author Position <span className="text-destructive font-black">*</span></FormLabel>
                       <Select onValueChange={field.onChange} value={field.value}>
                         <FormControl>
                           <SelectTrigger className="h-10 shadow-sm rounded-lg">
@@ -1271,7 +1757,7 @@ function ConferenceFormContent({ user, onEventTypeChange }: { user: User; onEven
                     <FormItem className="flex flex-row items-center justify-between rounded-xl border border-primary/10 bg-primary/5 p-4 shadow-sm hover:bg-primary/10 transition-all">
                       <div className="space-y-0.5">
                         <FormLabel className="text-sm font-bold">PU Affiliation Present?</FormLabel>
-                        <FormDescription className="text-[10px]">Is "Parul University Goa" mentioned?</FormDescription>
+                        <FormDescription className="text-[10px]">Is "Parul University" mentioned?</FormDescription>
                       </div>
                       <FormControl>
                         <Checkbox checked={field.value} onCheckedChange={field.onChange} disabled={isFormDisabled} />
@@ -1293,7 +1779,7 @@ function ConferenceFormContent({ user, onEventTypeChange }: { user: User; onEven
               <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                 <FormField name="registrationFee" control={form.control} render={({ field }) => (
                   <FormItem>
-                    <FormLabel className="text-base font-semibold">Registration Fee (INR)</FormLabel>
+                    <FormLabel className="text-base font-semibold">Registration Fee (INR) <span className="text-destructive font-black">*</span></FormLabel>
                     <FormControl><div className="relative"><span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground font-bold">₹</span><Input type="number" {...field} min="0" disabled={isFormDisabled} className="h-12 pl-8 text-lg font-black shadow-sm" /></div></FormControl>
                     <FormMessage />
                   </FormItem>
@@ -1301,7 +1787,7 @@ function ConferenceFormContent({ user, onEventTypeChange }: { user: User; onEven
 
                 <FormField name="registrationFeeProof" control={form.control} render={({ field: { value, onChange, ...rest } }) => (
                   <FormItem className="pt-2">
-                    <FormLabel className="font-bold flex items-center gap-2 text-xs"><FileText className="h-3 w-3" /> Proof of Payment</FormLabel>
+                    <FormLabel className="font-bold flex items-center gap-2 text-xs">Proof of Payment <span className="text-destructive font-black">*</span></FormLabel>
                     <FormControl><Input type="file" accept=".pdf" className="h-9 text-xs" onChange={e => onChange(e.target.files)} disabled={isFormDisabled} {...rest} /></FormControl>
                     <FormMessage />
                   </FormItem>
@@ -1315,27 +1801,75 @@ function ConferenceFormContent({ user, onEventTypeChange }: { user: User; onEven
                   </p>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                     <FormField name="travelPlaceVisited" control={form.control} render={({ field }) => (
-                      <FormItem><FormLabel className="text-xs font-bold uppercase tracking-tight">Destination</FormLabel><FormControl><Input placeholder="City, Country" {...field} disabled={isFormDisabled} className="h-10 bg-background" /></FormControl><FormMessage /></FormItem>
+                      <FormItem><FormLabel className="text-xs font-bold uppercase tracking-tight">Destination <span className="text-destructive font-black">*</span></FormLabel><FormControl><Input placeholder="City, Country" {...field} disabled={isFormDisabled} className="h-10 bg-background" /></FormControl><FormMessage /></FormItem>
                     )} />
                     <FormField name="travelMode" control={form.control} render={({ field }) => (
-                      <FormItem><FormLabel className="text-xs font-bold uppercase tracking-tight">Transport Mode</FormLabel><Select onValueChange={field.onChange} value={field.value} disabled={isFormDisabled}><FormControl><SelectTrigger className="h-10 bg-background"><SelectValue placeholder="Select" /></SelectTrigger></FormControl><SelectContent>{["Bus", "Train", "Air", "Other"].map(mode => <SelectItem key={mode} value={mode}>{mode}</SelectItem>)}</SelectContent></Select><FormMessage /></FormItem>
+                      <FormItem>
+                        <FormLabel className="text-xs font-bold uppercase tracking-tight">Transport Mode <span className="text-destructive font-black">*</span></FormLabel>
+                        <Select onValueChange={field.onChange} value={field.value} disabled={isFormDisabled}>
+                          <FormControl>
+                            <SelectTrigger className="h-10 bg-background">
+                              <SelectValue placeholder="Select" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            {["Bus", "Train", "Air", "Other"].map(mode => {
+                              const isDisabled = (mode === "Bus" || mode === "Train") && (conferenceMode === "Offline" && conferenceVenue !== "India");
+                              return (
+                                <SelectItem key={mode} value={mode} disabled={isDisabled}>
+                                  {mode}
+                                </SelectItem>
+                              );
+                            })}
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
                     )} />
                   </div>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                     <FormField name="travelFare" control={form.control} render={({ field }) => (
-                      <FormItem><FormLabel className="text-xs font-bold uppercase tracking-tight">Fare Incurred (INR)</FormLabel><FormControl><Input type="number" {...field} disabled={isFormDisabled} className="h-10 bg-background" /></FormControl><FormMessage /></FormItem>
+                      <FormItem><FormLabel className="text-xs font-bold uppercase tracking-tight">Fare Incurred (INR) <span className="text-destructive font-black">*</span></FormLabel><FormControl><Input type="number" {...field} disabled={isFormDisabled} className="h-10 bg-background" /></FormControl><FormMessage /></FormItem>
                     )} />
                     <FormField name="travelReceipts" control={form.control} render={({ field: { value, onChange, ...rest } }) => (
-                      <FormItem><FormLabel className="text-xs font-bold uppercase tracking-tight">Tickets / Receipts</FormLabel><FormControl><Input type="file" accept=".pdf" onChange={e => onChange(e.target.files)} disabled={isFormDisabled} className="h-10 bg-background" {...rest} /></FormControl><FormMessage /></FormItem>
+                      <FormItem>
+                        <FormLabel className="text-xs font-bold uppercase tracking-tight">Tickets / Receipts <span className="text-destructive font-black">*</span></FormLabel>
+                        <FormControl><Input type="file" accept=".pdf" onChange={e => onChange(e.target.files)} disabled={isFormDisabled} className="h-10 bg-background" {...rest} /></FormControl>
+                        {form.watch("travelMode") === "Train" && (
+                          <p className="text-[11px] text-amber-600 dark:text-amber-400 font-bold mt-1">
+                            We prefer tickets/receipts showing 2 Tier AC class.
+                          </p>
+                        )}
+                        <FormMessage />
+                      </FormItem>
                     )} />
                   </div>
+
+                  {conferenceVenue && conferenceVenue !== "India" && (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8 pt-4 border-t border-muted-foreground/10 animate-in slide-in-from-top-2">
+                      <FormField name="accommodationExpense" control={form.control} render={({ field }) => (
+                        <FormItem>
+                          <FormLabel className="text-xs font-bold uppercase tracking-tight">Accommodation Expense (INR) <span className="text-destructive font-black">*</span></FormLabel>
+                          <FormControl><Input type="number" {...field} disabled={isFormDisabled} className="h-10 bg-background" /></FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )} />
+                      <FormField name="accommodationProof" control={form.control} render={({ field: { value, onChange, ...rest } }) => (
+                        <FormItem>
+                          <FormLabel className="text-xs font-bold uppercase tracking-tight">Accommodation Bill <span className="text-destructive font-black">*</span></FormLabel>
+                          <FormControl><Input type="file" accept=".pdf" onChange={e => onChange(e.target.files)} disabled={isFormDisabled} className="h-10 bg-background" {...rest} /></FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )} />
+                    </div>
+                  )}
                 </div>
               )}
 
-              {conferenceVenue && conferenceVenue !== "India" && (
+              {conferenceVenue && conferenceVenue !== "India" && !(watchedEventType === "Conference" && conferenceMode === "Online") && (
                 <FormField name="govtFundingRequestProof" control={form.control} render={({ field: { value, onChange, ...rest } }) => (
                   <FormItem className="bg-amber-50 dark:bg-amber-950/20 p-6 rounded-3xl border border-amber-200 dark:border-amber-900 shadow-inner">
-                    <FormLabel className="text-sm font-black text-amber-900 dark:text-amber-400">Government Travel Grant Inquiry (Mandatory for International)</FormLabel>
+                    <FormLabel className="text-sm font-black text-amber-900 dark:text-amber-400">Government Travel Grant Inquiry (Mandatory for International) <span className="text-destructive font-black">*</span></FormLabel>
                     <p className="text-[10px] text-amber-800 dark:text-amber-500 mb-4 italic">You must provide proof of application for external funding (e.g. DST, SERB, ICMR) for international journeys.</p>
                     <FormControl><Input type="file" accept=".pdf" className="bg-background border-amber-300 dark:border-amber-800 h-12" onChange={e => onChange(e.target.files)} disabled={isFormDisabled} {...rest} /></FormControl>
                     <FormMessage />
@@ -1404,10 +1938,10 @@ function ConferenceFormContent({ user, onEventTypeChange }: { user: User; onEven
                     {field.value && (
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-2 animate-in slide-in-from-top-4">
                         <FormField name="prizeDetails" control={form.control} render={({ field }) => (
-                          <FormItem><FormLabel className="text-xs font-black uppercase text-amber-700">Prize Description</FormLabel><FormControl><Input placeholder="e.g. Best Researcher Award (PICET 2026)" {...field} disabled={isFormDisabled} className="bg-background border-amber-200" /></FormControl><FormMessage /></FormItem>
+                          <FormItem><FormLabel className="text-xs font-black uppercase text-amber-700">Prize Description <span className="text-destructive font-black">*</span></FormLabel><FormControl><Input placeholder="e.g. Best Researcher Award (PICET 2026)" {...field} disabled={isFormDisabled} className="bg-background border-amber-200" /></FormControl><FormMessage /></FormItem>
                         )} />
                         <FormField name="prizeProof" control={form.control} render={({ field: { value, onChange, ...rest } }) => (
-                          <FormItem><FormLabel className="text-xs font-black uppercase text-amber-700">Upload Award Copy</FormLabel><FormControl><Input type="file" accept=".pdf" onChange={e => onChange(e.target.files)} disabled={isFormDisabled} className="bg-background border-amber-200" {...rest} /></FormControl><FormMessage /></FormItem>
+                          <FormItem><FormLabel className="text-xs font-black uppercase text-amber-700">Upload Award Copy <span className="text-destructive font-black">*</span></FormLabel><FormControl><Input type="file" accept=".pdf" onChange={e => onChange(e.target.files)} disabled={isFormDisabled} className="bg-background border-amber-200" {...rest} /></FormControl><FormMessage /></FormItem>
                         )} />
                       </div>
                     )}
@@ -1422,7 +1956,7 @@ function ConferenceFormContent({ user, onEventTypeChange }: { user: User; onEven
               <FormItem className="flex flex-row items-center space-x-4 space-y-0 bg-primary/5 p-8 rounded-[2rem] border border-primary/20 shadow-sm ring-1 ring-inset ring-primary/5">
                 <FormControl><Checkbox checked={field.value} onCheckedChange={field.onChange} disabled={isFormDisabled} className="h-6 w-6 rounded-lg" /></FormControl>
                 <div className="space-y-2 leading-none">
-                  <FormLabel className="text-base font-black tracking-tight">Final Declaration of Integrity</FormLabel>
+                  <FormLabel className="text-base font-black tracking-tight">Final Declaration of Integrity <span className="text-destructive font-black">*</span></FormLabel>
                   <FormMessage />
                   <p className="text-xs text-muted-foreground italic leading-relaxed">
                     I hereby certify that I have only availed of the conference incentive assistance policy as per the specified frequency limits. I further confirm that I am eligible for this claim under university regulations.

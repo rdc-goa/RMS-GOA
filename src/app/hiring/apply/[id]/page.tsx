@@ -1,5 +1,5 @@
 
-import { doc, getDoc } from 'firebase/firestore';
+
 import { adminDb } from '@/lib/admin';
 import type { Metadata } from 'next';
 import type { ProjectRecruitment } from '@/types';
@@ -16,10 +16,9 @@ type Props = {
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
     const id = params.id;
     try {
-        const docRef = doc(adminDb, 'projectRecruitments', id);
-        const docSnap = await getDoc(docRef);
+        const docSnap = await adminDb.collection('projectRecruitments').doc(id).get();
 
-        if (docSnap.exists()) {
+        if (docSnap.exists) {
             const job = docSnap.data() as ProjectRecruitment;
             const description = `Apply for the ${job.positionTitle} position on the ${job.projectName} project at Parul University Goa. ${job.jobDescription.substring(0, 100)}...`;
             return {
@@ -51,10 +50,9 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 
 async function getJob(id: string): Promise<ProjectRecruitment | null> {
     try {
-        const docRef = doc(adminDb, 'projectRecruitments', id);
-        const docSnap = await getDoc(docRef);
+        const docSnap = await adminDb.collection('projectRecruitments').doc(id).get();
 
-        if (docSnap.exists()) {
+        if (docSnap.exists) {
             return { id: docSnap.id, ...docSnap.data() } as ProjectRecruitment;
         } else {
             return null;
