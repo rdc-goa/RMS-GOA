@@ -27,8 +27,8 @@ export interface FacultyConfig {
  * Get sorted list of faculty names from matrix
  */
 export function getFacultiesFromMatrix(matrix?: FacultyMatrixItem[]): string[] {
-  if (!matrix || matrix.length === 0) return [];
-  const normalized = normalizeFacultyMatrix(matrix);
+  const activeMatrix = (matrix && matrix.length > 0) ? matrix : defaultGoaMatrix;
+  const normalized = normalizeFacultyMatrix(activeMatrix);
   return normalized.map(f => f.name).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
 }
 
@@ -36,9 +36,13 @@ export function getFacultiesFromMatrix(matrix?: FacultyMatrixItem[]): string[] {
  * Get sorted list of institutes under a given faculty from matrix
  */
 export function getInstitutesForFacultyFromMatrix(faculty: string, matrix?: FacultyMatrixItem[]): InstituteOption[] {
-  if (!faculty || !matrix || matrix.length === 0) return [];
-  const normalized = normalizeFacultyMatrix(matrix);
-  const matched = normalized.find(f => f.name.toLowerCase().trim() === faculty.toLowerCase().trim());
+  if (!faculty) return [];
+  const activeMatrix = (matrix && matrix.length > 0) ? matrix : defaultGoaMatrix;
+  const normalized = normalizeFacultyMatrix(activeMatrix);
+  const matched = normalized.find(f =>
+    f.name.toLowerCase().trim() === faculty.toLowerCase().trim() ||
+    ((f as any).aliases && (f as any).aliases.some((a: string) => a.toLowerCase().trim() === faculty.toLowerCase().trim()))
+  );
   if (!matched) return [];
   return (matched.institutes || [])
     .map(i => ({
@@ -53,10 +57,13 @@ export function getInstitutesForFacultyFromMatrix(faculty: string, matrix?: Facu
  * Get sorted list of departments under a given institute from matrix
  */
 export function getDepartmentsForInstituteFromMatrix(institute: string, matrix?: FacultyMatrixItem[]): string[] {
-  if (!institute || !matrix || matrix.length === 0) return [];
-  const normalized = normalizeFacultyMatrix(matrix);
+  if (!institute) return [];
+  const activeMatrix = (matrix && matrix.length > 0) ? matrix : defaultGoaMatrix;
+  const normalized = normalizeFacultyMatrix(activeMatrix);
   for (const f of normalized) {
-    const matchedInst = (f.institutes || []).find(i => i.name.toLowerCase().trim() === institute.toLowerCase().trim());
+    const matchedInst = (f.institutes || []).find(i =>
+      i.name.toLowerCase().trim() === institute.toLowerCase().trim()
+    );
     if (matchedInst) {
       return (matchedInst.departments || [])
         .map(d => d.name)
@@ -64,6 +71,50 @@ export function getDepartmentsForInstituteFromMatrix(institute: string, matrix?:
     }
   }
   return [];
+}
+
+/**
+ * Retrieve configured Stage 1 Principal / Authority email for an institute
+ */
+export function getPrincipalEmailForInstitute(institute: string, matrix?: FacultyMatrixItem[]): string | null {
+  if (!institute) return null;
+  const activeMatrix = (matrix && matrix.length > 0) ? matrix : defaultGoaMatrix;
+  const normalized = normalizeFacultyMatrix(activeMatrix);
+  for (const f of normalized) {
+    const matchedInst = (f.institutes || []).find(i =>
+      i.name.toLowerCase().trim() === institute.toLowerCase().trim()
+    );
+    if (matchedInst && matchedInst.authorityEmail && matchedInst.authorityEmail.trim()) {
+      return matchedInst.authorityEmail.trim();
+    }
+  }
+  return null;
+}
+
+/**
+ * Check if a faculty qualifies for special incentive policy (Medical, Allied Health, Engineering, Sciences)
+ */
+export function isSpecialPolicyFaculty(facultyName?: string | null): boolean {
+  if (!facultyName) return false;
+  const normalized = facultyName.trim().toLowerCase();
+  
+  const specialKeywords = [
+    "applied sciences",
+    "applied and health sciences",
+    "medicine",
+    "homoeopathy",
+    "ayurved",
+    "nursing",
+    "pharmacy",
+    "physiotherapy",
+    "public health",
+    "engineering & technology",
+    "engineering, it & cs",
+    "it & computer science",
+    "engineering"
+  ];
+  
+  return specialKeywords.some(keyword => normalized.includes(keyword));
 }
 
 /**
@@ -79,11 +130,156 @@ export function getDepartmentsForInstitute(institute: string, matrix?: FacultyMa
   return list.length > 0 ? list : null;
 }
 
+export const defaultGoaMatrix: FacultyMatrixItem[] = [
+  {
+    id: "fac-goa-eng-it",
+    name: "Faculty of Engineering, IT & CS",
+    authorityEmail: "",
+    institutes: [
+      {
+        id: "inst-goa-pce",
+        name: "Parul College of Engineering",
+        authorityEmail: "",
+        departments: [
+          { id: "dept-goa-cse", name: "Computer Science & Engineering", authorityEmail: "" },
+          { id: "dept-goa-civil", name: "Civil Engineering", authorityEmail: "" },
+          { id: "dept-goa-mech", name: "Mechanical Engineering", authorityEmail: "" },
+          { id: "dept-goa-elec", name: "Electrical Engineering", authorityEmail: "" },
+          { id: "dept-goa-ece", name: "Electronics & Communication Engineering", authorityEmail: "" }
+        ]
+      },
+      {
+        id: "inst-goa-itcs",
+        name: "Parul College of Information Technology & Computer Science",
+        authorityEmail: "",
+        departments: [
+          { id: "dept-goa-it", name: "Information Technology", authorityEmail: "" },
+          { id: "dept-goa-mca", name: "Computer Applications", authorityEmail: "" }
+        ]
+      }
+    ]
+  },
+  {
+    id: "fac-goa-mgmt",
+    name: "Faculty of Management Studies",
+    authorityEmail: "",
+    institutes: [
+      {
+        id: "inst-goa-mgmt",
+        name: "Parul College of Management",
+        authorityEmail: "",
+        departments: [
+          { id: "dept-goa-mgmt-studies", name: "Management Studies", authorityEmail: "" },
+          { id: "dept-goa-bba", name: "Business Administration", authorityEmail: "" }
+        ]
+      }
+    ]
+  },
+  {
+    id: "fac-goa-hotel",
+    name: "Faculty of Hotel Management",
+    authorityEmail: "",
+    institutes: [
+      {
+        id: "inst-goa-hotel",
+        name: "Parul College of Hotel Management",
+        authorityEmail: "",
+        departments: [
+          { id: "dept-goa-hotel-mgmt", name: "Hotel Management & Catering Technology", authorityEmail: "" }
+        ]
+      }
+    ]
+  },
+  {
+    id: "fac-goa-pharmacy",
+    name: "Faculty of Pharmacy",
+    authorityEmail: "",
+    institutes: [
+      {
+        id: "inst-goa-pharmacy",
+        name: "Parul College of Pharmacy",
+        authorityEmail: "",
+        departments: [
+          { id: "dept-goa-pharmacy", name: "Pharmacy", authorityEmail: "" },
+          { id: "dept-goa-pharmaceutics", name: "Pharmaceutics", authorityEmail: "" },
+          { id: "dept-goa-pharmacology", name: "Pharmacology", authorityEmail: "" },
+          { id: "dept-goa-pharm-chem", name: "Pharmaceutical Chemistry", authorityEmail: "" }
+        ]
+      }
+    ]
+  },
+  {
+    id: "fac-goa-health",
+    name: "Faculty of Applied and Health Sciences",
+    authorityEmail: "",
+    institutes: [
+      {
+        id: "inst-goa-health",
+        name: "Parul College of Applied and Health Sciences",
+        authorityEmail: "",
+        departments: [
+          { id: "dept-goa-app-sci", name: "Applied Sciences", authorityEmail: "" },
+          { id: "dept-goa-clt", name: "Department of Microbiology", authorityEmail: "" },
+          { id: "dept-goa-clt-2", name: "Clinical Lab Technology", authorityEmail: "" }
+        ]
+      }
+    ]
+  },
+  {
+    id: "fac-goa-nursing",
+    name: "Faculty of Nursing",
+    authorityEmail: "",
+    institutes: [
+      {
+        id: "inst-goa-nursing",
+        name: "Parul College of Nursing",
+        authorityEmail: "",
+        departments: [
+          { id: "dept-goa-nursing", name: "Nursing", authorityEmail: "" }
+        ]
+      }
+    ]
+  },
+  {
+    id: "fac-goa-physio",
+    name: "Faculty of Physiotherapy",
+    authorityEmail: "",
+    institutes: [
+      {
+        id: "inst-goa-physio",
+        name: "Parul College of Physiotherapy",
+        authorityEmail: "",
+        departments: [
+          { id: "dept-goa-physio", name: "Physiotherapy", authorityEmail: "" }
+        ]
+      }
+    ]
+  },
+  {
+    id: "fac-goa-office",
+    name: "University Office",
+    authorityEmail: "",
+    institutes: [
+      {
+        id: "inst-goa-univ-office",
+        name: "University Office",
+        authorityEmail: "",
+        departments: [
+          { id: "dept-goa-admin", name: "Administration", authorityEmail: "" },
+          { id: "dept-goa-rdc", name: "Research & Development Cell", authorityEmail: "" }
+        ]
+      }
+    ]
+  }
+];
+
 /**
  * Normalize and sort matrix hierarchy A-Z
  */
-export function normalizeFacultyMatrix(matrix: FacultyMatrixItem[]): FacultyMatrixItem[] {
-  if (!matrix || !Array.isArray(matrix) || matrix.length === 0) return [];
+export function normalizeFacultyMatrix(matrix?: FacultyMatrixItem[]): FacultyMatrixItem[] {
+  const activeSource = (matrix && Array.isArray(matrix) && matrix.length > 0)
+    ? matrix
+    : defaultGoaMatrix;
 
   const alliedKeywords = [
     "faculty of allied & healthcare sciences",
@@ -97,99 +293,49 @@ export function normalizeFacultyMatrix(matrix: FacultyMatrixItem[]): FacultyMatr
     "public health"
   ];
 
-  const facultiesToMerge = matrix.filter(f => {
+  const facultiesToMerge = activeSource.filter(f => {
     const name = (f.name || "").toLowerCase().trim();
     return alliedKeywords.includes(name) || publicHealthKeywords.includes(name);
   });
   
   // Clone matrix to avoid mutating arguments unexpectedly
-  const normalizedMatrix: FacultyMatrixItem[] = JSON.parse(JSON.stringify(matrix));
+  const normalizedMatrix: FacultyMatrixItem[] = JSON.parse(JSON.stringify(activeSource));
 
-  // Find or create Faculty of Medicine
+  // Find existing Faculty of Medicine if any
   let medFac = normalizedMatrix.find(f => {
     const name = (f.name || "").toLowerCase().trim();
     return name === "faculty of medicine" || name === "medicine";
   });
 
-  if (!medFac) {
-    medFac = {
-      id: `fac-med-${Date.now()}`,
-      name: "Faculty of Medicine",
-      authorityEmail: "",
-      institutes: []
-    };
-    normalizedMatrix.push(medFac);
-  }
+  // Only perform medicine merge if there are legacy top-level faculties to merge
+  if (facultiesToMerge.length > 0) {
+    if (!medFac) {
+      medFac = {
+        id: `fac-med-${Date.now()}`,
+        name: "Faculty of Medicine",
+        authorityEmail: "",
+        institutes: []
+      };
+      normalizedMatrix.push(medFac);
+    }
 
-  // Move institutes from merged faculties into Faculty of Medicine
-  facultiesToMerge.forEach(mergedFac => {
-    (mergedFac.institutes || []).forEach(inst => {
-      const existingInst = medFac!.institutes.find(i => (i.name || "").toLowerCase().trim() === (inst.name || "").toLowerCase().trim());
-      if (!existingInst) {
-        medFac!.institutes.push(inst);
-      } else {
-        // Merge departments if missing
-        (inst.departments || []).forEach(dept => {
-          if (!existingInst.departments.some(d => (d.name || "").toLowerCase().trim() === (dept.name || "").toLowerCase().trim())) {
-            existingInst.departments.push(dept);
-          }
-        });
-      }
+    // Move institutes from merged faculties into Faculty of Medicine
+    facultiesToMerge.forEach(mergedFac => {
+      (mergedFac.institutes || []).forEach(inst => {
+        const existingInst = medFac!.institutes.find(i => (i.name || "").toLowerCase().trim() === (inst.name || "").toLowerCase().trim());
+        if (!existingInst) {
+          medFac!.institutes.push(inst);
+        } else {
+          // Merge departments if missing
+          (inst.departments || []).forEach(dept => {
+            if (!existingInst.departments.some(d => (d.name || "").toLowerCase().trim() === (dept.name || "").toLowerCase().trim())) {
+              existingInst.departments.push(dept);
+            }
+          });
+        }
+      });
     });
-  });
-
-  // Ensure standard Parul Institute of Allied & Healthcare Sciences exists under Faculty of Medicine
-  let alliedInst = medFac.institutes.find(i => 
-    (i.name || "").toLowerCase().includes("allied & healthcare sciences") || 
-    (i.name || "").toLowerCase().includes("allied and healthcare sciences")
-  );
-
-  if (!alliedInst) {
-    alliedInst = {
-      id: `inst-med-allied-${Date.now()}`,
-      name: "Parul Institute of Allied & Healthcare Sciences",
-      authorityEmail: "",
-      departments: []
-    };
-    medFac.institutes.push(alliedInst);
   }
-
-  const defaultAlliedDepts = ["Clinical Lab Technology", "Radiology", "Operation Theatre Technology", "Allied Health Sciences", "Healthcare Sciences"];
-  defaultAlliedDepts.forEach((dName, dIdx) => {
-    if (!alliedInst!.departments.some(d => (d.name || "").toLowerCase().trim() === dName.toLowerCase().trim())) {
-      alliedInst!.departments.push({
-        id: `dept-med-allied-${dIdx}-${Date.now()}`,
-        name: dName,
-        authorityEmail: ""
-      });
-    }
-  });
-
-  // Ensure standard Parul Institute of Public Health exists under Faculty of Medicine
-  let pubHealthInst = medFac.institutes.find(i => 
-    (i.name || "").toLowerCase().includes("public health")
-  );
-
-  if (!pubHealthInst) {
-    pubHealthInst = {
-      id: `inst-med-pubhealth-${Date.now()}`,
-      name: "Parul Institute of Public Health",
-      authorityEmail: "",
-      departments: []
-    };
-    medFac.institutes.push(pubHealthInst);
-  }
-
-  const defaultPublicHealthDepts = ["Public Health"];
-  defaultPublicHealthDepts.forEach((dName, dIdx) => {
-    if (!pubHealthInst!.departments.some(d => (d.name || "").toLowerCase().trim() === dName.toLowerCase().trim())) {
-      pubHealthInst!.departments.push({
-        id: `dept-med-pubhealth-${dIdx}-${Date.now()}`,
-        name: dName,
-        authorityEmail: ""
-      });
-    }
-  });
 
   // Filter out merged faculties and sort in ascending order (A-Z)
   return normalizedMatrix
@@ -211,17 +357,14 @@ export function normalizeFacultyMatrix(matrix: FacultyMatrixItem[]): FacultyMatr
     }));
 }
 
-export function resolveAuthorityAccess(email: string, matrix: FacultyMatrixItem[]) {
+export function resolveAuthorityAccess(email: string, matrix?: FacultyMatrixItem[]) {
   const faculties: string[] = [];
   const institutes: string[] = [];
   const departments: string[] = [];
-  const targetEmail = email.trim().toLowerCase();
+  const targetEmail = (email || '').trim().toLowerCase();
 
-  if (!matrix || matrix.length === 0) {
-    return { hasAccess: false, faculties, institutes, departments };
-  }
-
-  const normalized = normalizeFacultyMatrix(matrix);
+  const activeMatrix = (matrix && matrix.length > 0) ? matrix : defaultGoaMatrix;
+  const normalized = normalizeFacultyMatrix(activeMatrix);
 
   normalized.forEach(fac => {
     // If user is Faculty Authority

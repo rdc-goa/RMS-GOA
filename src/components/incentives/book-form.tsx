@@ -83,9 +83,9 @@ const bookSchema = z
     publisherType: z.enum(["National", "International"], { required_error: "Please specify whether this is a 'National' or 'International' publisher." }),
     isScopusIndexed: z.boolean().optional(),
     indexType: z.enum(["wos", "scopus", "both", "sci", "other", "esci"]).optional(),
-    wosLink: z.string().url("Please enter the full, valid URL link to the Web of Science record of your chapter.").optional().or(z.literal("")),
+    wosLink: z.string().url("Please enter the full, valid URL link to the Web of Science record of your publication.").optional().or(z.literal("")),
     scopusLink: z.string()
-      .url("Please enter the full, valid URL link to the Scopus record of your chapter.")
+      .url("Please enter the full, valid URL link to the Scopus record of your publication.")
       .refine(
         (val) => {
           if (!val) return true;
@@ -101,7 +101,7 @@ const bookSchema = z
             return false;
           }
         },
-        { message: "Please enter a valid link of your chapter from Scopus Database (or Scopus Knimbus proxy URL)." }
+        { message: "Please enter a valid link of your publication from Scopus Database (or Scopus Knimbus proxy URL)." }
       )
       .refine(
         (val) => {
@@ -206,16 +206,14 @@ const bookSchema = z
   })
   .refine(data => {
     const isWos = data.indexType === 'wos' || data.indexType === 'both';
-    const isChapter = data.bookApplicationType === 'Book Chapter';
-    return !(isChapter && isWos) || (!!data.wosLink && data.wosLink.length > 0);
+    return !isWos || (!!data.wosLink && data.wosLink.length > 0);
   }, {
     message: "Please enter the Web of Science record URL.",
     path: ["wosLink"]
   })
   .refine(data => {
     const isScopus = data.indexType === 'scopus' || data.indexType === 'both';
-    const isChapter = data.bookApplicationType === 'Book Chapter';
-    return !(isChapter && isScopus) || (!!data.scopusLink && data.scopusLink.length > 0);
+    return !isScopus || (!!data.scopusLink && data.scopusLink.length > 0);
   }, {
     message: "Please enter the Scopus record URL.",
     path: ["scopusLink"]
@@ -1281,7 +1279,7 @@ export function BookForm() {
                   )}
                 />
 
-                {bookApplicationType === "Book Chapter" && (indexType === "wos" || indexType === "both") && (
+                {(indexType === "wos" || indexType === "both") && (
                   <FormField
                     name="wosLink"
                     control={formControl}
@@ -1297,14 +1295,14 @@ export function BookForm() {
                             className="h-12 shadow-sm rounded-lg"
                           />
                         </FormControl>
-                        <FormDescription className="text-xs">Please provide the complete Web of Science URL for this book chapter.</FormDescription>
+                        <FormDescription className="text-xs">Please provide the complete Web of Science URL for this {bookApplicationType === "Book Chapter" ? "book chapter" : "book"}.</FormDescription>
                         <FormMessage />
                       </FormItem>
                     )}
                   />
                 )}
 
-                {bookApplicationType === "Book Chapter" && (indexType === "scopus" || indexType === "both") && (
+                {(indexType === "scopus" || indexType === "both") && (
                   <FormField
                     name="scopusLink"
                     control={formControl}

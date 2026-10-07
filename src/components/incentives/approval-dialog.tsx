@@ -622,7 +622,24 @@ function BookClaimDetails({ claim }: { claim: IncentiveClaim }) {
                 {renderDetail('Publisher Type', claim.publisherType)}
                 {renderDetail('ISBN', claim.isbn || claim.isbnPrint || claim.isbnElectronic)}
                 {renderDetail('Publication Order (Year)', claim.publicationOrderInYear)}
+                {renderDetail('Index Type', claim.indexType?.toUpperCase())}
                 {renderDetail('Scopus Indexed', claim.isScopusIndexed)}
+                {claim.scopusLink && (
+                    <div className="grid grid-cols-2 text-sm">
+                        <span className="text-muted-foreground">Scopus Link</span>
+                        <a href={claim.scopusLink} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline truncate font-medium">
+                            {claim.scopusLink}
+                        </a>
+                    </div>
+                )}
+                {claim.wosLink && (
+                    <div className="grid grid-cols-2 text-sm">
+                        <span className="text-muted-foreground">WoS Link</span>
+                        <a href={claim.wosLink} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline truncate font-medium">
+                            {claim.wosLink}
+                        </a>
+                    </div>
+                )}
                 {renderDetail('Calculated Incentive', claim.calculatedIncentive != null ? `₹${claim.calculatedIncentive.toLocaleString('en-IN')}` : null)}
                 {claim.bookApplicationType === 'Book Chapter'
                     ? renderDetail('Chapter Pages', claim.bookChapterPages)

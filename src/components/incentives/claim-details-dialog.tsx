@@ -401,7 +401,10 @@ a.href = url;
                             {renderDetail("Total PU Students", claim.totalPuStudents)}
                             {renderDetail("Student Names", claim.puStudentNames)}
                             {claim.bookApplicationType === 'Book Chapter' ? renderDetail("Chapter Pages", claim.bookChapterPages) : renderDetail("Total Book Pages", claim.bookTotalPages)}
+                            {renderDetail("Index Type", claim.indexType?.toUpperCase())}
                             {renderDetail("Scopus Indexed", claim.isScopusIndexed)}
+                            {renderLinkDetail("Scopus Link", claim.scopusLink)}
+                            {renderLinkDetail("WoS Link", claim.wosLink)}
                             {renderDetail("Author/Editor Role", claim.authorRole)}
                             {renderLinkDetail("Publication Proof", claim.bookProofUrl)}
                             {renderLinkDetail("Scopus Proof", claim.scopusProofUrl)}

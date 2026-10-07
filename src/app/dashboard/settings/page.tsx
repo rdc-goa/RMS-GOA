@@ -45,7 +45,8 @@ import { Badge } from "@/components/ui/badge"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import NextImage from 'next/image';
 import { useDepartments } from "@/hooks/use-staff-data";
-import { getFacultiesFromMatrix, getInstitutesForFacultyFromMatrix, getDepartmentsForInstituteFromMatrix, normalizeFacultyMatrix } from "@/lib/academic-data";
+import { getFacultiesFromMatrix, getInstitutesForFacultyFromMatrix, getDepartmentsForInstituteFromMatrix, normalizeFacultyMatrix, defaultGoaMatrix } from "@/lib/academic-data";
+export { defaultGoaMatrix } from "@/lib/academic-data";
 import { Checkbox } from "@/components/ui/checkbox";
 
 const profileSchema = z.object({
@@ -140,148 +141,6 @@ const goaInstitutes = [
 ];
 
 
-export const defaultGoaMatrix: FacultyMatrixItem[] = [
-  {
-    id: "fac-goa-eng-it",
-    name: "Faculty of Engineering, IT & CS",
-    authorityEmail: "",
-    institutes: [
-      {
-        id: "inst-goa-pce",
-        name: "Parul College of Engineering",
-        authorityEmail: "",
-        departments: [
-          { id: "dept-goa-cse", name: "Computer Science & Engineering", authorityEmail: "" },
-          { id: "dept-goa-civil", name: "Civil Engineering", authorityEmail: "" },
-          { id: "dept-goa-mech", name: "Mechanical Engineering", authorityEmail: "" },
-          { id: "dept-goa-elec", name: "Electrical Engineering", authorityEmail: "" },
-          { id: "dept-goa-ece", name: "Electronics & Communication Engineering", authorityEmail: "" }
-        ]
-      },
-      {
-        id: "inst-goa-itcs",
-        name: "Parul College of Information Technology & Computer Science",
-        authorityEmail: "",
-        departments: [
-          { id: "dept-goa-it", name: "Information Technology", authorityEmail: "" },
-          { id: "dept-goa-mca", name: "Computer Applications", authorityEmail: "" }
-        ]
-      }
-    ]
-  },
-  {
-    id: "fac-goa-mgmt",
-    name: "Faculty of Management Studies",
-    authorityEmail: "",
-    institutes: [
-      {
-        id: "inst-goa-mgmt",
-        name: "Parul College of Management",
-        authorityEmail: "",
-        departments: [
-          { id: "dept-goa-mgmt-studies", name: "Management Studies", authorityEmail: "" },
-          { id: "dept-goa-bba", name: "Business Administration", authorityEmail: "" }
-        ]
-      }
-    ]
-  },
-  {
-    id: "fac-goa-hotel",
-    name: "Faculty of Hotel Management",
-    authorityEmail: "",
-    institutes: [
-      {
-        id: "inst-goa-hotel",
-        name: "Parul College of Hotel Management",
-        authorityEmail: "",
-        departments: [
-          { id: "dept-goa-hotel-mgmt", name: "Hotel Management & Catering Technology", authorityEmail: "" }
-        ]
-      }
-    ]
-  },
-  {
-    id: "fac-goa-pharmacy",
-    name: "Faculty of Pharmacy",
-    authorityEmail: "",
-    institutes: [
-      {
-        id: "inst-goa-pharmacy",
-        name: "Parul College of Pharmacy",
-        authorityEmail: "",
-        departments: [
-          { id: "dept-goa-pharmacy", name: "Pharmacy", authorityEmail: "" },
-          { id: "dept-goa-pharmaceutics", name: "Pharmaceutics", authorityEmail: "" },
-          { id: "dept-goa-pharmacology", name: "Pharmacology", authorityEmail: "" },
-          { id: "dept-goa-pharm-chem", name: "Pharmaceutical Chemistry", authorityEmail: "" }
-        ]
-      }
-    ]
-  },
-  {
-    id: "fac-goa-health",
-    name: "Faculty of Applied and Health Sciences",
-    authorityEmail: "",
-    institutes: [
-      {
-        id: "inst-goa-health",
-        name: "Parul College of Applied and Health Sciences",
-        authorityEmail: "",
-        departments: [
-          { id: "dept-goa-app-sci", name: "Applied Sciences", authorityEmail: "" },
-          { id: "dept-goa-clt", name: "Department of Microbiology", authorityEmail: "" },
-          { id: "dept-goa-clt", name: "Clinical Lab Technology", authorityEmail: "" }
-        ]
-      }
-    ]
-  },
-  {
-    id: "fac-goa-nursing",
-    name: "Faculty of Nursing",
-    authorityEmail: "",
-    institutes: [
-      {
-        id: "inst-goa-nursing",
-        name: "Parul College of Nursing",
-        authorityEmail: "",
-        departments: [
-          { id: "dept-goa-nursing", name: "Nursing", authorityEmail: "" }
-        ]
-      }
-    ]
-  },
-  {
-    id: "fac-goa-physio",
-    name: "Faculty of Physiotherapy",
-    authorityEmail: "",
-    institutes: [
-      {
-        id: "inst-goa-physio",
-        name: "Parul College of Physiotherapy",
-        authorityEmail: "",
-        departments: [
-          { id: "dept-goa-physio", name: "Physiotherapy", authorityEmail: "" }
-        ]
-      }
-    ]
-  },
-  {
-    id: "fac-goa-office",
-    name: "University Office",
-    authorityEmail: "",
-    institutes: [
-      {
-        id: "inst-goa-univ-office",
-        name: "University Office",
-        authorityEmail: "",
-        departments: [
-          { id: "dept-goa-admin", name: "Administration", authorityEmail: "" },
-          { id: "dept-goa-rdc", name: "Research & Development Cell", authorityEmail: "" }
-        ]
-      }
-    ]
-  }
-];
 
 const salaryBanks = ["AU Bank", "HDFC Bank", "Central Bank of India"]
 
@@ -411,24 +270,28 @@ export default function SettingsPage() {
   const selectedInstitute = profileForm.watch('institute');
 
   const matrixFacultyOptions = useMemo(() => {
-    return getFacultiesFromMatrix(systemSettings?.facultyMatrix);
-  }, [systemSettings?.facultyMatrix]);
+    return getFacultiesFromMatrix(matrixData);
+  }, [matrixData]);
 
   const matrixInstituteOptions = useMemo(() => {
     if (!selectedFaculty) return [];
-    return getInstitutesForFacultyFromMatrix(selectedFaculty, systemSettings?.facultyMatrix).map(i => ({
+    return getInstitutesForFacultyFromMatrix(selectedFaculty, matrixData).map(i => ({
       label: i.label,
       value: i.value
     }));
-  }, [systemSettings?.facultyMatrix, selectedFaculty]);
+  }, [matrixData, selectedFaculty]);
 
   const matrixDepartmentOptions = useMemo(() => {
     if (!selectedInstitute) return [];
-    return getDepartmentsForInstituteFromMatrix(selectedInstitute, systemSettings?.facultyMatrix).map(dept => ({
-      label: dept,
-      value: dept
-    }));
-  }, [systemSettings?.facultyMatrix, selectedInstitute]);
+    const matrixDepts = getDepartmentsForInstituteFromMatrix(selectedInstitute, matrixData);
+    if (matrixDepts && matrixDepts.length > 0) {
+      return matrixDepts.map(dept => ({
+        label: dept,
+        value: dept
+      }));
+    }
+    return departmentOptions;
+  }, [matrixData, selectedInstitute, departmentOptions]);
 
   useEffect(() => {
     if (typeof window !== 'undefined' && window.location.hash === '#scopus-metrics') {
@@ -453,34 +316,32 @@ export default function SettingsPage() {
           setUser(appUser)
           setPreviewUrl(appUser.photoURL || null)
 
-          if (appUser.role === "Super-admin") {
-            const settings = await getSystemSettings()
-            setSystemSettings(settings)
-            if (settings?.facultyMatrix && settings.facultyMatrix.length > 0) {
-              const normalized = normalizeFacultyMatrix(settings.facultyMatrix);
-              if (settings.principalEmails) {
-                normalized.forEach(fac => {
-                  (fac.institutes || []).forEach(inst => {
-                    if (!inst.authorityEmail && settings.principalEmails?.[inst.name]) {
-                      inst.authorityEmail = settings.principalEmails[inst.name];
-                    }
-                  });
+          const settings = await getSystemSettings()
+          setSystemSettings(settings)
+          if (settings?.facultyMatrix && settings.facultyMatrix.length > 0) {
+            const normalized = normalizeFacultyMatrix(settings.facultyMatrix);
+            if (settings.principalEmails) {
+              normalized.forEach(fac => {
+                (fac.institutes || []).forEach(inst => {
+                  if (!inst.authorityEmail && settings.principalEmails?.[inst.name]) {
+                    inst.authorityEmail = settings.principalEmails[inst.name];
+                  }
                 });
-              }
-              setMatrixData(normalized)
-            } else {
-              const defaultWithPrincipals = JSON.parse(JSON.stringify(defaultGoaMatrix));
-              if (settings?.principalEmails) {
-                defaultWithPrincipals.forEach((fac: any) => {
-                  (fac.institutes || []).forEach((inst: any) => {
-                    if (!inst.authorityEmail && settings.principalEmails?.[inst.name]) {
-                      inst.authorityEmail = settings.principalEmails[inst.name];
-                    }
-                  });
-                });
-              }
-              setMatrixData(defaultWithPrincipals)
+              });
             }
+            setMatrixData(normalized)
+          } else {
+            const defaultWithPrincipals = JSON.parse(JSON.stringify(defaultGoaMatrix));
+            if (settings?.principalEmails) {
+              defaultWithPrincipals.forEach((fac: any) => {
+                (fac.institutes || []).forEach((inst: any) => {
+                  if (!inst.authorityEmail && settings.principalEmails?.[inst.name]) {
+                    inst.authorityEmail = settings.principalEmails[inst.name];
+                  }
+                });
+              });
+            }
+            setMatrixData(defaultWithPrincipals)
           }
 
           profileForm.reset({
@@ -517,11 +378,13 @@ export default function SettingsPage() {
 
   useEffect(() => {
     const currentInstitute = profileForm.getValues('institute');
-    const appropriateInstitutes = selectedCampus === 'Goa' ? goaInstitutes : [...new Set(institutes)];
-    if (currentInstitute && !appropriateInstitutes.includes(currentInstitute)) {
-      profileForm.setValue('institute', '');
+    if (currentInstitute && matrixData.length > 0) {
+      const allMatrixInstitutes = matrixData.flatMap(f => (f.institutes || []).map(i => i.name));
+      if (allMatrixInstitutes.length > 0 && !allMatrixInstitutes.includes(currentInstitute)) {
+        profileForm.setValue('institute', '');
+      }
     }
-  }, [selectedCampus, profileForm]);
+  }, [matrixData, profileForm]);
 
   const ifscCodeWatcher = bankForm.watch('ifscCode');
 
@@ -1229,14 +1092,25 @@ export default function SettingsPage() {
                       render={({ field }) => (
                         <FormItem>
                           <FormLabel>Faculty</FormLabel>
-                          <Select onValueChange={field.onChange} value={field.value} disabled={isAcademicInfoLocked}>
+                          <Select
+                            onValueChange={(val) => {
+                              field.onChange(val);
+                              const validInstitutes = getInstitutesForFacultyFromMatrix(val, matrixData).map(i => i.value);
+                              if (!validInstitutes.includes(profileForm.getValues("institute"))) {
+                                profileForm.setValue("institute", "");
+                                profileForm.setValue("department", "");
+                              }
+                            }}
+                            value={field.value}
+                            disabled={isAcademicInfoLocked}
+                          >
                             <FormControl>
                               <SelectTrigger>
                                 <SelectValue placeholder="Select your faculty" />
                               </SelectTrigger>
                             </FormControl>
                             <SelectContent>
-                              {(selectedCampus === 'Goa' ? goaFaculties : faculties).map((f) => (
+                              {matrixFacultyOptions.map((f) => (
                                 <SelectItem key={f} value={f}>
                                   {f}
                                 </SelectItem>
@@ -1253,16 +1127,26 @@ export default function SettingsPage() {
                       render={({ field }) => (
                         <FormItem>
                           <FormLabel>Institute</FormLabel>
-                          <Select onValueChange={field.onChange} value={field.value} disabled={isAcademicInfoLocked}>
+                          <Select
+                            onValueChange={(val) => {
+                              field.onChange(val);
+                              const validDepts = getDepartmentsForInstituteFromMatrix(val, matrixData);
+                              if (validDepts.length > 0 && !validDepts.includes(profileForm.getValues("department") || "")) {
+                                profileForm.setValue("department", "");
+                              }
+                            }}
+                            value={field.value}
+                            disabled={isAcademicInfoLocked || !selectedFaculty || matrixInstituteOptions.length === 0}
+                          >
                             <FormControl>
                               <SelectTrigger>
-                                <SelectValue placeholder="Select your institute" />
+                                <SelectValue placeholder={!selectedFaculty ? "Select faculty first" : "Select your institute"} />
                               </SelectTrigger>
                             </FormControl>
                             <SelectContent>
-                              {[...new Set(selectedCampus === 'Goa' ? goaInstitutes : institutes)].map((i, index) => (
-                                <SelectItem key={`${i}-${index}`} value={i}>
-                                  {i}
+                              {matrixInstituteOptions.map((i) => (
+                                <SelectItem key={i.value} value={i.value}>
+                                  {i.label}
                                 </SelectItem>
                               ))}
                             </SelectContent>
@@ -1278,13 +1162,13 @@ export default function SettingsPage() {
                         <FormItem>
                           <FormLabel>Department</FormLabel>
                           <Combobox
-                            options={departmentOptions}
+                            options={matrixDepartmentOptions}
                             value={field.value || ""}
                             onChange={field.onChange}
-                            placeholder="Select your department"
+                            placeholder={!selectedInstitute ? "Select institute first" : "Select your department"}
                             searchPlaceholder="Search departments..."
-                            emptyPlaceholder="No department found. If you feel this is a error, please drop a mail to helpdesk.rdc@paruluniversity.ac.in"
-                            disabled={isAcademicInfoLocked}
+                            emptyPlaceholder="No department found in matrix."
+                            disabled={isAcademicInfoLocked || !selectedInstitute || matrixDepartmentOptions.length === 0}
                           />
                           <FormMessage />
                         </FormItem>

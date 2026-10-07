@@ -14,8 +14,8 @@ import { Logo } from '@/components/logo';
 import { useToast } from '@/hooks/use-toast';
 import { auth, db } from '@/lib/config';
 import { doc, getDoc, updateDoc } from 'firebase/firestore';
-import { uploadFileToServer, checkMisIdExists, linkEmrInterestsByMisId } from '@/app/actions';
-import type { User } from '@/types';
+import { uploadFileToServer, checkMisIdExists, linkEmrInterestsByMisId, getSystemSettings } from '@/app/actions';
+import type { User, FacultyMatrixItem } from '@/types';
 import { useState, useEffect, useCallback, Suspense, useMemo } from 'react';
 import { onAuthStateChanged, type User as FirebaseUser } from 'firebase/auth';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -29,6 +29,13 @@ import { Combobox } from '@/components/ui/combobox';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from '@/components/ui/dialog';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { useStaffData, useDepartments } from '@/hooks/use-staff-data';
+import {
+  getFacultiesFromMatrix,
+  getInstitutesForFacultyFromMatrix,
+  getDepartmentsForInstituteFromMatrix,
+  normalizeFacultyMatrix,
+  defaultGoaMatrix,
+} from '@/lib/academic-data';
 
 const profileSetupSchema = z.object({
   name: z.string().min(2, 'A full name is required.'),
@@ -51,44 +58,7 @@ const profileSetupSchema = z.object({
 type ProfileSetupFormValues = z.infer<typeof profileSetupSchema>;
 
 
-const faculties = [
-  "Faculty of Engineering, IT & CS",
-  "Faculty of Management Studies",
-  "Faculty of Pharmacy",
-  "Faculty of Applied and Health Sciences",
-  "Faculty of Hotel Management",
-  "Faculty of Nursing",
-  "Faculty of Physiotherapy",
-  "University Office"
-];
-
-const goaFaculties = faculties;
-
 const campuses = ["Goa"];
-
-
-const goaInstitutes = [
-  "Parul College of Applied and Health Sciences",
-  "Parul College of Engineering",
-  "Parul College of Information Technology & Computer Science",
-  "Parul College of Management",
-  "Parul College of Hotel Management",
-  "Parul College of Nursing",
-  "Parul College of Pharmacy",
-  "Parul College of Physiotherapy",
-  "University Office"
-];
-
-const institutes = [
-  "Parul College of Applied and Health Sciences",
-  "Parul College of Engineering",
-  "Parul College of Information Technology & Computer Science",
-  "Parul College of Management",
-  "Parul College of Nursing",
-  "Parul College of Pharmacy",
-  "Parul College of Physiotherapy",
-  "University Office"
-];
 
 const fileToDataUrl = (file: File): Promise<string> => {
   return new Promise((resolve, reject) => {
@@ -114,12 +84,13 @@ function ProfileSetupContent() {
   const [userType, setUserType] = useState<'faculty' | 'CRO' | 'Institutional' | null>(null);
   const [foundUsers, setFoundUsers] = useState<any[]>([]);
   const [isSelectionOpen, setIsSelectionOpen] = useState(false);
+  const [matrixData, setMatrixData] = useState<FacultyMatrixItem[]>(() => normalizeFacultyMatrix(defaultGoaMatrix));
 
   const form = useForm<ProfileSetupFormValues>({
     resolver: zodResolver(profileSetupSchema),
     defaultValues: {
       name: '',
-      campus: '',
+      campus: 'Goa',
       faculty: '',
       institute: '',
       department: '',
@@ -139,6 +110,89 @@ function ProfileSetupContent() {
   const selectedCampus = form.watch('campus');
   const isGoaCampusUser = user?.email?.endsWith('@goa.paruluniversity.ac.in');
 
+  useEffect(() => {
+    async function loadSystemMatrix() {
+      try {
+        const settings = await getSystemSettings();
+        if (settings?.facultyMatrix && settings.facultyMatrix.length > 0) {
+          setMatrixData(normalizeFacultyMatrix(settings.facultyMatrix));
+        } else {
+          setMatrixData(normalizeFacultyMatrix(defaultGoaMatrix));
+        }
+      } catch (err) {
+        console.error("Failed to load system settings matrix:", err);
+        setMatrixData(normalizeFacultyMatrix(defaultGoaMatrix));
+      }
+    }
+    loadSystemMatrix();
+  }, []);
+
+  const { departments: allDepartments } = useDepartments(selectedCampus);
+
+  const selectedFaculty = form.watch('faculty');
+  const selectedInstitute = form.watch('institute');
+
+  const facultyOptions = useMemo(() => {
+    return getFacultiesFromMatrix(matrixData);
+  }, [matrixData]);
+
+  const instituteOptions = useMemo(() => {
+    if (!selectedFaculty) return [];
+    return getInstitutesForFacultyFromMatrix(selectedFaculty, matrixData);
+  }, [matrixData, selectedFaculty]);
+
+  const departmentOptions = useMemo(() => {
+    if (!selectedInstitute) return [];
+    const matrixDepts = getDepartmentsForInstituteFromMatrix(selectedInstitute, matrixData);
+    if (matrixDepts && matrixDepts.length > 0) {
+      return matrixDepts.map(dept => ({ label: dept, value: dept }));
+    }
+    return allDepartments.map(dept => ({ label: dept, value: dept }));
+  }, [matrixData, selectedInstitute, allDepartments]);
+
+  const normalizeWithMatrix = useCallback((userData: any) => {
+    const data = { ...userData };
+    if (data.faculty) {
+      const matchedFac = matrixData.find(
+        f => f.name.toLowerCase().trim() === data.faculty.toLowerCase().trim()
+      );
+      if (matchedFac) {
+        data.faculty = matchedFac.name;
+      }
+    }
+    if (data.institute) {
+      for (const fac of matrixData) {
+        const matchedInst = (fac.institutes || []).find(
+          i => i.name.toLowerCase().trim() === data.institute.toLowerCase().trim()
+        );
+        if (matchedInst) {
+          data.institute = matchedInst.name;
+          if (!data.faculty) {
+            data.faculty = fac.name;
+          }
+          break;
+        }
+      }
+    }
+    if (data.department && data.institute) {
+      for (const fac of matrixData) {
+        const inst = (fac.institutes || []).find(
+          i => i.name.toLowerCase().trim() === data.institute.toLowerCase().trim()
+        );
+        if (inst) {
+          const matchedDept = (inst.departments || []).find(
+            d => d.name.toLowerCase().trim() === data.department.toLowerCase().trim()
+          );
+          if (matchedDept) {
+            data.department = matchedDept.name;
+          }
+          break;
+        }
+      }
+    }
+    return data;
+  }, [matrixData]);
+
   const prefillData = useCallback(async () => {
     if (!misIdToFetch || !user?.email) return;
     setIsPrefilling(true);
@@ -156,7 +210,8 @@ function ProfileSetupContent() {
           setFoundUsers(result.data);
           setIsSelectionOpen(true);
         } else {
-          form.reset(result.data[0]);
+          const normalized = normalizeWithMatrix(result.data[0]);
+          form.reset(normalized);
           setUserType(result.data[0].type);
           form.setValue("misId", misIdToFetch); // Ensure the searched MIS ID is set
           toast({ title: 'Profile Pre-filled', description: 'Your information has been pre-filled. Please review and save.' });
@@ -170,10 +225,11 @@ function ProfileSetupContent() {
     } finally {
       setIsPrefilling(false);
     }
-  }, [form, toast, user?.email, misIdToFetch]);
+  }, [form, toast, user?.email, misIdToFetch, normalizeWithMatrix]);
 
   const handleUserSelection = (selectedUser: any) => {
-    form.reset(selectedUser);
+    const normalized = normalizeWithMatrix(selectedUser);
+    form.reset(normalized);
     setUserType(selectedUser.type);
     form.setValue("misId", misIdToFetch);
     toast({ title: 'Profile Pre-filled', description: 'Your information has been pre-filled. Please review and save.' });
@@ -194,11 +250,24 @@ function ProfileSetupContent() {
           }
           setUser(appUser);
           setPreviewUrl(appUser.photoURL || null);
-          form.setValue('name', appUser.name);
+          form.setValue('name', appUser.name || '');
 
-          if (appUser.email?.endsWith('@goa.paruluniversity.ac.in')) {
-            form.setValue('campus', 'Goa');
+          if (appUser.campus || appUser.email?.endsWith('@goa.paruluniversity.ac.in')) {
+            form.setValue('campus', appUser.campus || 'Goa');
           }
+          if (appUser.faculty) form.setValue('faculty', appUser.faculty);
+          if (appUser.institute) form.setValue('institute', appUser.institute);
+          if (appUser.department) form.setValue('department', appUser.department);
+          if (appUser.designation) form.setValue('designation', appUser.designation);
+          if (appUser.misId) form.setValue('misId', appUser.misId);
+          if (appUser.phoneNumber) form.setValue('phoneNumber', appUser.phoneNumber);
+          if (appUser.orcidId) form.setValue('orcidId', appUser.orcidId);
+          if (appUser.scopusId) form.setValue('scopusId', appUser.scopusId);
+          if (appUser.hIndex) form.setValue('hIndex', appUser.hIndex);
+          if (appUser.i10Index) form.setValue('i10Index', appUser.i10Index);
+          if (appUser.citationCount) form.setValue('citationCount', appUser.citationCount);
+          if (appUser.vidwanId) form.setValue('vidwanId', appUser.vidwanId);
+          if (appUser.googleScholarId) form.setValue('googleScholarId', appUser.googleScholarId);
 
           // Pre-fetch user type based on email to determine if MIS ID is needed.
           const idToken = await firebaseUser.getIdToken();
@@ -226,14 +295,6 @@ function ProfileSetupContent() {
 
     return () => unsubscribe();
   }, [router, toast, form, wasRedirected]);
-
-  const { departments: allDepartments } = useDepartments(selectedCampus);
-  const departments = useMemo(() => {
-    // For now, the hook returns all departments. 
-    // If the backend /api/get-departments is already filtered, this is fine.
-    // If not, we can filter here or update the hook.
-    return allDepartments;
-  }, [allDepartments]);
 
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -327,7 +388,6 @@ function ProfileSetupContent() {
     )
   }
 
-  const departmentOptions = departments.map(dept => ({ label: dept, value: dept }));
 
   return (
     <>
@@ -410,11 +470,6 @@ function ProfileSetupContent() {
                         <Select
                           onValueChange={(value) => {
                             field.onChange(value);
-                            if (value === "Goa") {
-                              if (!goaFaculties.includes(form.getValues("faculty"))) {
-                                form.setValue("faculty", "");
-                              }
-                            }
                           }}
                           value={field.value}
                           disabled={isGoaCampusUser}
@@ -426,50 +481,65 @@ function ProfileSetupContent() {
                       </FormItem>
                     )} />
 
-                    <FormField name="faculty" control={form.control} render={({ field }) => {
-                      const facultyOptions = form.getValues("campus") === "Goa" ? goaFaculties : faculties;
-                      return (
-                        <FormItem>
-                          <FormLabel>Faculty</FormLabel>
-                          <Select onValueChange={field.onChange} value={field.value}>
-                            <FormControl>
-                              <SelectTrigger>
-                                <SelectValue placeholder="Select your faculty" />
-                              </SelectTrigger>
-                            </FormControl>
-                            <SelectContent>
-                              {facultyOptions.map((f: string) => (
-                                <SelectItem key={f} value={f}>{f}</SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                          <FormMessage />
-                        </FormItem>
-                      );
-                    }} />
-                    <FormField name="institute" control={form.control} render={({ field }) => {
-                      const instituteOptions = form.getValues("campus") === "Goa" ? goaInstitutes : institutes;
-                      return (
-                        <FormItem>
-                          <FormLabel>Institute</FormLabel>
-                          <Select onValueChange={field.onChange} value={field.value}>
-                            <FormControl>
-                              <SelectTrigger>
-                                <SelectValue placeholder="Select your institute" />
-                              </SelectTrigger>
-                            </FormControl>
-                            <SelectContent>
-                              {instituteOptions.map(i => (
-                                <SelectItem key={i} value={i}>{i}</SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                          <FormMessage />
-                        </FormItem>
-                      );
-                    }} />
+                    <FormField name="faculty" control={form.control} render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Faculty</FormLabel>
+                        <Select
+                          onValueChange={(value) => {
+                            field.onChange(value);
+                            const validInstitutes = getInstitutesForFacultyFromMatrix(value, matrixData).map(i => i.value);
+                            if (!validInstitutes.includes(form.getValues("institute"))) {
+                              form.setValue("institute", "");
+                              form.setValue("department", "");
+                            }
+                          }}
+                          value={field.value}
+                        >
+                          <FormControl>
+                            <SelectTrigger>
+                              <SelectValue placeholder="Select your faculty" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            {facultyOptions.map((f: string) => (
+                              <SelectItem key={f} value={f}>{f}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )} />
+
+                    <FormField name="institute" control={form.control} render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Institute</FormLabel>
+                        <Select
+                          onValueChange={(value) => {
+                            field.onChange(value);
+                            const validDepts = getDepartmentsForInstituteFromMatrix(value, matrixData);
+                            if (validDepts.length > 0 && !validDepts.includes(form.getValues("department") || "")) {
+                              form.setValue("department", "");
+                            }
+                          }}
+                          value={field.value}
+                          disabled={!selectedFaculty || instituteOptions.length === 0}
+                        >
+                          <FormControl>
+                            <SelectTrigger>
+                              <SelectValue placeholder={!selectedFaculty ? "Select faculty first" : "Select your institute"} />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            {instituteOptions.map(i => (
+                              <SelectItem key={i.value} value={i.value}>{i.label}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )} />
+
                     <h3 className="text-lg font-semibold border-t pt-4">Academic & Contact Details</h3>
-                    {/* Removed duplicate faculty field here since it's rendered conditionally above */}
                     {userType !== 'Institutional' && (
                       <FormField
                         control={form.control}
@@ -481,9 +551,10 @@ function ProfileSetupContent() {
                               options={departmentOptions}
                               value={field.value || ''}
                               onChange={field.onChange}
-                              placeholder="Select your department"
+                              placeholder={!selectedInstitute ? "Select institute first" : "Select your department"}
                               searchPlaceholder="Search departments..."
-                              emptyPlaceholder="No department found."
+                              emptyPlaceholder="No department found in matrix."
+                              disabled={!selectedInstitute || departmentOptions.length === 0}
                             />
                             <FormMessage />
                           </FormItem>
