@@ -229,6 +229,7 @@ export const defaultGoaMatrix: FacultyMatrixItem[] = [
         authorityEmail: "",
         departments: [
           { id: "dept-goa-app-sci", name: "Applied Sciences", authorityEmail: "" },
+          { id: "dept-goa-clt", name: "Department of Microbiology", authorityEmail: "" },
           { id: "dept-goa-clt", name: "Clinical Lab Technology", authorityEmail: "" }
         ]
       }
