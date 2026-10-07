@@ -565,7 +565,7 @@ export async function scheduleEmrMeeting(
                   <a href="${process.env.NEXT_PUBLIC_BASE_URL}/dashboard/evaluator-dashboard" style="display: inline-block; padding: 10px 20px; margin-top: 10px; font-size: 14px; font-weight: bold; color: #ffffff; background-color: #64b5f6; text-decoration: none; border-radius: 5px;">View on Evaluation Dashboard</a>
                   <br/><br/>
                   ` : `
-                  <p style="color: #cccccc; margin-top: 15px;">Please review the assigned presentations on the PU Research Projects Portal.</p>
+                  <p style="color: #cccccc; margin-top: 15px;">Please review the assigned presentations on the PU Goa Research Projects Portal.</p>
                   `}
                   ${EMAIL_STYLES.footer}
               </div>
@@ -1234,7 +1234,7 @@ export async function announceEmrCall(callId: string): Promise<{ success: boolea
       <div ${EMAIL_STYLES.background}>
         ${EMAIL_STYLES.logo}
         <h2 style="color: #ffffff; text-align: center;">New Funding Opportunity: ${call.title}</h2>
-        <p style="color:#e0e0e0;">A new funding call from <strong style="color:#ffffff;">${call.agency}</strong> has been posted on the PU Research Projects Portal.</p>
+        <p style="color:#e0e0e0;">A new funding call from <strong style="color:#ffffff;">${call.agency}</strong> has been posted on the PU Goa Research Projects Portal.</p>
         <div style="padding: 15px; border: 1px solid #4f5b62; border-radius: 8px; margin-top: 20px; background-color:#2c3e50;">
           <div style="color:#e0e0e0;" class="prose prose-sm">${call.description || "No description provided."}</div>
           <p style="color:#e0e0e0;"><strong>Register Interest By:</strong> ${formatInTimeZone(call.interestDeadline, timeZone, "PPpp (z)")}</p>
@@ -2385,7 +2385,7 @@ export async function rescheduleEmrApplicantWithDetails(
                   <p><strong>${mode === 'Online' ? 'Meeting Link:' : 'Venue:'}</strong> 
                       ${mode === 'Online' ? `<a href="${venue}" style="color: #1a73e8; text-decoration: underline;">${venue}</a>` : venue}
                   </p>
-                  <p style="color: #555555; margin-top: 15px;">Please review the assigned presentations on the PU Research Projects Portal.</p>
+                  <p style="color: #555555; margin-top: 15px;">Please review the assigned presentations on the PU Goa Research Projects Portal.</p>
                   ${EMAIL_STYLES.footer}
               </div>
             `;
@@ -2448,7 +2448,7 @@ export async function triggerEmrEvaluatorReminders(): Promise<{ success: boolean
       if (interest.status === "Evaluation Done" || interest.status === "Sanctioned" || interest.status === "Not Sanctioned") {
         return;
       }
-      
+
       const evaluatorUids = interest.assignedEvaluators || [];
       if (interest.callId) {
         callIds.add(interest.callId);
