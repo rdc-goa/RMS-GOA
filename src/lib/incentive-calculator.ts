@@ -1,4 +1,5 @@
 import { IncentiveClaim, Author } from '@/types';
+import { isSpecialPolicyFaculty } from '@/lib/academic-data';
 
 export interface IncentiveBreakdown {
     baseAmount: number;
@@ -71,19 +72,7 @@ export function calculateIncentiveBreakdown(claim: IncentiveClaim): IncentiveBre
             
             const isMainAuthor = mainRoles.includes(claim.authorType || '');
 
-            const SPECIAL_POLICY_FACULTIES = [
-                "Faculty of Applied Sciences",
-                "Faculty of Medicine",
-                "Faculty of Homoeopathy",
-                "Faculty of Ayurved",
-                "Faculty of Nursing",
-                "Faculty of Pharmacy",
-                "Faculty of Physiotherapy",
-                "Faculty of Public Health",
-                "Faculty of Engineering & Technology"
-            ];
-
-            const isSpecialFaculty = SPECIAL_POLICY_FACULTIES.includes(claim.faculty || '');
+            const isSpecialFaculty = isSpecialPolicyFaculty(claim.faculty);
             const isScopus = claim.indexType === 'scopus' || claim.indexType === 'both';
             const isWos = claim.indexType === 'wos' || claim.indexType === 'both';
             const isWosValid = isWos && (claim.indexType as string) !== 'esci'; // ESCI is deleted/excluded

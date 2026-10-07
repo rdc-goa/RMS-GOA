@@ -29,13 +29,7 @@ import { Combobox } from '@/components/ui/combobox';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from '@/components/ui/dialog';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { useStaffData, useDepartments } from '@/hooks/use-staff-data';
-import {
-  getFacultiesFromMatrix,
-  getInstitutesForFacultyFromMatrix,
-  getDepartmentsForInstituteFromMatrix,
-  normalizeFacultyMatrix,
-  defaultGoaMatrix,
-} from '@/lib/academic-data';
+import { useAcademicMatrix } from '@/hooks/use-academic-matrix';
 
 const profileSetupSchema = z.object({
   name: z.string().min(2, 'A full name is required.'),
@@ -84,7 +78,7 @@ function ProfileSetupContent() {
   const [userType, setUserType] = useState<'faculty' | 'CRO' | 'Institutional' | null>(null);
   const [foundUsers, setFoundUsers] = useState<any[]>([]);
   const [isSelectionOpen, setIsSelectionOpen] = useState(false);
-  const [matrixData, setMatrixData] = useState<FacultyMatrixItem[]>(() => normalizeFacultyMatrix(defaultGoaMatrix));
+  const { matrix: matrixData, faculties: facultyOptions, getInstitutes, getDepartments } = useAcademicMatrix();
 
   const form = useForm<ProfileSetupFormValues>({
     resolver: zodResolver(profileSetupSchema),
@@ -110,45 +104,24 @@ function ProfileSetupContent() {
   const selectedCampus = form.watch('campus');
   const isGoaCampusUser = user?.email?.endsWith('@goa.paruluniversity.ac.in');
 
-  useEffect(() => {
-    async function loadSystemMatrix() {
-      try {
-        const settings = await getSystemSettings();
-        if (settings?.facultyMatrix && settings.facultyMatrix.length > 0) {
-          setMatrixData(normalizeFacultyMatrix(settings.facultyMatrix));
-        } else {
-          setMatrixData(normalizeFacultyMatrix(defaultGoaMatrix));
-        }
-      } catch (err) {
-        console.error("Failed to load system settings matrix:", err);
-        setMatrixData(normalizeFacultyMatrix(defaultGoaMatrix));
-      }
-    }
-    loadSystemMatrix();
-  }, []);
-
   const { departments: allDepartments } = useDepartments(selectedCampus);
 
   const selectedFaculty = form.watch('faculty');
   const selectedInstitute = form.watch('institute');
 
-  const facultyOptions = useMemo(() => {
-    return getFacultiesFromMatrix(matrixData);
-  }, [matrixData]);
-
   const instituteOptions = useMemo(() => {
     if (!selectedFaculty) return [];
-    return getInstitutesForFacultyFromMatrix(selectedFaculty, matrixData);
-  }, [matrixData, selectedFaculty]);
+    return getInstitutes(selectedFaculty);
+  }, [selectedFaculty, getInstitutes]);
 
   const departmentOptions = useMemo(() => {
     if (!selectedInstitute) return [];
-    const matrixDepts = getDepartmentsForInstituteFromMatrix(selectedInstitute, matrixData);
+    const matrixDepts = getDepartments(selectedInstitute);
     if (matrixDepts && matrixDepts.length > 0) {
       return matrixDepts.map(dept => ({ label: dept, value: dept }));
     }
     return allDepartments.map(dept => ({ label: dept, value: dept }));
-  }, [matrixData, selectedInstitute, allDepartments]);
+  }, [selectedInstitute, getDepartments, allDepartments]);
 
   const normalizeWithMatrix = useCallback((userData: any) => {
     const data = { ...userData };

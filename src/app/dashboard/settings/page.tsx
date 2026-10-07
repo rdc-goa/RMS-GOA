@@ -8,6 +8,7 @@ import { useState, useEffect, useMemo, useCallback } from "react"
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import * as z from "zod"
+import { mutate } from "swr"
 
 import { PageHeader } from '@/components/page-header'
 import { Button } from '@/components/ui/button'
@@ -844,6 +845,7 @@ export default function SettingsPage() {
         console.error("Error granting principal permissions:", err);
       }
 
+      mutate('/api/academic-matrix');
       toast({ title: 'Academic Matrix & Principal emails saved successfully.' })
     } else {
       toast({ variant: 'destructive', title: 'Error', description: result.error })

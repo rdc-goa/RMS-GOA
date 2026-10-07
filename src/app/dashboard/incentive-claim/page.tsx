@@ -39,6 +39,7 @@ import { submitIncentiveClaimViaApi } from '@/lib/incentive-claim-client';
 import { differenceInDays, parseISO, addYears, format } from 'date-fns';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { calculateBookIncentive, calculateApcIncentive, calculateResearchPaperIncentive, calculateConferenceIncentive, calculateEmrSanctionIncentive } from '@/app/incentive-calculation';
+import { isSpecialPolicyFaculty } from '@/lib/academic-data';
 import { Separator } from '@/components/ui/separator';
 import { useIsMobile } from '@/hooks/use-mobile';
 
@@ -414,12 +415,7 @@ function CoAuthorClaimsList({ claims, currentUser, onClaimApplied }: { claims: I
 
                 if (!myAuthorDetails) return;
 
-                const SPECIAL_POLICY_FACULTIES = [
-                    "Faculty of Applied Sciences", "Faculty of Medicine", "Faculty of Homoeopathy",
-                    "Faculty of Ayurved", "Faculty of Nursing", "Faculty of Pharmacy",
-                    "Faculty of Physiotherapy", "Faculty of Public Health", "Faculty of Engineering & Technology"
-                ];
-                const isSpecialFaculty = SPECIAL_POLICY_FACULTIES.includes(currentUser.faculty || '');
+                const isSpecialFaculty = isSpecialPolicyFaculty(currentUser.faculty);
 
                 const claimDataForCalc: Partial<IncentiveClaim> = {
                     ...claimToApply,

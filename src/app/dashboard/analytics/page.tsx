@@ -36,14 +36,6 @@ import { ClaimDetailsDialog } from '@/components/incentives/claim-details-dialog
 
 
 const COLORS = ["#64B5F6", "#81C784", "#FFB74D", "#E57373", "#BA68C8", "#7986CB", "#4DD0E1", "#FFF176", "#FF8A65", "#A1887F", "#90A4AE"];
-const GOA_FACULTIES = [
-  "Faculty of Engineering, IT & CS (Goa)",
-  "Faculty of Management Studies (Goa)",
-  "Faculty of Pharmacy (Goa)",
-  "Faculty of Applied and Health Sciences (Goa)",
-  "Faculty of Nursing (Goa)",
-  "Faculty of Physiotherapy (Goa)"
-];
 
 // A helper component for the Pie chart legend
 const ChartLegendContent = (props: any) => {

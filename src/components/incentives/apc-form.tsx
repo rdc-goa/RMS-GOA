@@ -28,6 +28,7 @@ import { calculateApcIncentive } from '@/app/incentive-calculation'
 import { fetchAdvancedScopusData } from '@/app/scopus-actions'
 import { fetchScienceDirectData } from '@/app/sciencedirect-actions'
 import { fetchWosDataByUrl } from '@/app/wos-actions'
+import { isSpecialPolicyFaculty } from '@/lib/academic-data'
 import { Table, TableHeader, TableRow, TableHead, TableBody, TableCell } from '../ui/table'
 import { Badge } from '../ui/badge'
 
@@ -363,7 +364,7 @@ export function ApcForm({ user }: { user: User }) {
   });
 
   const isSpecialFaculty = useMemo(() =>
-    user.faculty ? SPECIAL_POLICY_FACULTIES.includes(user.faculty) : false,
+    isSpecialPolicyFaculty(user.faculty),
     [user.faculty]
   );
 

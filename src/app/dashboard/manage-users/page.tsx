@@ -57,20 +57,12 @@ import { bulkGrantModuleAccess, bulkRevokeModuleAccess, createGuestEvaluatorActi
 import { Switch } from '@/components/ui/switch';
 
 
+import { useAcademicMatrix } from '@/hooks/use-academic-matrix';
+
 const ROLES: User['role'][] = ['faculty', 'admin', 'CRO', 'IQAC'];
 const SUPER_ADMIN_ROLE: User['role'] = 'Super-admin';
 const PRIMARY_SUPER_ADMIN_EMAIL = 'rathipranav07@gmail.com';
 type SortableKeys = keyof Pick<User, 'name' | 'email' | 'role' | 'faculty'> | 'claimsCount';
-
-const faculties = [
-  "Faculty of Engineering & Technology", "Faculty of Diploma Studies", "Faculty of Applied Sciences",
-  "Faculty of IT & Computer Science", "Faculty of Agriculture", "Faculty of Architecture & Planning",
-  "Faculty of Design", "Faculty of Fine Arts", "Faculty of Arts", "Faculty of Commerce",
-  "Faculty of Social Work", "Faculty of Management Studies", "Faculty of Hotel Management & Catering Technology",
-  "Faculty of Law", "Faculty of Medicine", "Faculty of Homoeopathy", "Faculty of Ayurved",
-  "Faculty of Nursing", "Faculty of Pharmacy", "Faculty of Physiotherapy", "Faculty of Public Health",
-  "Parul Sevashram Hospital", "RDC", "University Office", "Parul Aarogya Seva Mandal"
-];
 
 const notificationTypes = [
   { id: 'projectStatus', label: 'IMR Project Status Updates' },
@@ -330,6 +322,7 @@ export default function ManageUsersPage() {
   const [createdCredentials, setCreatedCredentials] = useState<{ email: string; tempPassword: string } | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 15;
+  const { faculties } = useAcademicMatrix();
 
   useEffect(() => {
     const storedUser = localStorage.getItem('user');

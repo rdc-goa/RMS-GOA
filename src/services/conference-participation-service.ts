@@ -4,6 +4,7 @@ import { adminDb } from '@/lib/admin';
 import { sendEmail } from '@/lib/email';
 import type { User } from '@/types';
 import { logActivity } from './utils';
+import { normalizeFacultyMatrix } from '@/lib/academic-data';
 
 export interface ConferenceParticipation {
   id?: string;
@@ -79,7 +80,7 @@ export async function resolveConferenceHierarchy(userEmail: string) {
       return { success: false, error: 'System settings not found.' };
     }
     const systemSettings = settingsSnap.data();
-    const matrix = systemSettings?.facultyMatrix || [];
+    const matrix = normalizeFacultyMatrix(systemSettings?.facultyMatrix);
     console.log(`[resolveConferenceHierarchy] Loaded matrix with ${matrix.length} faculties.`);
 
     const targetFaculty = user.faculty.trim().toLowerCase();

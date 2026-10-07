@@ -5,20 +5,9 @@
 
 import type { IncentiveClaim, Author } from '@/types';
 import { getClaimantAuthorPosition, getClaimantRole } from '@/lib/incentive-eligibility';
+import { isSpecialPolicyFaculty } from '@/lib/academic-data';
 
 // --- Research Paper Calculation ---
-
-const SPECIAL_POLICY_FACULTIES = [
-    "Faculty of Applied Sciences",
-    "Faculty of Medicine",
-    "Faculty of Homoeopathy",
-    "Faculty of Ayurved",
-    "Faculty of Nursing",
-    "Faculty of Pharmacy",
-    "Faculty of Physiotherapy",
-    "Faculty of Public Health",
-    "Faculty of Engineering & Technology"
-];
 
 function getBaseIncentiveForPaper(claimData: Partial<IncentiveClaim>, faculty: string, designation?: string): number {
     const { journalClassification, indexType, wosType, publicationType } = claimData;
@@ -35,7 +24,7 @@ function getBaseIncentiveForPaper(claimData: Partial<IncentiveClaim>, faculty: s
         }
     }
 
-    const isSpecialFaculty = SPECIAL_POLICY_FACULTIES.includes(faculty);
+    const isSpecialFaculty = isSpecialPolicyFaculty(faculty);
     const isScopus = indexType === 'scopus' || indexType === 'both';
     const isWos = indexType === 'wos' || indexType === 'both';
     const isWosValid = isWos && (indexType as string) !== 'esci'; // ESCI is deleted

@@ -727,7 +727,7 @@ export async function processIncentiveClaimAction(
       const principalEmail = claimantInstitute ? (settings.principalEmails?.[claimantInstitute] || '') : '';
       let emailMatchesPrincipal = !!principalEmail && approver.email?.toLowerCase() === principalEmail.toLowerCase();
 
-      if (!emailMatchesPrincipal && settings.facultyMatrix) {
+      if (!emailMatchesPrincipal) {
         const { getUserAuthorityScope } = await import('@/lib/academic-data');
         const scope = getUserAuthorityScope(approver.email, settings.facultyMatrix);
         if (scope.hasAccess && claimantInstitute && scope.institutes.includes(claimantInstitute)) {

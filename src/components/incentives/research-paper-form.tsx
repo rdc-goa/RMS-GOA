@@ -28,6 +28,7 @@ import { fetchWosDataByUrl } from "@/app/wos-actions";
 import { fetchScienceDirectData } from "@/app/sciencedirect-actions";
 import { Loader2, AlertCircle, Bot, ChevronDown, Trash2, Plus, Search, UserPlus, Edit, Info, FileText, CheckCircle2, X, ChevronLeft, ChevronRight, Wand2, Globe, HelpCircle, ExternalLink } from 'lucide-react'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
+import { isSpecialPolicyFaculty } from '@/lib/academic-data'
 import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
@@ -1062,7 +1063,7 @@ export function ResearchPaperForm() {
   const publicationType = form.watch("publicationType");
 
   const isSpecialFaculty = useMemo(
-    () => (user?.faculty ? SPECIAL_POLICY_FACULTIES.includes(user.faculty) : false),
+    () => isSpecialPolicyFaculty(user?.faculty),
     [user?.faculty],
   )
 

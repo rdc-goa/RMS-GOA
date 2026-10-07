@@ -19,7 +19,27 @@ export async function GET(request: NextRequest) {
       .map(record => record.department)
       .filter((dept): dept is string => !!dept && dept.trim() !== '');
 
-    const uniqueDepartments = [...new Set(departments)].sort();
+    let matrixDepartments: string[] = [];
+    try {
+      const { getSystemSettings } = await import('@/services/system-service');
+      const { normalizeFacultyMatrix, defaultGoaMatrix } = await import('@/lib/academic-data');
+      const settings = await getSystemSettings();
+      const rawMatrix = (settings?.facultyMatrix && settings.facultyMatrix.length > 0)
+        ? settings.facultyMatrix
+        : defaultGoaMatrix;
+      const normalized = normalizeFacultyMatrix(rawMatrix);
+      normalized.forEach(f => {
+        (f.institutes || []).forEach(i => {
+          (i.departments || []).forEach(d => {
+            if (d.name && d.name.trim()) matrixDepartments.push(d.name.trim());
+          });
+        });
+      });
+    } catch (e) {
+      console.warn('Could not extract departments from matrix settings:', e);
+    }
+
+    const uniqueDepartments = [...new Set([...departments, ...matrixDepartments])].sort();
 
     await logEvent('APPLICATION', 'API Request successful', {
       metadata: { endpoint: '/api/get-departments', campus, method: 'GET', statusCode: 200, latency_ms: performance.now() - start },
